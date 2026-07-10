@@ -1,11 +1,15 @@
 import { useState } from "react";
 import Sidebar, { NavKey } from "./components/Sidebar";
+import TitleBar from "./components/TitleBar";
 import Overview from "./pages/Overview";
 import Timeline from "./pages/Timeline";
 import Keyboard from "./pages/Keyboard";
 import Insights from "./pages/Insights";
 import Settings from "./pages/Settings";
 import Dev from "./pages/Dev";
+
+const isWindows =
+  typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
 
 function renderPage(key: NavKey) {
   switch (key) {
@@ -30,7 +34,10 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar active={active} onSelect={setActive} />
-      <main className="app-main">{renderPage(active)}</main>
+      <div className="app-right">
+        {isWindows && <TitleBar />}
+        <main className="app-main">{renderPage(active)}</main>
+      </div>
     </div>
   );
 }

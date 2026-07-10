@@ -1,4 +1,4 @@
-import { BarChart3, Clock, Keyboard, Lightbulb, Search, Settings, Database } from "lucide-react";
+import { BarChart3, Clock, Keyboard, Lightbulb, Settings, Database } from "lucide-react";
 
 export type NavKey = "overview" | "timeline" | "keyboard" | "insights" | "settings" | "dev";
 
@@ -35,9 +35,6 @@ export default function Sidebar({ active, onSelect }: Props) {
     <aside className="sidebar">
       <div className="sidebar-header">
         <h1 className="sidebar-brand">Snoop</h1>
-        <button className="sidebar-search-btn" title="搜索">
-          <Search size={16} />
-        </button>
       </div>
 
       <nav className="sidebar-nav">
