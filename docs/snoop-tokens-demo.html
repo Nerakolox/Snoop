@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snoop · 色卡 & Demo</title>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+/* ============================================================
+   SNOOP DESIGN TOKENS  —  深浅双轨，语义化命名
+   组件只引用语义 token，切主题只改这里的值
+   ============================================================ */
+:root {
+  /* 品牌色（交互/身份：导航选中、按钮、链接） */
+  --color-accent:        #6D5AE6;
+  --color-accent-hover:  #5B48D4;
+  --color-accent-soft:   #ECE9FB;   /* 品牌色的浅底：选中背景、标签 */
+  --color-on-accent:     #FFFFFF;
+
+  /* 中性 —— 背景 / 表面 / 边框 / 文字（偏暖，呼应奶油白） */
+  --color-bg:            #FAF8F5;
+  --color-surface:       #FFFFFF;
+  --color-surface-2:     #F3F0EA;
+  --color-border:        #E8E3D9;
+  --color-text:          #2A2730;
+  --color-text-2:        #6B6670;
+  --color-text-3:        #9B96A0;
+
+  /* 强度色阶（数据表达：键鼠活跃度低→高） */
+  --intensity-0:         #D9D5CE;   /* 无 / 静默 */
+  --intensity-1:         #F2D98C;   /* 低 */
+  --intensity-2:         #F5B841;   /* 中 */
+  --intensity-3:         #EE8B3D;   /* 高 */
+  --intensity-4:         #E15A4C;   /* 爆表 */
+
+  /* 猫点缀色 */
+  --cat-nose:            #F4A6B8;
+  --cat-fur:             #F7EFDF;
+  --cat-eye:             #4A3B32;
+
+  /* 圆角（偏大 = 调皮） */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* 间距（4 基准） */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px;
+  --space-4: 16px; --space-6: 24px; --space-8: 32px;
+
+  /* 字号 */
+  --text-xs: 12px; --text-sm: 13px; --text-base: 14px;
+  --text-lg: 16px; --text-xl: 20px; --text-2xl: 28px; --text-display: 40px;
+
+  /* 动效（弹性 = 猫感） */
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms; --dur-base: 250ms;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(42,39,48,.06);
+  --shadow-md: 0 4px 16px rgba(42,39,48,.08);
+}
+
+[data-theme="dark"] {
+  --color-accent:        #8B7CF0;
+  --color-accent-hover:  #9E90F5;
+  --color-accent-soft:   #2A2540;
+  --color-on-accent:     #FFFFFF;
+
+  --color-bg:            #17151A;
+  --color-surface:       #211E26;
+  --color-surface-2:     #2B2731;
+  --color-border:        #38333F;
+  --color-text:          #F0EDE8;
+  --color-text-2:        #A8A2AE;
+  --color-text-3:        #726C78;
+
+  --intensity-0:         #3A3640;
+  --intensity-1:         #C9A94E;
+  --intensity-2:         #E0A63A;
+  --intensity-3:         #E88238;
+  --intensity-4:         #E15A4C;
+
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.4);
+}
+
+/* ============================================================
+   Demo 页样式（只为展示 token，非产品代码）
+   ============================================================ */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, "SF Pro", "PingFang SC", sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  padding: var(--space-8);
+  transition: background var(--dur-base), color var(--dur-base);
+  min-height: 100vh;
+}
+.wrap { max-width: 1080px; margin: 0 auto; }
+.head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--space-8);
+  padding-bottom: var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+.head-left { display: flex; align-items: center; gap: var(--space-4); }
+.head-icon {
+  width: 48px;
+  height: 48px;
+  background: var(--color-accent);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-on-accent);
+}
+.head-text h1 { font-size: var(--text-2xl); font-weight: 700; line-height: 1.2; }
+.head-text p { color: var(--color-text-2); font-size: var(--text-sm); margin-top: var(--space-2); max-width: 520px; }
+
+.toggle {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-smooth);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.toggle:hover { border-color: var(--color-accent); color: var(--color-accent); transform: translateY(-1px); }
+.toggle svg { width: 16px; height: 16px; }
+
+.section {
+  margin-bottom: var(--space-8);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+}
+.section > h2 {
+  font-size: var(--text-lg);
+  color: var(--color-text);
+  margin-bottom: var(--space-6);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.section > h2 svg { width: 20px; height: 20px; color: var(--color-accent); }
+
+/* 色板 */
+.swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-4); }
+.swatch {
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  transition: all var(--dur-fast) var(--ease-smooth);
+}
+.swatch:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.swatch .chip { height: 72px; position: relative; }
+.swatch .chip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(0,0,0,.08);
+  pointer-events: none;
+}
+.swatch .meta { padding: var(--space-3); background: var(--color-surface); }
+.swatch .name { font-size: var(--text-sm); font-weight: 600; margin-bottom: var(--space-1); }
+.swatch .val { font-size: var(--text-xs); color: var(--color-text-3); font-family: ui-monospace, monospace; }
+
+/* 强度阶条 */
+.intensity-bar {
+  display: flex;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-sm);
+}
+.intensity-bar > div {
+  flex: 1;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: rgba(0,0,0,.6);
+  transition: all var(--dur-fast);
+  cursor: pointer;
+}
+.intensity-bar > div:hover { transform: scale(1.05); z-index: 1; }
+
+/* 组件预览：一排卡片 */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: var(--space-4); }
+.card {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-6);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--dur-fast) var(--ease-smooth);
+}
+.card:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.card .label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+.card .label svg { width: 14px; height: 14px; }
+.card .big {
+  font-size: var(--text-display);
+  font-weight: 700;
+  line-height: 1.1;
+  margin-top: var(--space-3);
+  color: var(--color-accent);
+}
+.card .unit { font-size: var(--text-lg); color: var(--color-text-2); font-weight: 400; }
+
+/* 排行条 */
+.rank { display: flex; flex-direction: column; gap: var(--space-3); }
+.rank-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+.rank-row .app {
+  min-width: 100px;
+  color: var(--color-text);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.rank-row .app svg { width: 16px; height: 16px; color: var(--color-text-3); }
+.rank-row .track {
+  flex: 1;
+  height: 8px;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+}
+.rank-row .fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--color-accent), var(--color-accent-hover));
+  border-radius: var(--radius-full);
+  transition: width var(--dur-base) var(--ease-smooth);
+}
+
+/* 按钮 & 控件 */
+.controls { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+.btn {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  border: none;
+  transition: all var(--dur-fast) var(--ease-smooth);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.btn svg { width: 16px; height: 16px; }
+.btn-primary {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  box-shadow: 0 2px 8px rgba(109,90,230,.2);
+}
+.btn-primary:hover { background: var(--color-accent-hover); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(109,90,230,.3); }
+.btn-ghost { background: transparent; color: var(--color-text); border: 1px solid var(--color-border); }
+.btn-ghost:hover { border-color: var(--color-accent); color: var(--color-accent); transform: translateY(-1px); }
+.seg {
+  display: inline-flex;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-full);
+  padding: 4px;
+  border: 1px solid var(--color-border);
+}
+.seg span {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: all var(--dur-fast) var(--ease-smooth);
+  font-weight: 500;
+}
+.seg span.on {
+  background: var(--color-surface);
+  color: var(--color-accent);
+  box-shadow: var(--shadow-sm);
+}
+.seg span:hover:not(.on) { color: var(--color-text); }
+
+/* 键盘热力示意（用强度阶） */
+.heat { display: grid; grid-template-columns: repeat(15, 1fr); gap: 6px; }
+.heat > div {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  transition: all var(--dur-fast) var(--ease-bounce);
+  cursor: pointer;
+  border: 1px solid rgba(0,0,0,.04);
+}
+.heat > div:hover { transform: scale(1.15); box-shadow: var(--shadow-md); z-index: 1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <div class="head-left">
+      <div class="head-icon">
+        <i data-lucide="activity"></i>
+      </div>
+      <div class="head-text">
+        <h1>Snoop 色卡 &amp; Demo</h1>
+        <p>深浅双轨 · 语义化 token · 强度色阶走暖色轴，品牌紫留给交互</p>
+      </div>
+    </div>
+    <button class="toggle" onclick="toggleTheme()">
+      <i data-lucide="sun"></i>
+      <span>切换深/浅色</span>
+    </button>
+  </div>
+
+  <div class="section">
+    <h2><i data-lucide="palette"></i>品牌色 & 中性阶</h2>
+    <div class="swatches" id="swatches"></div>
+  </div>
+
+  <div class="section">
+    <h2><i data-lucide="bar-chart-4"></i>强度色阶（键鼠活跃度 低 → 高）</h2>
+    <div class="intensity-bar">
+      <div style="background:var(--intensity-0)">0 静默</div>
+      <div style="background:var(--intensity-1)">1 低</div>
+      <div style="background:var(--intensity-2)">2 中</div>
+      <div style="background:var(--intensity-3)">3 高</div>
+      <div style="background:var(--intensity-4)">4 爆表</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2><i data-lucide="layout-dashboard"></i>组件预览（套用 token）</h2>
+    <div class="cards">
+      <div class="card">
+        <div class="label"><i data-lucide="clock"></i>今日活跃</div>
+        <div class="big">2<span class="unit">时 14分</span></div>
+      </div>
+      <div class="card">
+        <div class="label"><i data-lucide="keyboard"></i>总按键</div>
+        <div class="big">1043</div>
+      </div>
+      <div class="card">
+        <div class="label"><i data-lucide="trophy"></i>App 排行</div>
+        <div class="rank" style="margin-top:var(--space-4)">
+          <div class="rank-row">
+            <span class="app"><i data-lucide="chrome"></i>Chrome</span>
+            <div class="track"><div class="fill" style="width:100%"></div></div>
+          </div>
+          <div class="rank-row">
+            <span class="app"><i data-lucide="terminal"></i>终端</span>
+            <div class="track"><div class="fill" style="width:86%"></div></div>
+          </div>
+          <div class="rank-row">
+            <span class="app"><i data-lucide="code"></i>VSCode</span>
+            <div class="track"><div class="fill" style="width:40%"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2><i data-lucide="sliders"></i>控件</h2>
+    <div class="controls">
+      <button class="btn btn-primary">
+        <i data-lucide="check"></i>
+        主按钮
+      </button>
+      <button class="btn btn-ghost">
+        <i data-lucide="settings"></i>
+        次按钮
+      </button>
+      <div class="seg">
+        <span class="on">今天</span>
+        <span>本周</span>
+        <span>自定义</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2><i data-lucide="grid-3x3"></i>键盘热力示意（强度阶应用）</h2>
+    <div class="heat" id="heat"></div>
+  </div>
+</div>
+
+<script>
+function toggleTheme(){
+  const el = document.documentElement;
+  const newTheme = el.dataset.theme === 'dark' ? 'light' : 'dark';
+  el.dataset.theme = newTheme;
+
+  // 更新图标
+  const icon = document.querySelector('.toggle i');
+  icon.setAttribute('data-lucide', newTheme === 'dark' ? 'moon' : 'sun');
+  lucide.createIcons();
+}
+
+// 色板
+const tokens = [
+  ['--color-accent','品牌色'],['--color-accent-soft','品牌浅底'],
+  ['--color-bg','背景'],['--color-surface','表面'],['--color-surface-2','次级表面'],
+  ['--color-border','边框'],['--color-text','主文字'],['--color-text-2','次文字'],['--color-text-3','弱文字'],
+  ['--cat-nose','猫·粉鼻'],['--cat-fur','猫·毛色'],['--cat-eye','猫·眼']
+];
+const cs = getComputedStyle(document.documentElement);
+document.getElementById('swatches').innerHTML = tokens.map(([v,n])=>{
+  return `<div class="swatch"><div class="chip" style="background:var(${v})"></div>
+    <div class="meta"><div class="name">${n}</div><div class="val">${v}</div></div></div>`;
+}).join('');
+
+// 热力示意：随机强度
+const levels = ['--intensity-0','--intensity-1','--intensity-2','--intensity-3','--intensity-4'];
+let cells='';
+for(let i=0;i<75;i++){
+  const l = levels[Math.floor(Math.random()*Math.random()*5)];
+  cells += `<div style="background:var(${l})"></div>`;
+}
+document.getElementById('heat').innerHTML = cells;
+
+// 初始化所有图标
+lucide.createIcons();
+</script>
+</body>
+</html>

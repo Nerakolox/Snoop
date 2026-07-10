@@ -1,4 +1,5 @@
 use tauri::{
+    menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     Manager, RunEvent, WindowEvent,
 };
@@ -21,6 +22,38 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
+            // 配置红绿灯位置：嵌入侧边栏顶部左侧
+            #[cfg(target_os = "macos")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    use cocoa::appkit::{NSView, NSWindow, NSWindowButton};
+                    use cocoa::base::{id, nil, YES};
+                    use cocoa::foundation::NSPoint;
+                    use objc::{msg_send, sel, sel_impl};
+
+                    unsafe {
+                        let ns_window = window.ns_window().unwrap() as id;
+
+                        // 标题栏透明，让内容延伸到标题栏区域
+                        let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
+
+                        // 微调红绿灯位置（相对于窗口左上角）
+                        let close_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
+                        if close_button != nil {
+                            close_button.setFrameOrigin(NSPoint::new(16.0, 18.0));
+                        }
+                        let minimize_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
+                        if minimize_button != nil {
+                            minimize_button.setFrameOrigin(NSPoint::new(36.0, 18.0));
+                        }
+                        let zoom_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
+                        if zoom_button != nil {
+                            zoom_button.setFrameOrigin(NSPoint::new(56.0, 18.0));
+                        }
+                    }
+                }
+            }
+
             let app_data_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
             std::fs::create_dir_all(&app_data_dir).expect("无法创建应用数据目录");
 
@@ -41,7 +74,12 @@ pub fn run() {
 
             app.manage(commands::DbPath(db_path));
 
+            // 创建托盘菜单
+            let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+            let menu = MenuBuilder::new(app).item(&quit).build()?;
+
             let handle = app.handle().clone();
+            let menu_handle = app.handle().clone();
             let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
                 "../icons/tray-icon.png"
             ))?;
@@ -49,6 +87,13 @@ pub fn run() {
                 .icon(tray_icon)
                 .icon_as_template(true)
                 .tooltip("Snoop")
+                .menu(&menu)
+                .show_menu_on_left_click(false)
+                .on_menu_event(move |_app, event| {
+                    if event.id() == "quit" {
+                        menu_handle.exit(0);
+                    }
+                })
                 .on_tray_icon_event(move |_tray, event| {
                     if let TrayIconEvent::Click {
                         button: MouseButton::Left,

@@ -387,6 +387,13 @@ fn start_nsworkspace_observer() {
 
         println!("✅ NSWorkspace 前台切换通知观察者已注册");
 
+        // 给 run loop 挂一个 Mach 端口作为输入源，否则没有任何输入源时
+        // runUntilDate: 会立即返回，导致下面的 loop 空转吃满一个 CPU 核心
+        let port: id = msg_send![class!(NSMachPort), port];
+        let default_mode: id = NSString::alloc(nil).init_str("kCFRunLoopDefaultMode");
+        let keep_alive_run_loop: id = msg_send![class!(NSRunLoop), currentRunLoop];
+        let _: () = msg_send![keep_alive_run_loop, addPort: port forMode: default_mode];
+
         let _: () = msg_send![pool, drain];
 
         // 事件循环本身长跑，每次 runUntilDate 之前开新的 pool 释放中间对象

@@ -14,12 +14,16 @@
       {
         "label": "main",
         "title": "Snoop",
-        "width": 900,
-        "height": 640,
+        "width": 1180,
+        "height": 760,
+        "minWidth": 960,
+        "minHeight": 620,
         "visible": false,
         "resizable": true,
         "decorations": true,
-        "skipTaskbar": true
+        "skipTaskbar": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true
       }
     ],
     "security": {
