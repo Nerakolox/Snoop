@@ -102,8 +102,12 @@ body,
   overflow: hidden;
 }
 
-body {
-  background: var(--color-bg);
+/* 主窗口 transparent: true 后，透明色一路穿到系统 vibrancy/mica。
+   任何在这一层设不透明背景都会挡住系统模糊，所以 body/root 保持透明。 */
+html,
+body,
+#root {
+  background: transparent;
 }
 
 button {
@@ -128,15 +132,18 @@ body[data-platform="windows"] {
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  background: var(--color-bg);
+  background: transparent;
 }
 
+/* 右侧列（title bar + 主内容）显式画上 --color-bg，
+   系统 vibrancy 只透过 sidebar 区域露出来 */
 .app-right {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--color-bg);
 }
 
 .app-main {
@@ -249,9 +256,8 @@ body[data-platform="windows"] {
 .sidebar {
   width: var(--sidebar-width);
   flex: 0 0 var(--sidebar-width);
-  background:
-    linear-gradient(180deg, rgba(237, 233, 251, 0.55) 0%, rgba(243, 240, 234, 0.85) 40%, var(--color-surface-2) 100%),
-    var(--color-surface-2);
+  /* 0.8 米白叠色（--color-bg #FAF8F5）：系统 vibrancy 提供模糊底，这层暖调染色 */
+  background: rgba(250, 248, 245, 0.8);
   display: flex;
   flex-direction: column;
   padding: 0;
@@ -262,9 +268,8 @@ body[data-platform="windows"] {
 
 @media (prefers-color-scheme: dark) {
   .sidebar {
-    background:
-      linear-gradient(180deg, rgba(42, 37, 64, 0.6) 0%, rgba(43, 39, 49, 0.9) 40%, var(--color-surface-2) 100%),
-      var(--color-surface-2);
+    /* dark 模式改用 --color-surface-2 #2B2731 的暖深灰，语义对齐 */
+    background: rgba(43, 39, 49, 0.8);
     border-right-color: rgba(255, 255, 255, 0.08);
   }
 }
@@ -290,7 +295,7 @@ body[data-platform="windows"] .sidebar-header {
   font-size: var(--text-lg);
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: var(--color-text);
+  color: var(--color-accent);
   margin: 0;
   flex: 1;
   -webkit-app-region: drag;
@@ -345,7 +350,13 @@ body[data-platform="windows"] .sidebar-header {
   color: var(--color-text);
   text-align: left;
   width: 100%;
-  transition: all var(--dur-fast) var(--ease-smooth);
+  /* 拆分：过渡只走廉价属性（背景/文字/阴影），不含 backdrop-filter —
+     那个每帧都要对 vibrancy 底重算高斯，插值会卡帧 */
+  transition:
+    background var(--dur-base) var(--ease-smooth),
+    color var(--dur-base) var(--ease-smooth),
+    box-shadow var(--dur-base) var(--ease-smooth),
+    font-weight var(--dur-fast) var(--ease-smooth);
   font-weight: 500;
   -webkit-app-region: no-drag;
 }
@@ -361,9 +372,21 @@ body[data-platform="windows"] .sidebar-header {
 }
 
 .sidebar-item.is-active {
-  background: var(--color-accent-soft);
+  /* 磨砂玻璃选中态：半透明品牌紫 + backdrop blur，
+     视觉上像从 sidebar vibrancy 底透出的小玻璃片 */
+  background: rgba(109, 90, 230, 0.18);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
   color: var(--color-accent);
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(109, 90, 230, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-item.is-active {
+    background: rgba(139, 124, 240, 0.22);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  }
 }
 
 .sidebar-item-icon {

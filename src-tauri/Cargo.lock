@@ -3579,6 +3579,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tokio",
+ "window-vibrancy",
  "windows 0.58.0",
 ]
 
