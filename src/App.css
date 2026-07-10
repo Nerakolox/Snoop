@@ -1361,3 +1361,328 @@ body[data-platform="windows"] .sidebar-header {
   min-width: 48px;
   text-align: right;
 }
+
+/* ============================================================
+   Insights page
+   ① 猫周报通栏 · ② 趋势柱 · ③ App 榜环比 · ④ 一周×24 网格
+   ============================================================ */
+
+.ins-page {
+  padding: var(--space-6) var(--space-8) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 100%;
+}
+
+/* ① 猫的周报 --------------------------------------------------------------- */
+
+.ins-report {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+  padding: var(--space-5, 20px) var(--space-6);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.ins-report-avatar {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.ins-report-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ins-report-title {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ins-report-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
+.ins-report-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.ins-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px var(--space-3);
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.ins-chip-num {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.ins-chip-unit {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+/* ②③ 中段左右分栏 -------------------------------------------------------- */
+
+.ins-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  gap: var(--space-6);
+}
+
+@media (max-width: 960px) {
+  .ins-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ② 本周活跃趋势柱状 ------------------------------------------------------ */
+
+.ins-trend-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.ins-trend {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-3);
+  height: 200px;
+}
+
+.ins-trend-col {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.ins-trend-bar-wrap {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+}
+
+.ins-trend-bar {
+  width: 100%;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition:
+    height var(--dur-base) var(--ease-smooth),
+    filter var(--dur-fast) var(--ease-smooth);
+  position: relative;
+}
+
+.ins-trend-bar:hover {
+  filter: brightness(1.05);
+}
+
+.ins-trend-tip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 6px);
+  transform: translate(-50%, 4px);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-text);
+  color: var(--color-bg);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
+
+.ins-trend-bar:hover .ins-trend-tip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
+.ins-trend-label {
+  text-align: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-weight: 600;
+}
+
+/* ③ 本周 App 榜 + 环比 --------------------------------------------------- */
+
+.ins-apps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ins-app-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 48px 64px;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.ins-app-name {
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ins-app-time {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.ins-delta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  border: 1px solid transparent;
+  min-width: 0;
+}
+
+.ins-delta-num {
+  line-height: 1;
+}
+
+.ins-delta--up {
+  color: var(--intensity-4);
+  background: color-mix(in srgb, var(--intensity-4) 14%, transparent);
+}
+
+.ins-delta--down {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.ins-delta--flat {
+  color: var(--color-text-3);
+  background: var(--color-surface-2);
+}
+
+/* ④ 作息画像 一周 × 24 小时 ---------------------------------------------- */
+
+.ins-rhythm {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  gap: var(--space-3);
+}
+
+.ins-rhythm-days {
+  display: grid;
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  padding-bottom: 20px; /* 底部刻度带占位，保持天标签和格子行居中对齐 */
+}
+
+.ins-rhythm-day {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-weight: 600;
+  line-height: 1;
+}
+
+.ins-rhythm-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ins-rhythm-grid {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.ins-rhythm-cell {
+  aspect-ratio: 1 / 1;
+  min-height: 14px;
+  border-radius: var(--radius-sm);
+  transition: transform var(--dur-fast) var(--ease-smooth);
+}
+
+.ins-rhythm-cell:hover {
+  transform: scale(1.15);
+}
+
+.ins-rhythm-scale {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 3px;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.ins-rhythm-tick {
+  justify-self: center;
+}
+
+.ins-rhythm-tick--edge-start {
+  justify-self: start;
+}
+
+.ins-rhythm-tick--edge-end {
+  justify-self: end;
+}
+
