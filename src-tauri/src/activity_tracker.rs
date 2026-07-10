@@ -1,20 +1,12 @@
 use rdev::{listen, Event, EventType};
 use rusqlite::Connection;
 use std::collections::HashMap;
-use std::sync::mpsc::{channel, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::mpsc::{channel, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-#[cfg(target_os = "macos")]
-use cocoa::base::{id, nil};
-#[cfg(target_os = "macos")]
-use cocoa::foundation::{NSAutoreleasePool, NSString};
-#[cfg(target_os = "macos")]
-use objc::runtime::{Object, Sel};
-#[cfg(target_os = "macos")]
-use objc::{class, msg_send, sel, sel_impl};
-use std::panic::AssertUnwindSafe;
+use crate::platform::{self, FrontmostApp};
 
 const MAX_BUCKET_MS: i64 = 5000;
 const MIN_KEEP_MS: i64 = 500;
@@ -57,75 +49,6 @@ impl Counters {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-struct FrontmostApp {
-    name: String,
-    bundle_id: String,
-}
-
-#[cfg(target_os = "macos")]
-fn get_frontmost_app() -> FrontmostApp {
-    // 关键：NSWorkspace / NSString / UTF8String 返回的都是 autoreleased 对象。
-    // 在非主线程调用 Cocoa API 时，必须自己开 NSAutoreleasePool，否则这些
-    // 临时对象没有 pool 兜底，会在不可预期的时刻被释放，随后其它线程
-    // (rdev 内部读键盘布局也会走 Cocoa) 踩到已释放内存 → 堆损坏 → 闪退。
-    unsafe {
-        let pool: id = NSAutoreleasePool::new(nil);
-
-        let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
-            let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
-            let frontmost_app: id = msg_send![workspace, frontmostApplication];
-
-            if frontmost_app == nil {
-                return FrontmostApp {
-                    name: "Unknown".to_string(),
-                    bundle_id: "unknown.bundle.id".to_string(),
-                };
-            }
-
-            let app_name: id = msg_send![frontmost_app, localizedName];
-            let bundle_id: id = msg_send![frontmost_app, bundleIdentifier];
-
-            let name = nsstring_to_string(app_name).unwrap_or_else(|| "Unknown".to_string());
-            let bundle = nsstring_to_string(bundle_id)
-                .unwrap_or_else(|| "unknown.bundle.id".to_string());
-
-            FrontmostApp {
-                name,
-                bundle_id: bundle,
-            }
-        }));
-
-        let _: () = msg_send![pool, drain];
-
-        result.unwrap_or_else(|_| FrontmostApp {
-            name: "Unknown".to_string(),
-            bundle_id: "unknown.bundle.id".to_string(),
-        })
-    }
-}
-
-#[cfg(target_os = "macos")]
-unsafe fn nsstring_to_string(ns: id) -> Option<String> {
-    if ns == nil {
-        return None;
-    }
-    let ptr: *const i8 = msg_send![ns, UTF8String];
-    if ptr.is_null() {
-        return None;
-    }
-    // CStr → String 会立刻做一次拷贝，脱离 autorelease 内存
-    Some(std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned())
-}
-
-#[cfg(not(target_os = "macos"))]
-fn get_frontmost_app() -> FrontmostApp {
-    FrontmostApp {
-        name: "Unknown".to_string(),
-        bundle_id: "unknown.bundle.id".to_string(),
-    }
-}
-
 fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -133,29 +56,19 @@ fn now_ms() -> i64 {
         .as_millis() as i64
 }
 
-static SWITCH_SENDER: OnceLock<Mutex<Option<Sender<FrontmostApp>>>> = OnceLock::new();
-
-fn send_switch(app: FrontmostApp) {
-    if let Some(m) = SWITCH_SENDER.get() {
-        if let Some(sender) = m.lock().unwrap().as_ref() {
-            let _ = sender.send(app);
-        }
-    }
-}
-
 pub fn start_activity_tracking(db_path: std::path::PathBuf) {
     let counters = Arc::new(Mutex::new(Counters::default()));
     let (tx, rx) = channel::<FrontmostApp>();
 
-    // 全局 sender：供 NSWorkspace 回调 & 轮询线程使用
-    let _ = SWITCH_SENDER.set(Mutex::new(Some(tx)));
+    // 全局 sender：供平台切换回调 & 轮询线程使用
+    platform::set_switch_sender(tx);
 
     // ============ Settler：定时 5s 或 App 切换任一触发结算 ============
     let counters_settler = Arc::clone(&counters);
     let db_path_settler = db_path.clone();
     thread::spawn(move || {
         let mut bucket_start = now_ms();
-        let mut bucket_app = get_frontmost_app();
+        let mut bucket_app = platform::get_frontmost_app();
         println!(
             "✅ 起始桶: {} ({}) @ {}",
             bucket_app.name, bucket_app.bundle_id, bucket_start
@@ -173,7 +86,7 @@ pub fn start_activity_tracking(db_path: std::path::PathBuf) {
                     }
                     app
                 }
-                Err(RecvTimeoutError::Timeout) => get_frontmost_app(),
+                Err(RecvTimeoutError::Timeout) => platform::get_frontmost_app(),
                 Err(RecvTimeoutError::Disconnected) => return,
             };
 
@@ -240,26 +153,23 @@ pub fn start_activity_tracking(db_path: std::path::PathBuf) {
         }
     });
 
-    // ============ 前台 App 切换检测：NSWorkspace 通知 ============
-    #[cfg(target_os = "macos")]
-    thread::spawn(|| {
-        start_nsworkspace_observer();
-    });
+    // ============ 前台 App 切换检测：平台原生事件 ============
+    platform::spawn_switch_observer();
 
     // ============ 前台 App 切换检测：300ms 轮询兜底 ============
     thread::spawn(|| {
-        let mut last_seen = get_frontmost_app();
+        let mut last_seen = platform::get_frontmost_app();
         loop {
             thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
-            let cur = get_frontmost_app();
+            let cur = platform::get_frontmost_app();
             if cur.bundle_id != last_seen.bundle_id {
                 last_seen = cur.clone();
-                send_switch(cur);
+                platform::send_switch(cur);
             }
         }
     });
 
-    println!("✅ 活动追踪已启动（事件驱动结算 + NSWorkspace 通知 + 300ms 轮询兜底）");
+    println!("✅ 活动追踪已启动（事件驱动结算 + 平台原生通知 + 300ms 轮询兜底）");
 }
 
 fn handle_input_event(event: &Event, counters: &Arc<Mutex<Counters>>) {
@@ -335,74 +245,4 @@ fn write_bucket_to_db(
 
     tx.commit()?;
     Ok(())
-}
-
-#[cfg(target_os = "macos")]
-extern "C" fn app_activated_callback(_self: &Object, _cmd: Sel, _notification: id) {
-    // 回调也在专用线程分发，get_frontmost_app 内部已经自带 autoreleasepool
-    let app = get_frontmost_app();
-    send_switch(app);
-}
-
-#[cfg(target_os = "macos")]
-fn start_nsworkspace_observer() {
-    unsafe {
-        let pool: id = NSAutoreleasePool::new(nil);
-
-        let superclass = class!(NSObject);
-        let mut decl = match objc::declare::ClassDecl::new("SnoopAppObserver", superclass) {
-            Some(d) => d,
-            None => {
-                eprintln!("⚠️ NSWorkspace 观察者类已存在，跳过注册（可能是热重载）");
-                let _: () = msg_send![pool, drain];
-                return;
-            }
-        };
-
-        decl.add_method(
-            sel!(appActivated:),
-            app_activated_callback as extern "C" fn(&Object, Sel, id),
-        );
-        let observer_class = decl.register();
-        // observer 需要长期存活，用 alloc/init 拿到 retain=1 的实例
-        let observer: id = msg_send![observer_class, alloc];
-        let observer: id = msg_send![observer, init];
-
-        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
-        let notification_center: id = msg_send![workspace, notificationCenter];
-
-        // NSString stringWithUTF8String: 返回 autoreleased，在下面 addObserver
-        // 里 name 会被 retain，pool drain 后仍然有效
-        let name_ns: id = NSString::alloc(nil).init_str(
-            "NSWorkspaceDidActivateApplicationNotification",
-        );
-
-        let _: () = msg_send![
-            notification_center,
-            addObserver: observer
-            selector: sel!(appActivated:)
-            name: name_ns
-            object: nil
-        ];
-
-        println!("✅ NSWorkspace 前台切换通知观察者已注册");
-
-        // 给 run loop 挂一个 Mach 端口作为输入源，否则没有任何输入源时
-        // runUntilDate: 会立即返回，导致下面的 loop 空转吃满一个 CPU 核心
-        let port: id = msg_send![class!(NSMachPort), port];
-        let default_mode: id = NSString::alloc(nil).init_str("kCFRunLoopDefaultMode");
-        let keep_alive_run_loop: id = msg_send![class!(NSRunLoop), currentRunLoop];
-        let _: () = msg_send![keep_alive_run_loop, addPort: port forMode: default_mode];
-
-        let _: () = msg_send![pool, drain];
-
-        // 事件循环本身长跑，每次 runUntilDate 之前开新的 pool 释放中间对象
-        loop {
-            let iter_pool: id = NSAutoreleasePool::new(nil);
-            let run_loop: id = msg_send![class!(NSRunLoop), currentRunLoop];
-            let distant_future: id = msg_send![class!(NSDate), distantFuture];
-            let _: () = msg_send![run_loop, runUntilDate: distant_future];
-            let _: () = msg_send![iter_pool, drain];
-        }
-    }
 }

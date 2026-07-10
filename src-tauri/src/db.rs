@@ -67,6 +67,15 @@ impl Database {
     }
 
     pub fn insert_test_data(&self) -> Result<()> {
+        let existing: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM activity_buckets",
+            [],
+            |row| row.get(0),
+        )?;
+        if existing > 0 {
+            return Ok(());
+        }
+
         let now_millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -117,12 +126,19 @@ impl Database {
             "SELECT id, app_name, key_total FROM activity_buckets ORDER BY id DESC LIMIT 1"
         )?;
 
-        let bucket = stmt.query_row([], |row| {
+        let bucket = match stmt.query_row([], |row| {
             let id: i64 = row.get(0)?;
             let app_name: String = row.get(1)?;
             let key_total: i64 = row.get(2)?;
             Ok((id, app_name, key_total))
-        })?;
+        }) {
+            Ok(b) => b,
+            Err(rusqlite::Error::QueryReturnedNoRows) => {
+                println!("- 数据库为空，跳过验证");
+                return Ok(());
+            }
+            Err(e) => return Err(e),
+        };
 
         println!("✓ 读取到 bucket: id={}, app_name={}, key_total={}",
                  bucket.0, bucket.1, bucket.2);

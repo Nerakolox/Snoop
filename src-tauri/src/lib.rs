@@ -4,9 +4,10 @@ use tauri::{
     Manager, RunEvent, WindowEvent,
 };
 
-mod db;
 mod activity_tracker;
 mod commands;
+mod db;
+mod platform;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -21,6 +22,16 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
+            // Windows：在任务栏隐藏主窗口，靠托盘唤起（对齐 macOS 的 Accessory 语义）
+            // 关闭原生装饰，改用前端自绘 title bar；圆角/阴影交给系统组合器
+            #[cfg(target_os = "windows")]
+            {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_skip_taskbar(true);
+                    let _ = window.set_decorations(false);
+                }
+            }
 
             // 配置红绿灯位置：嵌入侧边栏顶部左侧
             #[cfg(target_os = "macos")]
