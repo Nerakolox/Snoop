@@ -2,14 +2,33 @@
  * 时间线 —— 横向泳道图（甘特图）
  * 纵轴：每个 App 一条泳道，横轴：时间轴，色块表示使用时段。
  * 支持日期切换查看历史任意一天。
+ *
+ * 时间轴压缩：
+ *  超过 COMPRESS_THRESHOLD_MS 的全局空白（所有 App 均无活动）会被压缩成
+ *  一个固定宽 COMPRESSED_GAP_VIRT_MS 的灰色板。
+ *  所有位置换算通过分段映射 timeToVirt / virtToTime 统一转换到"虚拟坐标"，
+ *  缩放和平移直接操作虚拟坐标，避免坐标系混用。
  */
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { CSSProperties } from "react";
-import { ChevronLeft, ChevronRight, Calendar, Maximize2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Maximize2,
+  Minimize2,
+} from "lucide-react";
 import { fetchBucketsInRange, type RawBucket } from "../data";
 import { computeBucketIntensity } from "../analytics";
 import AppIcon from "../components/AppIcon";
+
+// ---- 压缩配置（可调） -------------------------------------------------------
+
+/** 全局空白超过该时长才压缩 */
+const COMPRESS_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+/** 压缩后每个灰块固定占用的"虚拟宽度"（等价 2 小时数据段的像素） */
+const COMPRESSED_GAP_VIRT_MS = 2 * 60 * 60 * 1000;
 
 type TimeBlock = {
   start_ms: number;
@@ -31,18 +50,18 @@ type AppLane = {
 // ---- 颜色生成：基于 bundle_id 哈希到调和色板 -------------------------------
 
 const COLOR_PALETTE = [
-  "#4A90E2", // 蓝
-  "#7B68EE", // 紫
-  "#50C878", // 绿
-  "#FF6B6B", // 红
-  "#FFA500", // 橙
-  "#20B2AA", // 青绿
-  "#DA70D6", // 兰花紫
-  "#FFD700", // 金
-  "#FF69B4", // 粉
-  "#40E0D0", // 绿松石
-  "#9370DB", // 中紫
-  "#3CB371", // 海绿
+  "#4A90E2",
+  "#7B68EE",
+  "#50C878",
+  "#FF6B6B",
+  "#FFA500",
+  "#20B2AA",
+  "#DA70D6",
+  "#FFD700",
+  "#FF69B4",
+  "#40E0D0",
+  "#9370DB",
+  "#3CB371",
 ];
 
 function hashCode(str: string): number {
@@ -63,10 +82,7 @@ function getAppColor(bundleId: string): string {
 
 function buildAppLanes(buckets: RawBucket[]): AppLane[] {
   if (buckets.length === 0) return [];
-
-  // 按时间排序
   const sorted = [...buckets].sort((a, b) => a.bucket_start - b.bucket_start);
-
   const laneMap = new Map<string, AppLane>();
 
   for (const b of sorted) {
@@ -80,25 +96,19 @@ function buildAppLanes(buckets: RawBucket[]): AppLane[] {
         total_duration_ms: 0,
       });
     }
-
     const lane = laneMap.get(key)!;
     const intensity = computeBucketIntensity(b);
     const mouse_total = b.mouse_left + b.mouse_right + b.mouse_middle;
-
-    // 检查是否可以与上一个块合并（连续同 App）
     const lastBlock = lane.blocks[lane.blocks.length - 1];
     const gap = lastBlock ? b.bucket_start - lastBlock.end_ms : Infinity;
 
     if (lastBlock && gap <= 1000) {
-      // 连续（间隔 ≤1s），合并
       lastBlock.end_ms = b.bucket_start + b.duration_ms;
       lastBlock.duration_ms = lastBlock.end_ms - lastBlock.start_ms;
       lastBlock.key_total += b.key_total;
       lastBlock.mouse_total += mouse_total;
-      // 重新计算强度（合并后需要重算，这里简化为取较大值）
       lastBlock.intensity = Math.max(lastBlock.intensity, intensity) as 0 | 1 | 2 | 3 | 4;
     } else {
-      // 新块
       lane.blocks.push({
         start_ms: b.bucket_start,
         end_ms: b.bucket_start + b.duration_ms,
@@ -108,76 +118,240 @@ function buildAppLanes(buckets: RawBucket[]): AppLane[] {
         mouse_total,
       });
     }
-
     lane.total_duration_ms += b.duration_ms;
   }
 
-  // 转数组，按总时长倒序（用得多的在上）
   const lanes = Array.from(laneMap.values());
   lanes.sort((a, b) => b.total_duration_ms - a.total_duration_ms);
-
   return lanes;
 }
 
-// ---- 时间轴刻度 -------------------------------------------------------------
+// ---- 全局空白检测 -----------------------------------------------------------
 
-/** 根据可见时间跨度动态生成刻度 */
-function buildTimeScale(viewStart: number, viewEnd: number): number[] {
-  const span = viewEnd - viewStart;
+type GapRange = { start_ms: number; end_ms: number };
+
+/**
+ * 合并所有 App 的活动区间，找出跨越所有 App 都没有活动、且超过阈值的空白。
+ */
+function computeGlobalGaps(
+  lanes: AppLane[],
+  fullStart: number,
+  fullEnd: number,
+  threshold: number
+): GapRange[] {
+  const intervals: Array<[number, number]> = [];
+  for (const l of lanes) {
+    for (const b of l.blocks) intervals.push([b.start_ms, b.end_ms]);
+  }
+  intervals.sort((a, b) => a[0] - b[0]);
+  const merged: Array<[number, number]> = [];
+  for (const [s, e] of intervals) {
+    if (merged.length && s <= merged[merged.length - 1][1]) {
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], e);
+    } else {
+      merged.push([s, e]);
+    }
+  }
+  const gaps: GapRange[] = [];
+  let cursor = fullStart;
+  for (const [s, e] of merged) {
+    if (s - cursor > threshold) gaps.push({ start_ms: cursor, end_ms: s });
+    cursor = Math.max(cursor, e);
+  }
+  if (fullEnd - cursor > threshold) {
+    gaps.push({ start_ms: cursor, end_ms: fullEnd });
+  }
+  return gaps;
+}
+
+// ---- 分段映射：真实时间 <-> 虚拟坐标 ---------------------------------------
+
+type Segment = {
+  time_start: number;
+  time_end: number;
+  virt_start: number;
+  virt_end: number;
+  type: "data" | "gap";
+};
+
+type VirtGap = {
+  time_start: number;
+  time_end: number;
+  virt_start: number;
+  virt_end: number;
+};
+
+type SegmentsData = {
+  segments: Segment[];
+  virtGaps: VirtGap[];
+  totalVirt: number;
+  compressed: boolean;
+};
+
+function buildSegments(
+  fullStart: number,
+  fullEnd: number,
+  gaps: GapRange[],
+  compressed: boolean
+): SegmentsData {
+  const totalTime = fullEnd - fullStart;
+  if (!compressed || gaps.length === 0) {
+    return {
+      segments: [
+        {
+          time_start: fullStart,
+          time_end: fullEnd,
+          virt_start: 0,
+          virt_end: totalTime,
+          type: "data",
+        },
+      ],
+      virtGaps: [],
+      totalVirt: totalTime,
+      compressed,
+    };
+  }
+  const segs: Segment[] = [];
+  const virtGaps: VirtGap[] = [];
+  let virtCursor = 0;
+  let timeCursor = fullStart;
+  for (const g of gaps) {
+    if (g.start_ms > timeCursor) {
+      const dur = g.start_ms - timeCursor;
+      segs.push({
+        time_start: timeCursor,
+        time_end: g.start_ms,
+        virt_start: virtCursor,
+        virt_end: virtCursor + dur,
+        type: "data",
+      });
+      virtCursor += dur;
+    }
+    const gapVirtStart = virtCursor;
+    segs.push({
+      time_start: g.start_ms,
+      time_end: g.end_ms,
+      virt_start: virtCursor,
+      virt_end: virtCursor + COMPRESSED_GAP_VIRT_MS,
+      type: "gap",
+    });
+    virtCursor += COMPRESSED_GAP_VIRT_MS;
+    virtGaps.push({
+      time_start: g.start_ms,
+      time_end: g.end_ms,
+      virt_start: gapVirtStart,
+      virt_end: virtCursor,
+    });
+    timeCursor = g.end_ms;
+  }
+  if (timeCursor < fullEnd) {
+    segs.push({
+      time_start: timeCursor,
+      time_end: fullEnd,
+      virt_start: virtCursor,
+      virt_end: virtCursor + (fullEnd - timeCursor),
+      type: "data",
+    });
+    virtCursor += fullEnd - timeCursor;
+  }
+  return { segments: segs, virtGaps, totalVirt: virtCursor, compressed };
+}
+
+/** 时间 → 虚拟坐标（所有 X 定位统一走这里，唯一映射源） */
+function timeToVirt(t: number, segs: Segment[]): number {
+  if (segs.length === 0) return 0;
+  if (t <= segs[0].time_start) return segs[0].virt_start;
+  const last = segs[segs.length - 1];
+  if (t >= last.time_end) return last.virt_end;
+  for (const s of segs) {
+    if (t >= s.time_start && t <= s.time_end) {
+      const timeSpan = s.time_end - s.time_start;
+      const virtSpan = s.virt_end - s.virt_start;
+      if (timeSpan === 0) return s.virt_start;
+      if (s.type === "data") {
+        return s.virt_start + (t - s.time_start);
+      }
+      return s.virt_start + ((t - s.time_start) / timeSpan) * virtSpan;
+    }
+  }
+  return last.virt_end;
+}
+
+/** 虚拟坐标 → 时间（tooltip、切换视图保留时间范围时使用） */
+function virtToTime(v: number, segs: Segment[]): number {
+  if (segs.length === 0) return 0;
+  if (v <= segs[0].virt_start) return segs[0].time_start;
+  const last = segs[segs.length - 1];
+  if (v >= last.virt_end) return last.time_end;
+  for (const s of segs) {
+    if (v >= s.virt_start && v <= s.virt_end) {
+      const timeSpan = s.time_end - s.time_start;
+      const virtSpan = s.virt_end - s.virt_start;
+      if (virtSpan === 0) return s.time_start;
+      if (s.type === "data") {
+        return s.time_start + (v - s.virt_start);
+      }
+      return s.time_start + ((v - s.virt_start) / virtSpan) * timeSpan;
+    }
+  }
+  return last.time_end;
+}
+
+// ---- 时间刻度（跨压缩段跳变） ----------------------------------------------
+
+type Tick = { time_ms: number; virt: number; label: string };
+
+function buildTicks(
+  segments: Segment[],
+  viewStart: number,
+  viewEnd: number
+): Tick[] {
+  const virtSpan = viewEnd - viewStart;
+  if (virtSpan <= 0) return [];
   const hourMs = 60 * 60 * 1000;
   const minMs = 60 * 1000;
+  let interval: number;
+  if (virtSpan <= 2 * hourMs) interval = 10 * minMs;
+  else if (virtSpan <= 6 * hourMs) interval = 30 * minMs;
+  else if (virtSpan <= 12 * hourMs) interval = hourMs;
+  else interval = 3 * hourMs;
 
-  const scale: number[] = [];
-
-  // 根据可见跨度决定刻度间隔
-  if (span <= 2 * hourMs) {
-    // 缩放到 2 小时以内 → 每 10 分钟一个刻度
-    const interval = 10 * minMs;
-    let t = Math.floor(viewStart / interval) * interval;
-    while (t <= viewEnd) {
-      if (t >= viewStart) scale.push(t);
-      t += interval;
-    }
-  } else if (span <= 6 * hourMs) {
-    // 2-6 小时 → 每 30 分钟
-    const interval = 30 * minMs;
-    let t = Math.floor(viewStart / interval) * interval;
-    while (t <= viewEnd) {
-      if (t >= viewStart) scale.push(t);
-      t += interval;
-    }
-  } else if (span <= 12 * hourMs) {
-    // 6-12 小时 → 每小时
-    const interval = hourMs;
-    let t = Math.floor(viewStart / interval) * interval;
-    while (t <= viewEnd) {
-      if (t >= viewStart) scale.push(t);
-      t += interval;
-    }
-  } else {
-    // 12 小时以上 → 每 3 小时
-    const interval = 3 * hourMs;
-    let t = Math.floor(viewStart / interval) * interval;
-    while (t <= viewEnd) {
-      if (t >= viewStart) scale.push(t);
+  const showMinutes = virtSpan <= 6 * hourMs;
+  const raw: Tick[] = [];
+  for (const s of segments) {
+    if (s.type !== "data") continue;
+    if (s.virt_end < viewStart || s.virt_start > viewEnd) continue;
+    let t = Math.ceil(s.time_start / interval) * interval;
+    while (t <= s.time_end) {
+      const v = s.virt_start + (t - s.time_start);
+      if (v >= viewStart && v <= viewEnd) {
+        const d = new Date(t);
+        const h = String(d.getHours()).padStart(2, "0");
+        const m = String(d.getMinutes()).padStart(2, "0");
+        raw.push({
+          time_ms: t,
+          virt: v,
+          label: showMinutes ? `${h}:${m}` : `${h}:00`,
+        });
+      }
       t += interval;
     }
   }
-
-  return scale;
-}
-
-function formatTimeLabel(ms: number, span: number): string {
-  const d = new Date(ms);
-  const h = d.getHours();
-  const m = d.getMinutes();
-
-  // 可见跨度小于 6 小时时显示分钟
-  if (span <= 6 * 60 * 60 * 1000) {
-    return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+  // 相邻刻度最小间距 3% 视口宽度，避免跨压缩段时标签堆叠
+  const minVirtGap = virtSpan * 0.03;
+  const pruned: Tick[] = [];
+  for (const tk of raw) {
+    if (
+      pruned.length === 0 ||
+      tk.virt - pruned[pruned.length - 1].virt >= minVirtGap
+    ) {
+      pruned.push(tk);
+    }
   }
-  return `${String(h).padStart(2, "0")}:00`;
+  return pruned;
 }
+
+// ---- 时间格式化 -------------------------------------------------------------
 
 function formatTime(ms: number): string {
   const d = new Date(ms);
@@ -193,8 +367,6 @@ function formatDuration(ms: number): string {
   const m = totalMin % 60;
   return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
 }
-
-// ---- 渲染 -------------------------------------------------------------------
 
 // ---- 日期工具 ---------------------------------------------------------------
 
@@ -220,31 +392,23 @@ function formatDateLabel(d: Date, isToday: boolean): string {
   return `${year}-${month}-${date} ${dow}`;
 }
 
-/** 数据查询范围：今天到当前时刻，历史到 24 小时 */
 function dataRange(d: Date, isToday: boolean): { start_ms: number; end_ms: number } {
   const start = startOfDay(d);
   let end: Date;
   if (isToday) {
-    end = new Date(); // 今天：到当前时刻
+    end = new Date();
   } else {
     end = new Date(start);
-    end.setDate(end.getDate() + 1); // 历史：完整 24 小时
+    end.setDate(end.getDate() + 1);
   }
-  return {
-    start_ms: start.getTime(),
-    end_ms: end.getTime(),
-  };
+  return { start_ms: start.getTime(), end_ms: end.getTime() };
 }
 
-/** 显示范围：始终完整 24 小时（用于横轴和色块位置计算） */
 function displayRange(d: Date): { start_ms: number; end_ms: number } {
   const start = startOfDay(d);
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
-  return {
-    start_ms: start.getTime(),
-    end_ms: end.getTime(),
-  };
+  return { start_ms: start.getTime(), end_ms: end.getTime() };
 }
 
 // ---- 主组件 -----------------------------------------------------------------
@@ -260,10 +424,12 @@ export default function Timeline() {
     y: number;
   } | null>(null);
 
-  // 视口状态：当前可见的时间窗口
+  /** 压缩开关：默认开启 */
+  const [compressed, setCompressed] = useState(true);
+
+  /** 视口在虚拟坐标空间中的范围；null 表示"全视图" */
   const [viewport, setViewport] = useState<{ start: number; end: number } | null>(null);
 
-  // 拖拽状态
   const [isDragging, setIsDragging] = useState(false);
   const dragStartRef = useRef<{
     x: number;
@@ -272,11 +438,10 @@ export default function Timeline() {
     viewEnd: number;
     scrollTop: number;
   } | null>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<HTMLDivElement>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // 渐隐遮罩状态：追踪是否还有内容在可视区域外
   const [fadeMasks, setFadeMasks] = useState({
     top: false,
     bottom: false,
@@ -294,28 +459,70 @@ export default function Timeline() {
     [selectedDate, isToday]
   );
 
-  const fetchRange = useMemo(() => dataRange(selectedDate, isToday), [selectedDate, isToday]);
+  const fetchRange = useMemo(
+    () => dataRange(selectedDate, isToday),
+    [selectedDate, isToday]
+  );
   const fullDayRange = useMemo(() => displayRange(selectedDate), [selectedDate]);
 
-  // 当前视口（缩放/平移后的可见范围），默认全天
+  // 全局空白（基于所有 App 合并区间）
+  const globalGaps = useMemo(
+    () =>
+      computeGlobalGaps(
+        lanes,
+        fullDayRange.start_ms,
+        fullDayRange.end_ms,
+        COMPRESS_THRESHOLD_MS
+      ),
+    [lanes, fullDayRange.start_ms, fullDayRange.end_ms]
+  );
+
+  // 分段映射（时间 <-> 虚拟坐标）
+  const segmentsData = useMemo(
+    () =>
+      buildSegments(
+        fullDayRange.start_ms,
+        fullDayRange.end_ms,
+        globalGaps,
+        compressed
+      ),
+    [fullDayRange.start_ms, fullDayRange.end_ms, globalGaps, compressed]
+  );
+
+  // 视口安全带：数据变化导致 totalVirt 变化时，越界就复位
+  useEffect(() => {
+    if (!viewport) return;
+    if (
+      viewport.end > segmentsData.totalVirt ||
+      viewport.start < 0 ||
+      viewport.end - viewport.start <= 0
+    ) {
+      setViewport(null);
+    }
+    // 仅关心 totalVirt；viewport 变化不该触发这里
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentsData.totalVirt]);
+
   const viewRange = useMemo(() => {
-    if (!viewport) return fullDayRange;
-    return { start_ms: viewport.start, end_ms: viewport.end };
-  }, [viewport, fullDayRange]);
+    if (!viewport) return { start: 0, end: segmentsData.totalVirt };
+    return { start: viewport.start, end: viewport.end };
+  }, [viewport, segmentsData.totalVirt]);
 
-  const timeScale = useMemo(() => {
-    return buildTimeScale(viewRange.start_ms, viewRange.end_ms);
-  }, [viewRange]);
+  const viewSpan = viewRange.end - viewRange.start;
 
-  // 重置视图到全天
+  const ticks = useMemo(
+    () => buildTicks(segmentsData.segments, viewRange.start, viewRange.end),
+    [segmentsData, viewRange.start, viewRange.end]
+  );
+
   const resetView = useCallback(() => {
     setViewport(null);
   }, []);
 
   // 切换日期时重置视图
   useEffect(() => {
-    resetView();
-  }, [selectedDate, resetView]);
+    setViewport(null);
+  }, [selectedDate]);
 
   function goPrevDay() {
     setSelectedDate((d) => {
@@ -339,15 +546,46 @@ export default function Timeline() {
     setSelectedDate(new Date());
   }
 
+  // 切换压缩：保留当前视口的真实时间范围
+  const toggleCompressed = useCallback(() => {
+    const newCompressed = !compressed;
+    const wasFullView = viewport === null;
+    const oldSegs = segmentsData;
+    const curStart = viewport?.start ?? 0;
+    const curEnd = viewport?.end ?? oldSegs.totalVirt;
+    const t1 = virtToTime(curStart, oldSegs.segments);
+    const t2 = virtToTime(curEnd, oldSegs.segments);
+
+    const newSegs = buildSegments(
+      fullDayRange.start_ms,
+      fullDayRange.end_ms,
+      globalGaps,
+      newCompressed
+    );
+
+    setCompressed(newCompressed);
+    if (wasFullView) {
+      setViewport(null);
+    } else {
+      const v1 = timeToVirt(t1, newSegs.segments);
+      const v2 = timeToVirt(t2, newSegs.segments);
+      const clampedStart = Math.max(0, Math.min(newSegs.totalVirt, v1));
+      const clampedEnd = Math.max(0, Math.min(newSegs.totalVirt, v2));
+      if (clampedEnd - clampedStart < 30 * 60 * 1000) {
+        setViewport(null);
+      } else {
+        setViewport({ start: clampedStart, end: clampedEnd });
+      }
+    }
+  }, [compressed, viewport, segmentsData, fullDayRange, globalGaps]);
+
+  // 加载数据
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       try {
-        console.log("Fetching buckets for range:", fetchRange);
         const buckets = await fetchBucketsInRange(fetchRange);
-        console.log("Fetched buckets:", buckets.length);
         const appLanes = buildAppLanes(buckets);
-        console.log("Built lanes:", appLanes.length);
         setLanes(appLanes);
       } catch (e) {
         console.error("Timeline refresh failed:", e);
@@ -355,19 +593,14 @@ export default function Timeline() {
         setLoading(false);
       }
     }
-
     fetchData();
-
-    // 查看今天时每 60 秒自动刷新，查看历史时不刷新
     if (isToday) {
       const timer = setInterval(fetchData, 60_000);
       return () => clearInterval(timer);
     }
   }, [fetchRange.start_ms, fetchRange.end_ms, isToday]);
 
-  const daySpan = viewRange.end_ms - viewRange.start_ms;
-
-  // 滚轮缩放（使用 useEffect + addEventListener 确保 preventDefault 生效）
+  // 滚轮缩放（虚拟坐标空间）
   useEffect(() => {
     const chartEl = chartRef.current;
     if (!chartEl) return;
@@ -377,56 +610,44 @@ export default function Timeline() {
       e.stopPropagation();
 
       const rect = trackRef.current?.getBoundingClientRect();
-      if (!rect) return;
+      if (!rect || rect.width <= 0) return;
 
-      // 鼠标在轨道内的相对位置（0-1）
-      const relX = (e.clientX - rect.left) / rect.width;
-
-      // 当前视口
-      const curStart = viewport?.start ?? fullDayRange.start_ms;
-      const curEnd = viewport?.end ?? fullDayRange.end_ms;
+      const relX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const total = segmentsData.totalVirt;
+      const curStart = viewport?.start ?? 0;
+      const curEnd = viewport?.end ?? total;
       const curSpan = curEnd - curStart;
+      const mouseVirt = curStart + curSpan * relX;
 
-      // 鼠标指向的时间点
-      const mouseTime = curStart + curSpan * relX;
-
-      // 缩放因子
       const zoomDelta = e.deltaY > 0 ? 1.2 : 0.8;
       let newSpan = curSpan * zoomDelta;
-
-      // 限制缩放范围：最小 30 分钟，最大全天
       const minSpan = 30 * 60 * 1000;
-      const maxSpan = fullDayRange.end_ms - fullDayRange.start_ms;
-      newSpan = Math.max(minSpan, Math.min(maxSpan, newSpan));
+      newSpan = Math.max(minSpan, Math.min(total, newSpan));
 
-      // 以鼠标位置为锚点计算新视口
-      let newStart = mouseTime - newSpan * relX;
+      let newStart = mouseVirt - newSpan * relX;
       let newEnd = newStart + newSpan;
-
-      // 限制在当天范围内
-      if (newStart < fullDayRange.start_ms) {
-        newStart = fullDayRange.start_ms;
-        newEnd = newStart + newSpan;
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = newSpan;
       }
-      if (newEnd > fullDayRange.end_ms) {
-        newEnd = fullDayRange.end_ms;
+      if (newEnd > total) {
+        newEnd = total;
         newStart = newEnd - newSpan;
       }
-
       setViewport({ start: newStart, end: newEnd });
     };
 
-    // passive: false 确保 preventDefault 生效
     chartEl.addEventListener("wheel", handleWheel, { passive: false });
     return () => chartEl.removeEventListener("wheel", handleWheel);
-  }, [viewport, fullDayRange]);
+  }, [viewport, segmentsData.totalVirt]);
 
-  // 拖拽开始
+  // 拖拽平移（也在虚拟坐标空间）
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (e.button !== 0) return; // 只响应左键
-      const curStart = viewport?.start ?? fullDayRange.start_ms;
-      const curEnd = viewport?.end ?? fullDayRange.end_ms;
+      if (e.button !== 0) return;
+      const total = segmentsData.totalVirt;
+      const curStart = viewport?.start ?? 0;
+      const curEnd = viewport?.end ?? total;
       const curScrollTop = bodyRef.current?.scrollTop ?? 0;
       dragStartRef.current = {
         x: e.clientX,
@@ -437,34 +658,40 @@ export default function Timeline() {
       };
       setIsDragging(true);
     },
-    [viewport, fullDayRange]
+    [viewport, segmentsData.totalVirt]
   );
 
-  // 拖拽中
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
-      if (!isDragging || !dragStartRef.current || !trackRef.current || !bodyRef.current) return;
+      if (
+        !isDragging ||
+        !dragStartRef.current ||
+        !trackRef.current ||
+        !bodyRef.current
+      )
+        return;
 
       const rect = trackRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return;
 
-      // 横向：平移时间视窗
+      // 横向：平移虚拟坐标
       const deltaX = e.clientX - dragStartRef.current.x;
-      const deltaTime = -(deltaX / rect.width) * (dragStartRef.current.viewEnd - dragStartRef.current.viewStart);
+      const spanAtStart =
+        dragStartRef.current.viewEnd - dragStartRef.current.viewStart;
+      const deltaVirt = -(deltaX / rect.width) * spanAtStart;
 
-      let newStart = dragStartRef.current.viewStart + deltaTime;
-      let newEnd = dragStartRef.current.viewEnd + deltaTime;
+      let newStart = dragStartRef.current.viewStart + deltaVirt;
+      let newEnd = dragStartRef.current.viewEnd + deltaVirt;
       const span = newEnd - newStart;
-
-      // 限制在当天范围内
-      if (newStart < fullDayRange.start_ms) {
-        newStart = fullDayRange.start_ms;
-        newEnd = newStart + span;
+      const total = segmentsData.totalVirt;
+      if (newStart < 0) {
+        newStart = 0;
+        newEnd = span;
       }
-      if (newEnd > fullDayRange.end_ms) {
-        newEnd = fullDayRange.end_ms;
+      if (newEnd > total) {
+        newEnd = total;
         newStart = newEnd - span;
       }
-
       setViewport({ start: newStart, end: newEnd });
 
       // 纵向：滚动泳道列表
@@ -472,19 +699,20 @@ export default function Timeline() {
       const newScrollTop = dragStartRef.current.scrollTop - deltaY;
       bodyRef.current.scrollTop = Math.max(
         0,
-        Math.min(newScrollTop, bodyRef.current.scrollHeight - bodyRef.current.clientHeight)
+        Math.min(
+          newScrollTop,
+          bodyRef.current.scrollHeight - bodyRef.current.clientHeight
+        )
       );
     },
-    [isDragging, fullDayRange]
+    [isDragging, segmentsData.totalVirt]
   );
 
-  // 拖拽结束
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
     dragStartRef.current = null;
   }, []);
 
-  // 全局监听鼠标释放
   useEffect(() => {
     if (isDragging) {
       const handleGlobalMouseUp = () => setIsDragging(false);
@@ -493,67 +721,81 @@ export default function Timeline() {
     }
   }, [isDragging]);
 
-  // 更新渐隐遮罩状态
+  // 渐隐遮罩：都在虚拟坐标空间判断
   const updateFadeMasks = useCallback(() => {
     const body = bodyRef.current;
     if (!body) return;
-
     const scrollTop = body.scrollTop;
     const scrollHeight = body.scrollHeight;
     const clientHeight = body.clientHeight;
     const scrollBottom = scrollHeight - scrollTop - clientHeight;
-
-    // 纵向：上下是否还有内容
-    const hasTop = scrollTop > 10; // 超过 10px 显示顶部遮罩
+    const hasTop = scrollTop > 10;
     const hasBottom = scrollBottom > 10;
-
-    // 横向：左右是否缩放到看不全当天
-    const curStart = viewport?.start ?? fullDayRange.start_ms;
-    const curEnd = viewport?.end ?? fullDayRange.end_ms;
-    const hasLeft = curStart > fullDayRange.start_ms;
-    const hasRight = curEnd < fullDayRange.end_ms;
-
+    const total = segmentsData.totalVirt;
+    const curStart = viewport?.start ?? 0;
+    const curEnd = viewport?.end ?? total;
+    const hasLeft = curStart > 0;
+    const hasRight = curEnd < total;
     setFadeMasks({
       top: hasTop,
       bottom: hasBottom,
       left: hasLeft,
       right: hasRight,
     });
-  }, [viewport, fullDayRange]);
+  }, [viewport, segmentsData.totalVirt]);
 
-  // 监听滚动变化
   useEffect(() => {
     const body = bodyRef.current;
     if (!body) return;
-
     updateFadeMasks();
-
     const handleScroll = () => updateFadeMasks();
     body.addEventListener("scroll", handleScroll, { passive: true });
     return () => body.removeEventListener("scroll", handleScroll);
   }, [updateFadeMasks]);
 
-  // 监听视口变化
   useEffect(() => {
     updateFadeMasks();
   }, [viewport, lanes, updateFadeMasks]);
 
-  // 计算色块位置与宽度百分比（基于当前视口）
-  function blockStyle(block: TimeBlock): CSSProperties {
-    const left = ((block.start_ms - viewRange.start_ms) / daySpan) * 100;
-    const width = (block.duration_ms / daySpan) * 100;
-    // 最小可见宽度 0.3%
-    const finalWidth = Math.max(width, 0.3);
-    return {
-      left: `${left}%`,
-      width: `${finalWidth}%`,
-    };
+  // ---- 位置换算：统一入口 ---------------------------------------------------
+
+  /** 虚拟坐标 → 视口内百分比（左侧 %） */
+  function virtToPct(v: number): number {
+    if (viewSpan <= 0) return 0;
+    return ((v - viewRange.start) / viewSpan) * 100;
   }
 
-  // 过滤可见色块（性能优化）
-  function isBlockVisible(block: TimeBlock): boolean {
-    return block.end_ms >= viewRange.start_ms && block.start_ms <= viewRange.end_ms;
+  function blockStyle(block: TimeBlock): CSSProperties {
+    const vs = timeToVirt(block.start_ms, segmentsData.segments);
+    const ve = timeToVirt(block.end_ms, segmentsData.segments);
+    const left = virtToPct(vs);
+    const width = Math.max(virtToPct(ve) - left, 0.3);
+    return { left: `${left}%`, width: `${width}%` };
   }
+
+  function isBlockVisible(block: TimeBlock): boolean {
+    // 直接用真实时间判断可见性（避免非必要 timeToVirt 调用）
+    const vs = timeToVirt(block.start_ms, segmentsData.segments);
+    const ve = timeToVirt(block.end_ms, segmentsData.segments);
+    return ve >= viewRange.start && vs <= viewRange.end;
+  }
+
+  const gapBands = useMemo(() => {
+    return segmentsData.virtGaps.map((g) => {
+      const left = virtToPct(g.virt_start);
+      const width = virtToPct(g.virt_end) - left;
+      const durationMs = g.time_end - g.time_start;
+      return {
+        key: `${g.time_start}-${g.time_end}`,
+        left,
+        width,
+        durationMs,
+        time_start: g.time_start,
+        time_end: g.time_end,
+      };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentsData, viewRange.start, viewRange.end]);
 
   return (
     <div className="swimlane-page">
@@ -593,6 +835,14 @@ export default function Timeline() {
             <span>重置视图</span>
           </button>
         )}
+        <button
+          className="swimlane-compress-toggle"
+          onClick={toggleCompressed}
+          title={compressed ? "切换到完整视图" : "切换到压缩视图"}
+        >
+          {compressed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+          <span>{compressed ? "展开空白" : "压缩空白"}</span>
+        </button>
       </div>
 
       {lanes.length === 0 && !loading && (
@@ -607,89 +857,99 @@ export default function Timeline() {
           ref={chartRef}
           className="swimlane-chart"
           style={{ cursor: isDragging ? "grabbing" : "grab" }}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
         >
           {/* 时间轴刻度 */}
           <div className="swimlane-header">
             <div className="swimlane-axis-label">App</div>
             <div className="swimlane-axis">
-              {timeScale.map((ts) => {
-                const pct = ((ts - viewRange.start_ms) / daySpan) * 100;
-                return (
-                  <div
-                    key={ts}
-                    className="swimlane-tick"
-                    style={{ left: `${pct}%` }}
-                  >
-                    {formatTimeLabel(ts, daySpan)}
-                  </div>
-                );
-              })}
+              {ticks.map((tk) => (
+                <div
+                  key={tk.time_ms}
+                  className="swimlane-tick"
+                  style={{ left: `${virtToPct(tk.virt)}%` }}
+                >
+                  {tk.label}
+                </div>
+              ))}
             </div>
           </div>
 
           {/* 泳道列表容器（带渐隐遮罩） */}
           <div className="swimlane-body-wrap">
-            {/* 渐隐遮罩 */}
             {fadeMasks.top && <div className="swimlane-fade-mask swimlane-fade-top" />}
             {fadeMasks.bottom && <div className="swimlane-fade-mask swimlane-fade-bottom" />}
             {fadeMasks.left && <div className="swimlane-fade-mask swimlane-fade-left" />}
             {fadeMasks.right && <div className="swimlane-fade-mask swimlane-fade-right" />}
 
-            {/* 泳道列表 */}
-            <div
-              ref={bodyRef}
-              className="swimlane-body"
-              onMouseDown={handleMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-            >
-            {lanes.map((lane) => (
-              <div key={lane.app_bundle_id} className="swimlane-row">
-                <div className="swimlane-label">
-                  <AppIcon
-                    bundleId={lane.app_bundle_id}
-                    appName={lane.app_name}
-                    size={16}
-                  />
-                  <span className="swimlane-app-name" title={lane.app_name}>{lane.app_name}</span>
-                </div>
-                <div ref={trackRef} className="swimlane-track">
-                  {/* 背景网格线 */}
-                  {timeScale.map((ts) => {
-                    const pct = ((ts - viewRange.start_ms) / daySpan) * 100;
-                    return (
-                      <div
-                        key={ts}
-                        className="swimlane-grid-line"
-                        style={{ left: `${pct}%` }}
-                      />
-                    );
-                  })}
-                  {/* 色块（只渲染可见的） */}
-                  {lane.blocks.filter(isBlockVisible).map((block, i) => (
-                    <div
-                      key={i}
-                      className="swimlane-block"
-                      style={{
-                        ...blockStyle(block),
-                        background: lane.color,
-                      }}
-                      onMouseEnter={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        setHoveredBlock({
-                          app: lane.app_name,
-                          block,
-                          x: rect.left + rect.width / 2,
-                          y: rect.top,
-                        });
-                      }}
-                      onMouseLeave={() => setHoveredBlock(null)}
-                    />
-                  ))}
-                </div>
+            {/* 空白压缩：灰色空闲板 —— 单层覆盖，不随泳道滚动 */}
+            {gapBands.length > 0 && (
+              <div className="swimlane-gap-overlay">
+                {gapBands.map((g) => (
+                  <div
+                    key={g.key}
+                    className="swimlane-gap-band"
+                    style={{ left: `${g.left}%`, width: `${g.width}%` }}
+                    title={`空闲 ${formatDuration(g.durationMs)} · ${formatTime(g.time_start)} – ${formatTime(g.time_end)}`}
+                  >
+                    <span className="swimlane-gap-label">
+                      空闲 {formatDuration(g.durationMs)}
+                    </span>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+
+            {/* 泳道列表 */}
+            <div ref={bodyRef} className="swimlane-body">
+              {lanes.map((lane) => (
+                <div key={lane.app_bundle_id} className="swimlane-row">
+                  <div className="swimlane-label">
+                    <AppIcon
+                      bundleId={lane.app_bundle_id}
+                      appName={lane.app_name}
+                      size={16}
+                    />
+                    <span className="swimlane-app-name" title={lane.app_name}>
+                      {lane.app_name}
+                    </span>
+                  </div>
+                  <div ref={trackRef} className="swimlane-track">
+                    {/* 背景网格线 */}
+                    {ticks.map((tk) => (
+                      <div
+                        key={tk.time_ms}
+                        className="swimlane-grid-line"
+                        style={{ left: `${virtToPct(tk.virt)}%` }}
+                      />
+                    ))}
+                    {/* 色块（只渲染可见的） */}
+                    {lane.blocks.filter(isBlockVisible).map((block, i) => (
+                      <div
+                        key={i}
+                        className="swimlane-block"
+                        style={{
+                          ...blockStyle(block),
+                          background: lane.color,
+                        }}
+                        onMouseEnter={(e) => {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          setHoveredBlock({
+                            app: lane.app_name,
+                            block,
+                            x: rect.left + rect.width / 2,
+                            y: rect.top,
+                          });
+                        }}
+                        onMouseLeave={() => setHoveredBlock(null)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -698,10 +958,7 @@ export default function Timeline() {
       {hoveredBlock && (
         <div
           className="swimlane-tooltip"
-          style={{
-            left: hoveredBlock.x,
-            top: hoveredBlock.y - 8,
-          }}
+          style={{ left: hoveredBlock.x, top: hoveredBlock.y - 8 }}
         >
           <div className="swimlane-tooltip-app">{hoveredBlock.app}</div>
           <div className="swimlane-tooltip-time">
@@ -719,4 +976,3 @@ export default function Timeline() {
     </div>
   );
 }
-
