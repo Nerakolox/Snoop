@@ -2,10 +2,9 @@
  * 洞察 —— 跨天使用回顾
  * 以周为粒度：猫周报吐槽 + 本周活跃趋势柱状图 +
  * App 排行（带环比）+ 一周 x 24 小时作息热力网格。
- * 全 mock 数据。
  */
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import {
   ArrowDownRight,
@@ -13,6 +12,21 @@ import {
   Minus,
   Sparkles,
 } from "lucide-react";
+import {
+  fetchBucketsInRange,
+  fetchHourlyActivity,
+  thisWeekRange,
+  DAY_MS,
+  type RawBucket,
+} from "../data";
+import {
+  aggregateByDay,
+  aggregateByApp,
+  aggregateWeekHourGrid,
+  type DayStat,
+  type AppStat,
+} from "../analytics";
+import AppIcon from "../components/AppIcon";
 
 type Intensity = 0 | 1 | 2 | 3 | 4;
 
@@ -20,64 +34,18 @@ type WeekDay = {
   short: string; // 一二三四五六日
   long: string; // 周一…周日
   hours: number; // 当天活跃小时
+  isToday: boolean; // 是否是今天
+  isFuture: boolean; // 是否未到
 };
 
 type WeekApp = {
   name: string;
+  bundleId: string;
   hours: number;
   intensity: Intensity;
-  /** 环比上周：> 0 上升，< 0 下降，null 视作持平 */
+  /** 环比上周：> 0 上升，< 0 下降，null 视作持平/新 App */
   deltaPct: number | null;
 };
-
-// ---- mock 数据 --------------------------------------------------------------
-
-const WEEK_TOTAL_HOURS = 38;
-const WEEK_DAILY_AVG = 5.4;
-
-const WEEK: WeekDay[] = [
-  { short: "一", long: "周一", hours: 5.2 },
-  { short: "二", long: "周二", hours: 6.1 },
-  { short: "三", long: "周三", hours: 8.3 },
-  { short: "四", long: "周四", hours: 4.0 },
-  { short: "五", long: "周五", hours: 6.5 },
-  { short: "六", long: "周六", hours: 2.0 },
-  { short: "日", long: "周日", hours: 3.0 },
-];
-
-const WEEK_APPS: WeekApp[] = [
-  { name: "Chrome", hours: 14, intensity: 1, deltaPct: 20 },
-  { name: "VSCode", hours: 9, intensity: 4, deltaPct: -8 },
-  { name: "终端", hours: 6, intensity: 4, deltaPct: 5 },
-  { name: "QQ", hours: 3, intensity: 2, deltaPct: -15 },
-  { name: "微信", hours: 2, intensity: 2, deltaPct: null },
-  { name: "Figma", hours: 1.5, intensity: 3, deltaPct: 30 },
-];
-
-const CAT_REPORT =
-  "这周你一共活跃了 38 小时，其中 Chrome 占了 14 小时——比上周还多，我们真的需要谈谈。不过周三那天你在 VSCode 爆肝了 6 小时，算你厉害。";
-
-/**
- * 一周 × 24 小时作息强度矩阵。7 行 × 24 列。
- * 工作日集中在 9–12、14–18、20–23；周末更晚起更晚睡；凌晨基本静默。
- * 值域 0..4，直接映射到 --intensity-*。
- */
-const HOURLY_GRID: Intensity[][] = [
-  // 周一
-  [0, 0, 0, 0, 0, 0, 0, 1, 2, 4, 4, 3, 1, 2, 3, 4, 4, 3, 1, 2, 3, 3, 2, 0],
-  // 周二
-  [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 4, 2, 2, 4, 4, 3, 3, 1, 2, 3, 3, 2, 1],
-  // 周三
-  [0, 0, 0, 0, 0, 0, 0, 1, 3, 4, 4, 4, 2, 3, 4, 4, 4, 4, 2, 3, 4, 4, 3, 1],
-  // 周四
-  [0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 3, 3, 1, 1, 2, 3, 2, 2, 0, 1, 2, 2, 1, 0],
-  // 周五
-  [0, 0, 0, 0, 0, 0, 0, 1, 2, 3, 4, 3, 2, 2, 3, 4, 3, 3, 2, 3, 4, 3, 2, 1],
-  // 周六
-  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2, 2, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 2],
-  // 周日
-  [1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 1, 2, 2, 2, 1, 1, 2, 2, 2, 3, 3, 3, 2, 1],
-];
 
 const DAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
@@ -92,12 +60,207 @@ function fmtHours(h: number) {
   return Number.isInteger(h) ? `${h}` : h.toFixed(1);
 }
 
+/** 根据本周真实数据生成猫周报文案 */
+function generateCatReport(
+  weekTotalHours: number,
+  topApp: { name: string; hours: number } | null,
+  busiestDay: { name: string; hours: number; app: string } | null,
+  weekChange: number | null
+): string {
+  const parts: string[] = [];
+
+  // 开头：本周总览
+  parts.push(`这周你一共活跃了 ${fmtHours(weekTotalHours)} 小时`);
+
+  // Top App
+  if (topApp && topApp.hours > 0) {
+    parts.push(`，其中 ${topApp.name} 占了 ${fmtHours(topApp.hours)} 小时`);
+    // 环比变化
+    if (weekChange !== null) {
+      if (weekChange > 15) {
+        parts.push(`——比上周还多，我们真的需要谈谈`);
+      } else if (weekChange < -15) {
+        parts.push(`，比上周少多了喵～`);
+      }
+    }
+  }
+
+  parts.push(`。`);
+
+  // 最爆肝的一天
+  if (busiestDay && busiestDay.hours >= 6) {
+    parts.push(
+      `不过${busiestDay.name}那天你在 ${busiestDay.app} 上爆肝了 ${fmtHours(busiestDay.hours)} 小时，算你厉害。`
+    );
+  } else if (weekTotalHours < 10) {
+    parts.push(`这周摸鱼有点狠喵～`);
+  }
+
+  return parts.join("");
+}
+
+/** 计算环比变化百分比 */
+function calculateDelta(thisWeek: number, lastWeek: number): number | null {
+  if (lastWeek === 0) return null; // 上周没用过，返回 null 表示"新"
+  const pct = Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
+  // 变化极小（±5% 以内）视为持平
+  if (Math.abs(pct) <= 5) return 0;
+  return pct;
+}
+
+/** 构建周一到周日的完整 7 天数组，包含未来的空槽 */
+function buildWeekDays(dayStats: DayStat[], weekStartMs: number): WeekDay[] {
+  const now = new Date();
+  const todayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+  const result: WeekDay[] = [];
+  for (let i = 0; i < 7; i++) {
+    const dayMs = weekStartMs + i * DAY_MS;
+    const stat = dayStats.find((d) => d.day_ms === dayMs);
+    const hours = stat ? stat.active_ms / (60 * 60 * 1000) : 0;
+    const isToday = dayMs === todayMs;
+    const isFuture = dayMs > todayMs;
+
+    result.push({
+      short: DAY_LABELS[i],
+      long: `周${DAY_LABELS[i]}`,
+      hours,
+      isToday,
+      isFuture,
+    });
+  }
+  return result;
+}
+
 // ---- 渲染 -------------------------------------------------------------------
 
 export default function Insights() {
+  const [loading, setLoading] = useState(false);
+  const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
+  const [weekApps, setWeekApps] = useState<WeekApp[]>([]);
+  const [hourlyGrid, setHourlyGrid] = useState<Intensity[][]>(
+    Array.from({ length: 7 }, () => Array(24).fill(0))
+  );
+  const [catReport, setCatReport] = useState("");
+  const [weekTotalHours, setWeekTotalHours] = useState(0);
+  const [weekDailyAvg, setWeekDailyAvg] = useState(0);
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      const range = thisWeekRange();
+      const lastWeekRange = {
+        start_ms: range.start_ms - 7 * DAY_MS,
+        end_ms: range.start_ms,
+      };
+
+      // 并行获取本周和上周数据
+      const [thisWeekBuckets, lastWeekBuckets, thisWeekHourly] = await Promise.all([
+        fetchBucketsInRange(range),
+        fetchBucketsInRange(lastWeekRange),
+        fetchHourlyActivity(range),
+      ]);
+
+      // ① 按天聚合
+      const dayStats = aggregateByDay(thisWeekBuckets);
+      const days = buildWeekDays(dayStats, range.start_ms);
+      setWeekDays(days);
+
+      // ② 本周总活跃时长
+      const totalMs = dayStats.reduce((sum, d) => sum + d.active_ms, 0);
+      const totalHours = totalMs / (60 * 60 * 1000);
+      setWeekTotalHours(totalHours);
+
+      // 日均（只算已过的天数）
+      const passedDays = days.filter((d) => !d.isFuture).length;
+      const dailyAvg = passedDays > 0 ? totalHours / passedDays : 0;
+      setWeekDailyAvg(dailyAvg);
+
+      // ③ 本周 App 排行 + 环比
+      const thisWeekAppStats = aggregateByApp(thisWeekBuckets);
+      const lastWeekAppStats = aggregateByApp(lastWeekBuckets);
+
+      const apps: WeekApp[] = thisWeekAppStats.slice(0, 6).map((a) => {
+        const hours = a.duration_ms / (60 * 60 * 1000);
+        const lastWeekApp = lastWeekAppStats.find(
+          (la) => la.app_bundle_id === a.app_bundle_id
+        );
+        const lastWeekHours = lastWeekApp
+          ? lastWeekApp.duration_ms / (60 * 60 * 1000)
+          : 0;
+        const deltaPct = calculateDelta(hours, lastWeekHours);
+
+        return {
+          name: a.app_name || a.app_bundle_id,
+          bundleId: a.app_bundle_id,
+          hours,
+          intensity: a.intensity,
+          deltaPct,
+        };
+      });
+      setWeekApps(apps);
+
+      // ④ 作息热力网格
+      const grid = aggregateWeekHourGrid(thisWeekHourly);
+      setHourlyGrid(grid);
+
+      // ⑤ 生成猫周报
+      const topApp = apps[0] || null;
+
+      // 找最爆肝的一天（该天主要 App 的时长，而非全天总时长）
+      let busiestDay: { name: string; hours: number; app: string } | null = null;
+      if (dayStats.length > 0) {
+        const maxDayStat = dayStats.reduce((max, d) =>
+          d.active_ms > max.active_ms ? d : max
+        );
+
+        // 找出该天的主要 App 及其时长
+        const maxDayStart = maxDayStat.day_ms;
+        const maxDayEnd = maxDayStart + DAY_MS;
+        const maxDayBuckets = thisWeekBuckets.filter(
+          (b) => b.bucket_start >= maxDayStart && b.bucket_start < maxDayEnd
+        );
+        const maxDayApps = aggregateByApp(maxDayBuckets);
+        if (maxDayApps.length > 0) {
+          const topAppOnDay = maxDayApps[0];
+          const dayIndex = maxDayStat.day_of_week;
+          busiestDay = {
+            name: `周${DAY_LABELS[dayIndex]}`,
+            hours: topAppOnDay.duration_ms / (60 * 60 * 1000), // 该 App 在该天的时长
+            app: topAppOnDay.app_name || topAppOnDay.app_bundle_id,
+          };
+        }
+      }
+
+      // 计算 top App 的环比（匹配 bundle_id 而非排名位置）
+      const weekChange = topApp && topApp.hours > 0
+        ? (() => {
+            const lastWeekSameApp = lastWeekAppStats.find(
+              (la) => la.app_bundle_id === thisWeekAppStats[0]?.app_bundle_id
+            );
+            const lastWeekHours = lastWeekSameApp
+              ? lastWeekSameApp.duration_ms / (60 * 60 * 1000)
+              : 0;
+            return calculateDelta(topApp.hours, lastWeekHours);
+          })()
+        : null;
+
+      const report = generateCatReport(totalHours, topApp, busiestDay, weekChange);
+      setCatReport(report);
+    } catch (e) {
+      console.error("Insights refresh failed:", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
   const maxDay = useMemo(
-    () => Math.max(...WEEK.map((d) => d.hours), 1),
-    []
+    () => Math.max(...weekDays.map((d) => d.hours), 1),
+    [weekDays]
   );
 
   return (
@@ -109,14 +272,16 @@ export default function Insights() {
         </div>
         <div className="ins-report-body">
           <div className="ins-report-title">猫的周报</div>
-          <p className="ins-report-text">{CAT_REPORT}</p>
+          <p className="ins-report-text">
+            {catReport || "还没有足够的数据生成周报喵～"}
+          </p>
           <div className="ins-report-chips">
             <span className="ins-chip">
-              <span className="ins-chip-num">{WEEK_TOTAL_HOURS}</span>
+              <span className="ins-chip-num">{fmtHours(weekTotalHours)}</span>
               <span className="ins-chip-unit">小时 · 本周活跃</span>
             </span>
             <span className="ins-chip">
-              <span className="ins-chip-num">{WEEK_DAILY_AVG}</span>
+              <span className="ins-chip-num">{fmtHours(weekDailyAvg)}</span>
               <span className="ins-chip-unit">小时 · 日均</span>
             </span>
           </div>
@@ -129,24 +294,29 @@ export default function Insights() {
         <section className="panel ins-trend-panel">
           <h3 className="panel-title">本周活跃趋势</h3>
           <div className="ins-trend">
-            {WEEK.map((d) => {
-              const pct = (d.hours / maxDay) * 100;
+            {weekDays.map((d) => {
+              const pct = d.hours > 0 ? (d.hours / maxDay) * 100 : 0;
               // 柱子强度：按天时长在本周内相对占比映射
               const level: Intensity =
-                pct >= 85 ? 4 : pct >= 65 ? 3 : pct >= 40 ? 2 : 1;
+                pct >= 85 ? 4 : pct >= 65 ? 3 : pct >= 40 ? 2 : pct > 0 ? 1 : 0;
               const barStyle: CSSProperties = {
-                height: `${pct}%`,
-                background: intensityVar(level),
+                height: d.isFuture ? "0%" : `${pct}%`,
+                background: d.isToday
+                  ? "var(--color-accent)"
+                  : intensityVar(level),
               };
               return (
                 <div key={d.short} className="ins-trend-col">
                   <div className="ins-trend-bar-wrap">
-                    <div className="ins-trend-bar" style={barStyle}>
-                      <span className="ins-trend-tip">
-                        {fmtHours(d.hours)} 小时
-                      </span>
-                    </div>
+                    {!d.isFuture && d.hours > 0 && (
+                      <div className="ins-trend-bar" style={barStyle} />
+                    )}
                   </div>
+                  {d.hours > 0 && !d.isFuture && (
+                    <div className="ins-trend-value">
+                      {fmtHours(d.hours)}h
+                    </div>
+                  )}
                   <div className="ins-trend-label">{d.short}</div>
                 </div>
               );
@@ -158,11 +328,19 @@ export default function Insights() {
         <section className="panel ins-apps-panel">
           <h3 className="panel-title">本周 App 排行</h3>
           <div className="ins-apps">
-            {WEEK_APPS.map((a) => {
-              const pct = (a.hours / WEEK_APPS[0].hours) * 100;
+            {weekApps.length === 0 && (
+              <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>
+                本周还没有足够的数据
+              </div>
+            )}
+            {weekApps.map((a) => {
+              const pct = weekApps[0] ? (a.hours / weekApps[0].hours) * 100 : 0;
               return (
-                <div key={a.name} className="ins-app-row">
-                  <div className="ins-app-name">{a.name}</div>
+                <div key={a.bundleId} className="ins-app-row">
+                  <div className="ins-app-name" title={a.name}>
+                    <AppIcon bundleId={a.bundleId} appName={a.name} size={18} />
+                    <span>{a.name}</span>
+                  </div>
                   <div className="app-row-track">
                     <div
                       className="app-row-fill"
@@ -194,7 +372,7 @@ export default function Insights() {
           </div>
           <div className="ins-rhythm-body">
             <div className="ins-rhythm-grid">
-              {HOURLY_GRID.map((row, ri) =>
+              {hourlyGrid.map((row, ri) =>
                 row.map((level, ci) => (
                   <div
                     key={`${ri}-${ci}`}
@@ -238,7 +416,16 @@ export default function Insights() {
 // ---- 环比徽章 ---------------------------------------------------------------
 
 function DeltaBadge({ delta }: { delta: number | null }) {
-  if (delta === null || delta === 0) {
+  if (delta === null) {
+    // 上周无此 App 数据，显示"新"
+    return (
+      <span className="ins-delta ins-delta--new" title="上周未使用">
+        <span className="ins-delta-num">新</span>
+      </span>
+    );
+  }
+  if (delta === 0) {
+    // 变化极小，视为持平
     return (
       <span className="ins-delta ins-delta--flat" title="与上周持平">
         <Minus size={12} />

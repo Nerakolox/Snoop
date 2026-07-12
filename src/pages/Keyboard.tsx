@@ -1,187 +1,70 @@
 /**
  * 键盘 —— 外设活动画像
- * QWERTY 60% 布局俯视热力图 + 鼠标热力 + Top 按键排行。
- * 切换 App 筛选/时段可查看不同 mock 预设。全 mock 数据。
+ * KLE 格式驱动的键盘热力图 + 鼠标热力 + Top 按键排行。
+ * 切换 App 筛选/时段可查看不同使用场景的真实数据。
  */
 
-import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, Calendar, RefreshCw } from "lucide-react";
+import {
+  fetchBucketsInRange,
+  fetchKeyDetailsInRange,
+  fetchKeyDetailsOfBucket,
+  todayRange,
+  thisWeekRange,
+  dayRangeOf,
+  DAY_MS,
+  type RawBucket,
+  type RawKeyDetail,
+} from "../data";
+import { aggregateByApp, MOUSE_PIXELS_PER_METER } from "../analytics";
+import { parseKLE, getLabelRdevCode, getDisplayLabel, type KLEKey } from "../kleParser";
+import KLEKeyboard from "../components/KLEKeyboard";
+import KLELayoutPicker, {
+  getSavedLayout,
+  saveLayout,
+  loadLayoutJSON,
+} from "../components/KLELayoutPicker";
+import AppIcon from "../components/AppIcon";
 
 type Intensity = 0 | 1 | 2 | 3 | 4;
 
-type KeyVariant = "letter" | "num" | "mod" | "space";
-type KeyDef = {
-  id: string;
-  label: string;
-  /** 键宽：单位是标准字母键宽度，缺省 1；Space 6.25u，Backspace 2u 等 */
-  w?: number;
-  variant?: KeyVariant;
-};
+type AppFilter = "all" | string;
+type TimeFilter = "day" | "week";
 
-type AppFilter = "all" | "cs2" | "vscode" | "chrome" | "terminal";
-type TimeFilter = "today" | "week";
+// ---- 强度分档：分位数分档，避免极值压垮 ---------------------------------------
+// 按相对排名而非绝对比例分档，让常用键之间有明显层次差异
 
-// ---- 键盘布局：ANSI 60% -----------------------------------------------------
+function bucketByPercentile(n: number, allCounts: number[]): Intensity {
+  if (n <= 0) return 0;
+  // 只对有按压的键（>0）计算分位数
+  const nonZero = allCounts.filter((c) => c > 0);
+  if (nonZero.length === 0) return 0;
 
-const letter = (l: string): KeyDef => ({
-  id: l.toLowerCase(),
-  label: l,
-  variant: "letter",
-});
-const num = (l: string): KeyDef => ({ id: l, label: l, variant: "num" });
+  // 排序
+  const sorted = [...nonZero].sort((a, b) => a - b);
 
-const ROWS: KeyDef[][] = [
-  [
-    { id: "grave", label: "`" },
-    num("1"), num("2"), num("3"), num("4"), num("5"),
-    num("6"), num("7"), num("8"), num("9"), num("0"),
-    { id: "minus", label: "-" },
-    { id: "equal", label: "=" },
-    { id: "backspace", label: "Backspace", w: 2, variant: "mod" },
-  ],
-  [
-    { id: "tab", label: "Tab", w: 1.5, variant: "mod" },
-    letter("Q"), letter("W"), letter("E"), letter("R"), letter("T"),
-    letter("Y"), letter("U"), letter("I"), letter("O"), letter("P"),
-    { id: "lbracket", label: "[" },
-    { id: "rbracket", label: "]" },
-    { id: "backslash", label: "\\", w: 1.5 },
-  ],
-  [
-    { id: "caps", label: "Caps", w: 1.75, variant: "mod" },
-    letter("A"), letter("S"), letter("D"), letter("F"), letter("G"),
-    letter("H"), letter("J"), letter("K"), letter("L"),
-    { id: "semicolon", label: ";" },
-    { id: "quote", label: "'" },
-    { id: "enter", label: "Enter", w: 2.25, variant: "mod" },
-  ],
-  [
-    { id: "lshift", label: "Shift", w: 2.25, variant: "mod" },
-    letter("Z"), letter("X"), letter("C"), letter("V"), letter("B"),
-    letter("N"), letter("M"),
-    { id: "comma", label: "," },
-    { id: "period", label: "." },
-    { id: "slash", label: "/" },
-    { id: "rshift", label: "Shift", w: 2.75, variant: "mod" },
-  ],
-  [
-    { id: "lctrl", label: "Ctrl", w: 1.25, variant: "mod" },
-    { id: "lwin", label: "Cmd", w: 1.25, variant: "mod" },
-    { id: "lalt", label: "Alt", w: 1.25, variant: "mod" },
-    { id: "space", label: "Space", w: 6.25, variant: "space" },
-    { id: "ralt", label: "Alt", w: 1.25, variant: "mod" },
-    { id: "fn", label: "Fn", w: 1.25, variant: "mod" },
-    { id: "menu", label: "Menu", w: 1.25, variant: "mod" },
-    { id: "rctrl", label: "Ctrl", w: 1.25, variant: "mod" },
-  ],
-];
+  // 计算分位数阈值（20/40/60/80 百分位）
+  const p20 = sorted[Math.floor(sorted.length * 0.2)];
+  const p40 = sorted[Math.floor(sorted.length * 0.4)];
+  const p60 = sorted[Math.floor(sorted.length * 0.6)];
+  const p80 = sorted[Math.floor(sorted.length * 0.8)];
 
-// ---- 预设：mock 按键次数（今天） --------------------------------------------
-// 每个预设都是一天内的按键次数分布，切筛选就是切一张预设表；
-// 强度分档在渲染时按当前预设的 max 归一化，所以只关心形状不必对齐量级。
-
-const PRESETS_TODAY: Record<AppFilter, Record<string, number>> = {
-  all: {
-    space: 312, w: 289, e: 245, t: 220, a: 210, o: 200, i: 195, n: 190, s: 180, h: 170,
-    r: 165, d: 155, l: 145, c: 130, u: 120, m: 110, f: 100, g: 90, y: 85, p: 75,
-    b: 65, v: 55, k: 45, j: 35, x: 25, q: 20, z: 15,
-    enter: 180, backspace: 155, tab: 90, lshift: 130, rshift: 40,
-    lctrl: 201, rctrl: 30, lalt: 20, ralt: 10, lwin: 35, menu: 5, fn: 2,
-    caps: 3,
-    comma: 60, period: 50, slash: 20, semicolon: 30, quote: 15,
-    "1": 25, "2": 20, "3": 15, "4": 12, "5": 10, "6": 8, "7": 8, "8": 6, "9": 5, "0": 12,
-    minus: 8, equal: 6, grave: 3,
-    lbracket: 4, rbracket: 4, backslash: 2,
-  },
-  cs2: {
-    // WASD + Space + Shift + 数字快切武器
-    w: 480, a: 320, s: 280, d: 340, space: 520, lshift: 380, lctrl: 260,
-    q: 145, e: 155, r: 130, f: 88, g: 55, tab: 70,
-    "1": 120, "2": 95, "3": 80, "4": 60, "5": 45,
-    "6": 20, "7": 15, "8": 10, "9": 8, "0": 5,
-    b: 15, t: 20, y: 5, m: 12, x: 6, c: 8, v: 10, n: 3, u: 2, i: 3, o: 2, p: 2,
-    h: 4, j: 3, k: 2, l: 2, z: 3,
-    enter: 30, backspace: 5, caps: 0, lwin: 8, lalt: 6, menu: 2,
-    comma: 4, period: 3, slash: 2, semicolon: 2, quote: 1,
-    minus: 2, equal: 1, grave: 45,
-    rshift: 3, rctrl: 5, ralt: 2, fn: 1,
-    lbracket: 1, rbracket: 1, backslash: 1,
-  },
-  vscode: {
-    // Ctrl/Cmd 快捷键、Tab 缩进、Enter 换行、Backspace 大量删改
-    lctrl: 420, tab: 380, enter: 320, backspace: 380,
-    lshift: 240, lalt: 90, space: 285,
-    e: 240, t: 230, a: 220, o: 210, i: 210, n: 200, s: 195, h: 180, r: 175,
-    d: 165, l: 150, c: 145, u: 130, m: 115, w: 155, f: 130, g: 100, y: 90, p: 85,
-    b: 70, v: 65, k: 55, j: 45, x: 30, q: 22, z: 18,
-    semicolon: 110, comma: 90, period: 85, slash: 55, quote: 70,
-    lbracket: 55, rbracket: 55, backslash: 25,
-    "1": 30, "2": 25, "3": 20, "4": 15, "5": 12, "6": 8, "7": 6, "8": 5, "9": 4, "0": 20,
-    minus: 45, equal: 40, grave: 60,
-    caps: 2, rshift: 55, rctrl: 40, ralt: 20, lwin: 30, menu: 3, fn: 8,
-  },
-  chrome: {
-    lctrl: 260, tab: 140, enter: 120, backspace: 95, space: 180, lshift: 90,
-    e: 160, t: 145, a: 140, o: 130, i: 130, n: 125, s: 120, r: 115, h: 105,
-    l: 95, d: 90, u: 80, c: 75, m: 70, w: 65, f: 55, g: 50, y: 45, p: 40,
-    b: 35, v: 25, k: 20, j: 15, x: 10, q: 8, z: 5,
-    slash: 45, period: 60, comma: 40, semicolon: 20, quote: 15,
-    "1": 15, "2": 12, "3": 10, "4": 6, "5": 5, "6": 3, "7": 3, "8": 2, "9": 2, "0": 8,
-    minus: 6, equal: 4, grave: 2,
-    lbracket: 3, rbracket: 3, backslash: 2,
-    caps: 1, rshift: 15, rctrl: 20, ralt: 5, lwin: 25, menu: 1, fn: 1, lalt: 10,
-  },
-  terminal: {
-    // 命令行：Enter/Tab/Ctrl 大量，ls/cd/rm/mkdir 等常用命令字母偏高
-    enter: 380, tab: 240, lctrl: 280, backspace: 210, space: 260, lshift: 140,
-    l: 180, s: 200, r: 160, m: 145, k: 120, d: 165, c: 175, e: 155, o: 130,
-    a: 145, t: 130, i: 125, u: 90, n: 115, h: 100, g: 85, y: 70, p: 95,
-    b: 60, v: 45, w: 55, f: 75, q: 15, x: 20, z: 10, j: 20,
-    minus: 80, slash: 110, period: 60, comma: 20, semicolon: 15, quote: 30,
-    "1": 25, "2": 20, "3": 15, "4": 10, "5": 8, "6": 5, "7": 5, "8": 3, "9": 3, "0": 12,
-    grave: 30, equal: 15,
-    lbracket: 8, rbracket: 8, backslash: 15,
-    caps: 1, rshift: 20, rctrl: 30, ralt: 8, lwin: 15, menu: 2, fn: 2, lalt: 15,
-  },
-};
-
-type MouseData = { left: number; right: number; wheel: number; travelKm: number };
-
-const MOUSE_TODAY: Record<AppFilter, MouseData> = {
-  all: { left: 1240, right: 320, wheel: 850, travelKm: 1.2 },
-  cs2: { left: 4820, right: 3210, wheel: 60, travelKm: 4.8 },
-  vscode: { left: 620, right: 145, wheel: 1240, travelKm: 0.7 },
-  chrome: { left: 480, right: 90, wheel: 2340, travelKm: 1.6 },
-  terminal: { left: 180, right: 40, wheel: 320, travelKm: 0.4 },
-};
-
-const WEEK_MULT = 5.2;
-
-function scaleKeys(map: Record<string, number>, mult: number): Record<string, number> {
-  if (mult === 1) return map;
-  const out: Record<string, number> = {};
-  for (const k in map) out[k] = Math.round(map[k] * mult);
-  return out;
+  // 按分位数分档：反映相对排名而非绝对值
+  if (n >= p80) return 4; // Top 20%
+  if (n >= p60) return 3; // 60-80%
+  if (n >= p40) return 2; // 40-60%
+  if (n >= p20) return 1; // 20-40%
+  return 1; // Bottom 20% 但有按压，用浅色
 }
 
-function scaleMouse(m: MouseData, mult: number): MouseData {
-  if (mult === 1) return m;
-  return {
-    left: Math.round(m.left * mult),
-    right: Math.round(m.right * mult),
-    wheel: Math.round(m.wheel * mult),
-    travelKm: Number((m.travelKm * mult).toFixed(1)),
-  };
-}
-
-// ---- 强度分档：按当前预设的 max 归一化 --------------------------------------
-
-function bucket(n: number, max: number): Intensity {
+// 鼠标和 Top 按键用简单的相对归一化（它们场景不同，不需要分位数）
+function bucketSimple(n: number, max: number): Intensity {
   if (n <= 0) return 0;
   const pct = n / (max || 1);
   if (pct >= 0.7) return 4;
-  if (pct >= 0.45) return 3;
-  if (pct >= 0.22) return 2;
+  if (pct >= 0.5) return 3;
+  if (pct >= 0.3) return 2;
   return 1;
 }
 
@@ -191,210 +74,587 @@ function intensityVar(level: Intensity) {
 
 // ---- 展示常量 ---------------------------------------------------------------
 
-const APP_LABELS: { id: AppFilter; label: string }[] = [
-  { id: "all", label: "全部" },
-  { id: "cs2", label: "CS2" },
-  { id: "vscode", label: "VSCode" },
-  { id: "chrome", label: "Chrome" },
-  { id: "terminal", label: "终端" },
-];
-
 const TIME_LABELS: { id: TimeFilter; label: string }[] = [
-  { id: "today", label: "今天" },
-  { id: "week", label: "本周" },
+  { id: "day", label: "日" },
+  { id: "week", label: "周" },
 ];
 
-const KEY_DISPLAY_NAMES: Record<string, string> = {
-  space: "Space", enter: "Enter", backspace: "Backspace", tab: "Tab",
-  lctrl: "Ctrl", rctrl: "Ctrl", lshift: "Shift", rshift: "Shift",
-  lalt: "Alt", ralt: "Alt", lwin: "Cmd", caps: "Caps",
-  minus: "-", equal: "=", grave: "`", semicolon: ";", quote: "'",
-  comma: ",", period: ".", slash: "/",
-  lbracket: "[", rbracket: "]", backslash: "\\",
-  menu: "Menu", fn: "Fn",
-};
+// ---- 日期工具函数 -----------------------------------------------------------
 
-function keyDisplay(id: string): string {
-  if (KEY_DISPLAY_NAMES[id]) return KEY_DISPLAY_NAMES[id];
-  if (id.length === 1) return id.toUpperCase();
-  return id;
+function startOfDay(d: Date): Date {
+  const result = new Date(d);
+  result.setHours(0, 0, 0, 0);
+  return result;
+}
+
+function startOfWeek(d: Date): Date {
+  const result = new Date(d);
+  result.setHours(0, 0, 0, 0);
+  const dow = result.getDay();
+  const offsetToMonday = dow === 0 ? 6 : dow - 1;
+  result.setDate(result.getDate() - offsetToMonday);
+  return result;
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function isSameWeek(a: Date, b: Date): boolean {
+  const weekA = startOfWeek(a);
+  const weekB = startOfWeek(b);
+  return isSameDay(weekA, weekB);
+}
+
+function formatDateLabel(d: Date, mode: TimeFilter, isCurrentPeriod: boolean): string {
+  if (isCurrentPeriod) {
+    return mode === "day" ? "今天" : "本周";
+  }
+
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const date = String(d.getDate()).padStart(2, "0");
+
+  if (mode === "day") {
+    const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
+    const dow = days[d.getDay()];
+    return `${year}-${month}-${date} ${dow}`;
+  } else {
+    // 周模式：显示周一和周日
+    const weekStart = startOfWeek(d);
+    const weekEnd = new Date(weekStart.getTime() + 6 * DAY_MS);
+    const endMonth = String(weekEnd.getMonth() + 1).padStart(2, "0");
+    const endDate = String(weekEnd.getDate()).padStart(2, "0");
+    return `${month}-${date} ~ ${endMonth}-${endDate}`;
+  }
+}
+
+function getTimeRange(d: Date, mode: TimeFilter): { start_ms: number; end_ms: number } {
+  if (mode === "day") {
+    return dayRangeOf(d);
+  } else {
+    // 周模式：从选定日期所在周的周一到周日
+    const weekStart = startOfWeek(d);
+    const weekEnd = new Date(weekStart.getTime() + 7 * DAY_MS);
+    return { start_ms: weekStart.getTime(), end_ms: weekEnd.getTime() };
+  }
 }
 
 // ---- 渲染 -------------------------------------------------------------------
 
 export default function Keyboard() {
   const [appFilter, setAppFilter] = useState<AppFilter>("all");
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("today");
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("day");
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [loading, setLoading] = useState(false);
+  const [showLoading, setShowLoading] = useState(false);
 
-  const mult = timeFilter === "week" ? WEEK_MULT : 1;
+  // KLE 配列状态（从 localStorage 读取，默认 104 全尺寸）
+  const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
+  const [kleKeys, setKleKeys] = useState<KLEKey[]>([]);
+  const [kleLoading, setKleLoading] = useState(false);
 
-  const keyCounts = useMemo(
-    () => scaleKeys(PRESETS_TODAY[appFilter], mult),
-    [appFilter, mult]
+  const kbContainerRef = useRef<HTMLDivElement>(null);
+  const [unitSize, setUnitSize] = useState(48);
+
+  useEffect(() => {
+    const el = kbContainerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const w = entry.contentRect.width;
+      if (kleKeys.length === 0) return;
+      const maxX = Math.max(...kleKeys.map((k) => k.x + k.w));
+      const gap = 6;
+      const computed = Math.floor(w / maxX);
+      setUnitSize(Math.min(Math.max(computed, 28), 56));
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [kleKeys]);
+
+  // 当前日期/周标签
+  const today = useMemo(() => startOfDay(new Date()), []);
+  const isCurrentPeriod = useMemo(() => {
+    if (timeFilter === "day") {
+      return isSameDay(selectedDate, today);
+    } else {
+      return isSameWeek(selectedDate, today);
+    }
+  }, [selectedDate, today, timeFilter]);
+  const dateLabel = useMemo(
+    () => formatDateLabel(selectedDate, timeFilter, isCurrentPeriod),
+    [selectedDate, timeFilter, isCurrentPeriod]
   );
 
-  const mouseData = useMemo(
-    () => scaleMouse(MOUSE_TODAY[appFilter], mult),
-    [appFilter, mult]
-  );
+  // 保存配列选择并加载新配列
+  const handleLayoutChange = async (id: string) => {
+    setLayoutId(id);
+    saveLayout(id);
+    await loadKLELayout(id);
+  };
 
-  const maxKey = useMemo(() => {
-    let m = 0;
-    for (const k in keyCounts) if (keyCounts[k] > m) m = keyCounts[k];
-    return m;
-  }, [keyCounts]);
+  // 加载 KLE 配列 JSON 并解析
+  const loadKLELayout = async (id: string) => {
+    setKleLoading(true);
+    try {
+      const kleJson = await loadLayoutJSON(id);
+      const parsedKeys = parseKLE(kleJson);
+      setKleKeys(parsedKeys);
+    } catch (e) {
+      console.error("Failed to load KLE layout:", e);
+    } finally {
+      setKleLoading(false);
+    }
+  };
 
-  const maxMouse = Math.max(mouseData.left, mouseData.right, mouseData.wheel, 1);
+  // 初始加载配列
+  useEffect(() => {
+    loadKLELayout(layoutId);
+  }, []);
 
+  // 原始数据（全量，按时间段拉取）
+  const [allBuckets, setAllBuckets] = useState<RawBucket[]>([]);
+  const [appList, setAppList] = useState<string[]>([]);
+
+  // 统一筛选后的数据集（三个区块的唯一数据源）
+  const [filteredData, setFilteredData] = useState<{
+    buckets: RawBucket[];
+    keyDetails: RawKeyDetail[];
+  }>({ buckets: [], keyDetails: [] });
+
+  async function refresh() {
+    setLoading(true);
+    try {
+      const range = getTimeRange(selectedDate, timeFilter);
+      const fetchedBuckets = await fetchBucketsInRange(range);
+      setAllBuckets(fetchedBuckets);
+
+      // 构建 App 列表（按时长排序，取前几个）
+      const appStats = aggregateByApp(fetchedBuckets);
+      const topApps = appStats
+        .slice(0, 8)
+        .map((a) => a.app_bundle_id)
+        .filter((id) => id && id !== "unknown");
+      setAppList(topApps);
+
+      // 时间段切换时，重置 App 筛选为"全部"并加载全部数据
+      setAppFilter("all");
+      await loadFilteredData("all", fetchedBuckets);
+    } catch (e) {
+      console.error("Keyboard refresh failed:", e);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 日期导航
+  function goPrevPeriod() {
+    setSelectedDate((d) => {
+      const prev = new Date(d);
+      if (timeFilter === "day") {
+        prev.setDate(prev.getDate() - 1);
+      } else {
+        prev.setDate(prev.getDate() - 7);
+      }
+      return prev;
+    });
+  }
+
+  function goNextPeriod() {
+    if (!isCurrentPeriod) {
+      setSelectedDate((d) => {
+        const next = new Date(d);
+        if (timeFilter === "day") {
+          next.setDate(next.getDate() + 1);
+        } else {
+          next.setDate(next.getDate() + 7);
+        }
+        return next;
+      });
+    }
+  }
+
+  function goToToday() {
+    setSelectedDate(new Date());
+  }
+
+  // 加载筛选后的数据（基于 App 筛选）
+  async function loadFilteredData(targetApp: AppFilter, buckets: RawBucket[]) {
+    try {
+      if (targetApp === "all") {
+        // 全部 App：用汇总 API
+        const range = getTimeRange(selectedDate, timeFilter);
+        const allKeys = await fetchKeyDetailsInRange(range);
+        setFilteredData({ buckets, keyDetails: allKeys });
+      } else {
+        // 特定 App：筛选该 App 的桶，并逐桶查询 key_details 聚合
+        const appBuckets = buckets.filter((b) => b.app_bundle_id === targetApp);
+
+        // 逐桶查询并聚合 key_details
+        const keyMap = new Map<string, number>();
+        for (const bucket of appBuckets) {
+          if (!(bucket as any).id) continue; // 跳过没有 id 的桶
+          try {
+            const details = await fetchKeyDetailsOfBucket((bucket as any).id);
+            for (const d of details) {
+              keyMap.set(d.key_code, (keyMap.get(d.key_code) ?? 0) + d.count);
+            }
+          } catch (e) {
+            console.warn(`Failed to fetch key details for bucket ${(bucket as any).id}:`, e);
+          }
+        }
+
+        const aggregatedKeys: RawKeyDetail[] = [...keyMap.entries()].map(([key_code, count]) => ({
+          key_code,
+          count,
+        }));
+
+        setFilteredData({ buckets: appBuckets, keyDetails: aggregatedKeys });
+      }
+    } catch (e) {
+      console.error("loadFilteredData failed:", e);
+    }
+  }
+
+  useEffect(() => {
+    refresh();
+  }, [timeFilter, selectedDate]);
+
+  // App 筛选变化时，重新加载数据
+  useEffect(() => {
+    if (allBuckets.length > 0) {
+      setLoading(true);
+      loadFilteredData(appFilter, allBuckets).finally(() => setLoading(false));
+    }
+  }, [appFilter]);
+
+  // 延迟显示 loading 状态，避免快速切换时闪烁
+  useEffect(() => {
+    let timer: number | undefined;
+    if (loading) {
+      timer = window.setTimeout(() => setShowLoading(true), 200);
+    } else {
+      setShowLoading(false);
+      if (timer) window.clearTimeout(timer);
+    }
+    return () => {
+      if (timer) window.clearTimeout(timer);
+    };
+  }, [loading]);
+
+  // ========== 从统一数据集派生三个区块的渲染数据 ==========
+
+  // 构建 rdevCode → count 的映射（键盘热力）
+  const keyCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const kd of filteredData.keyDetails) {
+      map[kd.key_code] = (map[kd.key_code] ?? 0) + kd.count;
+    }
+    return map;
+  }, [filteredData.keyDetails]);
+
+  // 构建 KLE 键标签 → count 的映射（通过 rdevCode 匹配）
+  const kleKeyCounts = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const key of kleKeys) {
+      const rdevCode = getLabelRdevCode(key.label);
+      if (rdevCode) {
+        map[key.label] = keyCounts[rdevCode] ?? 0;
+      }
+    }
+    return map;
+  }, [kleKeys, keyCounts]);
+
+  // 提取所有键的按压次数数组，用于分位数分档
+  const allKeyCounts = useMemo(() => {
+    return Object.values(kleKeyCounts);
+  }, [kleKeyCounts]);
+
+  // 鼠标数据（从 filteredData.buckets 聚合）
+  const mouseData = useMemo(() => {
+    let left = 0;
+    let right = 0;
+    let middle = 0;
+    let back = 0;
+    let forward = 0;
+    let moveDist = 0;
+    let scrollDist = 0;
+    for (const b of filteredData.buckets) {
+      left += b.mouse_left || 0;
+      right += b.mouse_right || 0;
+      middle += b.mouse_middle || 0;
+      back += b.mouse_back || 0;
+      forward += b.mouse_forward || 0;
+      moveDist += b.mouse_move_dist || 0;
+      scrollDist += b.scroll_dist || 0;
+    }
+    const meters = moveDist / MOUSE_PIXELS_PER_METER;
+    const travelKm =
+      meters >= 1000 ? Number((meters / 1000).toFixed(1)) : Number((meters / 1000).toFixed(2));
+    return {
+      left,
+      right,
+      middle,
+      back,
+      forward,
+      wheel: middle + Math.round(scrollDist / 100),
+      travelKm,
+    };
+  }, [filteredData.buckets]);
+
+  const maxMouse = Math.max(mouseData.left, mouseData.right, mouseData.wheel, mouseData.back, mouseData.forward, 1);
+
+  // Top 按键排行（从 kleKeyCounts 派生）
   const topKeys = useMemo(() => {
-    return Object.entries(keyCounts)
+    return Object.entries(kleKeyCounts)
       .filter(([, n]) => n > 0)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
-      .map(([id, n]) => ({ id, n }));
-  }, [keyCounts]);
+      .map(([label, n]) => ({ label, n }));
+  }, [kleKeyCounts]);
 
-  const topPanelTitle =
-    timeFilter === "week" ? "本周按得最多" : "今天按得最多";
+  const topPanelTitle = timeFilter === "week" ? "本周按得最多" : "今天按得最多";
+
+  // App 筛选按钮列表
+  const appFilterButtons = useMemo(() => {
+    const buttons: { id: AppFilter; label: string; bundleId: string }[] = [
+      { id: "all", label: "全部", bundleId: "" },
+    ];
+    for (const bundleId of appList) {
+      const appStat = aggregateByApp(allBuckets).find((a) => a.app_bundle_id === bundleId);
+      const label = appStat?.app_name || bundleId;
+      buttons.push({ id: bundleId, label, bundleId });
+    }
+    return buttons;
+  }, [appList, allBuckets]);
 
   return (
     <div className="kb-page">
-      {/* ① 顶部筛选栏 */}
-      <div className="kb-filters">
+      {/* ① 顶部筛选栏（吸顶） */}
+      <div className="kb-filters kb-filters--sticky">
         <div className="kb-filter-group">
-          {APP_LABELS.map((a) => (
+          {appFilterButtons.map((a) => (
             <button
               key={a.id}
               className={`kb-filter-btn${appFilter === a.id ? " is-active" : ""}`}
               onClick={() => setAppFilter(a.id)}
               type="button"
+              disabled={loading}
+              title={a.label}
             >
-              {a.label}
+              {a.id !== "all" && (
+                <AppIcon bundleId={a.bundleId} appName={a.label} size={16} />
+              )}
+              <span>{a.label}</span>
             </button>
           ))}
         </div>
-        <div className="kb-segmented" role="tablist" aria-label="时间范围">
-          {TIME_LABELS.map((t) => (
+        <div className="kb-filter-right">
+          <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
+
+          {/* 日/周切换 */}
+          <div className="kb-segmented" role="tablist" aria-label="时间范围">
+            {TIME_LABELS.map((t) => (
+              <button
+                key={t.id}
+                className={`kb-segmented-btn${timeFilter === t.id ? " is-active" : ""}`}
+                onClick={() => setTimeFilter(t.id)}
+                type="button"
+                role="tab"
+                aria-selected={timeFilter === t.id}
+                disabled={loading}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* 日期选择 */}
+          <div className="kb-date-picker">
             <button
-              key={t.id}
-              className={`kb-segmented-btn${timeFilter === t.id ? " is-active" : ""}`}
-              onClick={() => setTimeFilter(t.id)}
-              type="button"
-              role="tab"
-              aria-selected={timeFilter === t.id}
+              className="kb-nav-btn"
+              onClick={goPrevPeriod}
+              title={timeFilter === "day" ? "前一天" : "前一周"}
+              disabled={loading}
             >
-              {t.label}
+              <ChevronLeft size={16} />
             </button>
-          ))}
+            <div className="kb-date-label">
+              <Calendar size={14} />
+              <span>{dateLabel}</span>
+            </div>
+            <button
+              className="kb-nav-btn"
+              onClick={goNextPeriod}
+              disabled={isCurrentPeriod || loading}
+              title={timeFilter === "day" ? "后一天" : "后一周"}
+            >
+              <ChevronRight size={16} />
+            </button>
+            {!isCurrentPeriod && (
+              <button
+                className="kb-today-btn"
+                onClick={goToToday}
+                disabled={loading}
+              >
+                回到今天
+              </button>
+            )}
+            <button
+              className="kb-nav-btn"
+              onClick={refresh}
+              disabled={loading}
+              title="刷新"
+            >
+              <RefreshCw size={16} className={loading ? "kb-spin" : ""} />
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* ② 键盘热力图 —— 视觉主体 */}
-      <section className="panel kb-keyboard-panel">
-        <div className="kb-keyboard">
-          {ROWS.map((row, ri) => (
-            <div key={ri} className="kb-row">
-              {row.map((key) => {
-                const count = keyCounts[key.id] ?? 0;
-                const level = bucket(count, maxKey);
-                const style: CSSProperties = {
-                  flexGrow: key.w ?? 1,
-                  background: intensityVar(level),
-                  color: level >= 3 ? "#fff" : "var(--color-text-2)",
-                };
-                return (
-                  <div
-                    key={key.id}
-                    className={`kb-key kb-key--${key.variant ?? "letter"}`}
-                    style={style}
-                    aria-label={`${keyDisplay(key.id)}, ${count} 次`}
-                  >
-                    <span className="kb-key-label">{key.label}</span>
-                    <span className="kb-key-count">{count.toLocaleString()} 次</span>
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ③④ 下方并排：鼠标 · Top 按键 */}
-      <div className="kb-lower">
-        {/* ③ 鼠标热力 */}
-        <section className="panel">
-          <h3 className="panel-title">鼠标</h3>
-          <div className="mouse-card">
-            <div className="mouse-shape" aria-hidden>
-              <div
-                className="mouse-btn mouse-btn--left"
-                style={{
-                  background: intensityVar(bucket(mouseData.left, maxMouse)),
-                }}
-                title={`左键 · ${mouseData.left.toLocaleString()} 次`}
-              />
-              <div
-                className="mouse-btn mouse-btn--right"
-                style={{
-                  background: intensityVar(bucket(mouseData.right, maxMouse)),
-                }}
-                title={`右键 · ${mouseData.right.toLocaleString()} 次`}
-              />
-              <div
-                className="mouse-wheel"
-                style={{
-                  background: intensityVar(bucket(mouseData.wheel, maxMouse)),
-                }}
-                title={`滚轮 · ${mouseData.wheel.toLocaleString()}`}
-              />
-            </div>
-            <dl className="mouse-stats">
-              <div className="mouse-stat">
-                <dt>左键</dt>
-                <dd>{mouseData.left.toLocaleString()}</dd>
-              </div>
-              <div className="mouse-stat">
-                <dt>右键</dt>
-                <dd>{mouseData.right.toLocaleString()}</dd>
-              </div>
-              <div className="mouse-stat">
-                <dt>滚轮</dt>
-                <dd>{mouseData.wheel.toLocaleString()}</dd>
-              </div>
-              <div className="mouse-stat">
-                <dt>移动</dt>
-                <dd>
-                  {mouseData.travelKm}
-                  <span className="mouse-stat-unit">公里</span>
-                </dd>
-              </div>
-            </dl>
+      {/* ② 统一活动面板：键盘热力图 + 鼠标 + Top 按键 */}
+      <section className="panel kb-unified-panel" style={{ position: "relative" }}>
+        {showLoading && (
+          <div className="kb-loading-overlay">
+            <div className="kb-loading-spinner" />
           </div>
-        </section>
+        )}
 
-        {/* ④ Top 按键排行 */}
-        <section className="panel">
-          <h3 className="panel-title">{topPanelTitle}</h3>
-          <div className="topkey-list">
-            {topKeys.map((k) => {
-              const pct = topKeys[0] ? (k.n / topKeys[0].n) * 100 : 0;
-              const level = bucket(k.n, maxKey);
-              return (
-                <div key={k.id} className="topkey-row">
-                  <div className="topkey-name">{keyDisplay(k.id)}</div>
-                  <div className="topkey-track">
+        {kleLoading ? (
+          <div style={{ padding: "var(--space-6)", textAlign: "center", color: "var(--color-text-3)" }}>
+            加载配列中...
+          </div>
+        ) : kleKeys.length === 0 ? (
+          <div style={{ padding: "var(--space-6)", textAlign: "center", color: "var(--color-text-3)" }}>
+            配列加载失败
+          </div>
+        ) : (
+          <>
+            {/* 键盘热力图 */}
+            <div className="kb-keyboard-section" ref={kbContainerRef}>
+              <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
+                <KLEKeyboard
+                  keys={kleKeys}
+                  keyCounts={kleKeyCounts}
+                  allCounts={allKeyCounts}
+                  unitSize={unitSize}
+                />
+              </div>
+            </div>
+
+            {/* 下方分栏：鼠标 + Top 按键 */}
+            <div className="kb-lower-section">
+              {/* 鼠标热力 */}
+              <div className="kb-subsection">
+                <h3 className="kb-subsection-title">鼠标</h3>
+                <div className="mouse-card">
+                  <div className="mouse-shape" aria-hidden>
                     <div
-                      className="topkey-fill"
-                      style={{ width: `${pct}%`, background: intensityVar(level) }}
+                      className="mouse-btn mouse-btn--left"
+                      style={{
+                        background: intensityVar(bucketSimple(mouseData.left, maxMouse)),
+                      }}
+                      title={`左键 · ${mouseData.left.toLocaleString()} 次`}
                     />
+                    <div
+                      className="mouse-btn mouse-btn--right"
+                      style={{
+                        background: intensityVar(bucketSimple(mouseData.right, maxMouse)),
+                      }}
+                      title={`右键 · ${mouseData.right.toLocaleString()} 次`}
+                    />
+                    <div
+                      className="mouse-wheel"
+                      style={{
+                        background: intensityVar(bucketSimple(mouseData.wheel, maxMouse)),
+                      }}
+                      title={`滚轮 · ${mouseData.wheel.toLocaleString()}`}
+                    />
+                    {(mouseData.back > 0 || mouseData.forward > 0) && (
+                      <>
+                        <div
+                          className="mouse-side mouse-side--back"
+                          style={{
+                            background: intensityVar(bucketSimple(mouseData.back, maxMouse)),
+                          }}
+                          title={`后退侧键 · ${mouseData.back.toLocaleString()} 次`}
+                        />
+                        <div
+                          className="mouse-side mouse-side--forward"
+                          style={{
+                            background: intensityVar(bucketSimple(mouseData.forward, maxMouse)),
+                          }}
+                          title={`前进侧键 · ${mouseData.forward.toLocaleString()} 次`}
+                        />
+                      </>
+                    )}
                   </div>
-                  <div className="topkey-count">{k.n.toLocaleString()}</div>
+                  <dl className="mouse-stats">
+                    <div className="mouse-stat">
+                      <dt>左键</dt>
+                      <dd>{mouseData.left.toLocaleString()}</dd>
+                    </div>
+                    <div className="mouse-stat">
+                      <dt>右键</dt>
+                      <dd>{mouseData.right.toLocaleString()}</dd>
+                    </div>
+                    <div className="mouse-stat">
+                      <dt>滚轮</dt>
+                      <dd>{mouseData.wheel.toLocaleString()}</dd>
+                    </div>
+                    {(mouseData.back > 0 || mouseData.forward > 0) && (
+                      <>
+                        <div className="mouse-stat">
+                          <dt>侧键</dt>
+                          <dd>{(mouseData.back + mouseData.forward).toLocaleString()}</dd>
+                        </div>
+                      </>
+                    )}
+                    <div className="mouse-stat">
+                      <dt>移动</dt>
+                      <dd>
+                        {mouseData.travelKm}
+                        <span className="mouse-stat-unit">公里</span>
+                      </dd>
+                    </div>
+                  </dl>
                 </div>
-              );
-            })}
-          </div>
-        </section>
-      </div>
+              </div>
+
+              {/* Top 按键排行 */}
+              <div className="kb-subsection">
+                <h3 className="kb-subsection-title">{topPanelTitle}</h3>
+                <div className="topkey-list">
+                  {topKeys.length === 0 && (
+                    <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>还没有数据</div>
+                  )}
+                  {topKeys.map((k) => {
+                    const pct = topKeys[0] ? (k.n / topKeys[0].n) * 100 : 0;
+                    const level = bucketByPercentile(k.n, allKeyCounts);
+                    const displayLabel = getDisplayLabel(k.label);
+                    return (
+                      <div key={k.label} className="topkey-row">
+                        <div className="topkey-name">{displayLabel}</div>
+                        <div className="topkey-track">
+                          <div
+                            className="topkey-fill"
+                            style={{ width: `${pct}%`, background: intensityVar(level) }}
+                          />
+                        </div>
+                        <div className="topkey-count">{k.n.toLocaleString()}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 }

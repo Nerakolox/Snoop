@@ -24,6 +24,8 @@ impl Database {
                 mouse_left      INTEGER NOT NULL,
                 mouse_right     INTEGER NOT NULL,
                 mouse_middle    INTEGER NOT NULL,
+                mouse_back      INTEGER NOT NULL DEFAULT 0,
+                mouse_forward   INTEGER NOT NULL DEFAULT 0,
                 mouse_move_dist INTEGER NOT NULL,
                 scroll_dist     INTEGER NOT NULL
             );
@@ -45,6 +47,7 @@ impl Database {
         )?;
 
         self.migrate_duration_column()?;
+        self.migrate_mouse_side_buttons()?;
         Ok(())
     }
 
@@ -62,6 +65,24 @@ impl Database {
                 ",
             )?;
             println!("✓ 已迁移 duration_sec -> duration_ms");
+        }
+        Ok(())
+    }
+
+    fn migrate_mouse_side_buttons(&self) -> Result<()> {
+        let has_mouse_back: bool = self
+            .conn
+            .prepare("SELECT 1 FROM pragma_table_info('activity_buckets') WHERE name='mouse_back'")?
+            .exists([])?;
+
+        if !has_mouse_back {
+            self.conn.execute_batch(
+                "
+                ALTER TABLE activity_buckets ADD COLUMN mouse_back INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE activity_buckets ADD COLUMN mouse_forward INTEGER NOT NULL DEFAULT 0;
+                ",
+            )?;
+            println!("✓ 已添加鼠标侧键字段 mouse_back, mouse_forward");
         }
         Ok(())
     }
@@ -85,8 +106,9 @@ impl Database {
             "INSERT INTO activity_buckets
             (bucket_start, duration_ms, app_name, app_bundle_id,
              key_total, mouse_left, mouse_right, mouse_middle,
+             mouse_back, mouse_forward,
              mouse_move_dist, scroll_dist)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
             rusqlite::params![
                 now_millis,
                 5000,
@@ -96,6 +118,8 @@ impl Database {
                 10,
                 2,
                 1,
+                0,
+                0,
                 1500,
                 800
             ],

@@ -1,5 +1,23 @@
 import { Fragment, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  fetchAppRankingInRange,
+  fetchBucketsInRange,
+  fetchHourlyActivity,
+  fetchKeyDetailsInRange,
+  thisWeekRange,
+  todayRange,
+} from "../data";
+import {
+  aggregateByApp,
+  aggregateByDay,
+  aggregateByHour,
+  aggregateShortSessions,
+  aggregateWeekHourGrid,
+  classifyKeys,
+  computeIntensity,
+  mergeSessions,
+} from "../analytics";
 
 type Bucket = {
   id: number;
@@ -30,6 +48,21 @@ function fmtTime(ms: number): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+type AnalyticsSummary = {
+  scope: "today" | "week";
+  bucketCount: number;
+  sessionCount: number;
+  aggregatedSessionCount: number;
+  topApps: { name: string; hours: number; intensity: number }[];
+  topRegions: { region: string; count: number }[];
+  hourlyIntensity: number[];
+  dailyActive: { day_of_week: number; hours: number }[];
+  weekGridPreview: string;
+  overallIntensity: number;
+  keyDetailRows: number;
+  hourRows: number;
+};
+
 export default function Dev() {
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [todayKeys, setTodayKeys] = useState<number>(0);
@@ -37,6 +70,85 @@ export default function Dev() {
   const [expanded, setExpanded] = useState<Record<number, KeyDetail[] | "loading" | "error">>({});
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary[] | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(false);
+  const [analyticsErr, setAnalyticsErr] = useState<string | null>(null);
+
+  async function verifyAnalytics() {
+    setAnalyticsLoading(true);
+    setAnalyticsErr(null);
+    try {
+      const scopes: { scope: "today" | "week"; range: ReturnType<typeof todayRange> }[] = [
+        { scope: "today", range: todayRange() },
+        { scope: "week", range: thisWeekRange() },
+      ];
+      const summaries: AnalyticsSummary[] = [];
+      for (const s of scopes) {
+        const [rawBuckets, keyDetails, hourly, appRank] = await Promise.all([
+          fetchBucketsInRange(s.range),
+          fetchKeyDetailsInRange(s.range),
+          fetchHourlyActivity(s.range),
+          fetchAppRankingInRange(s.range),
+        ]);
+
+        const sessions = mergeSessions(rawBuckets);
+        const aggregated = aggregateShortSessions(sessions);
+        const appStats = aggregateByApp(rawBuckets);
+        const regionStats = classifyKeys(keyDetails);
+        const hourStats = aggregateByHour(hourly);
+        const dayStats = aggregateByDay(rawBuckets);
+        const weekGrid = aggregateWeekHourGrid(hourly);
+
+        console.groupCollapsed(`analytics · ${s.scope}`);
+        console.log("time range", s.range);
+        console.log("raw buckets", rawBuckets);
+        console.log("sessions", sessions);
+        console.log("aggregatedSessions", aggregated);
+        console.log("appStats", appStats);
+        console.log("regionStats", regionStats);
+        console.log("hourStats", hourStats);
+        console.log("dayStats", dayStats);
+        console.log("weekGrid", weekGrid);
+        console.log("appRank (server-side)", appRank);
+        console.log("overall intensity", computeIntensity(rawBuckets));
+        console.groupEnd();
+
+        summaries.push({
+          scope: s.scope,
+          bucketCount: rawBuckets.length,
+          sessionCount: sessions.length,
+          aggregatedSessionCount: aggregated.length,
+          topApps: appStats.slice(0, 5).map((a) => ({
+            name: a.app_name || a.app_bundle_id,
+            hours: +(a.duration_ms / 3_600_000).toFixed(2),
+            intensity: a.intensity,
+          })),
+          topRegions: regionStats
+            .filter((r) => r.count > 0)
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5)
+            .map((r) => ({ region: r.region, count: r.count })),
+          hourlyIntensity: hourStats.map((h) => h.intensity),
+          dailyActive: dayStats.map((d) => ({
+            day_of_week: d.day_of_week,
+            hours: +(d.active_ms / 3_600_000).toFixed(2),
+          })),
+          weekGridPreview: weekGrid
+            .map((row) => row.join(""))
+            .join("\n"),
+          overallIntensity: computeIntensity(rawBuckets),
+          keyDetailRows: keyDetails.length,
+          hourRows: hourly.length,
+        });
+      }
+      setAnalytics(summaries);
+    } catch (e) {
+      console.error(e);
+      setAnalyticsErr(String(e));
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }
 
   async function refresh() {
     setLoading(true);
@@ -93,6 +205,80 @@ export default function Dev() {
       </div>
 
       {err && <p className="dev-error">错误: {err}</p>}
+
+      <section className="dev-section">
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <h3 style={{ margin: 0 }}>Analytics 验证（today / this week）</h3>
+          <button onClick={verifyAnalytics} disabled={analyticsLoading}>
+            {analyticsLoading ? "跑分析中..." : "跑一次"}
+          </button>
+        </div>
+        <p style={{ color: "var(--color-text-3)", margin: "8px 0 12px" }}>
+          详细结果打印到 DevTools Console；下方是概要，用于肉眼验证 mergeSessions / aggregateByApp /
+          aggregateByHour / classifyKeys / computeIntensity。
+        </p>
+        {analyticsErr && <p className="dev-error">错误: {analyticsErr}</p>}
+        {analytics &&
+          analytics.map((s) => (
+            <div key={s.scope} className="dev-section" style={{ marginTop: 12 }}>
+              <h3>
+                范围: {s.scope} · 桶 {s.bucketCount} · 会话 {s.sessionCount} →{" "}
+                {s.aggregatedSessionCount}（碎片处理后）· 整体强度 {s.overallIntensity} ·
+                key_detail 行 {s.keyDetailRows} · hour 行 {s.hourRows}
+              </h3>
+              <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr" }}>
+                <div>
+                  <b>Top Apps</b>
+                  <ol>
+                    {s.topApps.map((a, i) => (
+                      <li key={i}>
+                        {a.name} · {a.hours}h · 强度 {a.intensity}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <div>
+                  <b>Top 按键区域</b>
+                  <ol>
+                    {s.topRegions.map((r, i) => (
+                      <li key={i}>
+                        {r.region} · {r.count}
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <div>
+                  <b>时段强度（0-23）</b>
+                  <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+                    {s.hourlyIntensity.join(" ")}
+                  </pre>
+                </div>
+                <div>
+                  <b>每日活跃</b>
+                  <ol>
+                    {s.dailyActive.map((d, i) => (
+                      <li key={i}>
+                        DoW {d.day_of_week} · {d.hours}h
+                      </li>
+                    ))}
+                  </ol>
+                </div>
+                <div style={{ gridColumn: "1 / -1" }}>
+                  <b>7×24 强度网格（周一 → 周日 × 0..23）</b>
+                  <pre
+                    style={{
+                      fontFamily: "ui-monospace, monospace",
+                      whiteSpace: "pre",
+                      margin: 0,
+                    }}
+                  >
+                    {s.weekGridPreview}
+                  </pre>
+                </div>
+              </div>
+            </div>
+          ))}
+      </section>
 
       <section className="dev-section">
         <h3>今日总按键数: {todayKeys}</h3>

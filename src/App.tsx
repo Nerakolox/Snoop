@@ -7,6 +7,7 @@ import Keyboard from "./pages/Keyboard";
 import Insights from "./pages/Insights";
 import Settings from "./pages/Settings";
 import Dev from "./pages/Dev";
+import KeymapTest from "./pages/KeymapTest";
 
 const isWindows =
   typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
@@ -25,6 +26,8 @@ function renderPage(key: NavKey) {
       return <Settings />;
     case "dev":
       return <Dev />;
+    case "keymap-test":
+      return <KeymapTest />;
   }
 }
 
