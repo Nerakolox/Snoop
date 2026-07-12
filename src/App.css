@@ -2553,6 +2553,7 @@ body[data-platform="windows"] .sidebar-header {
   left: 200px; /* 与 .swimlane-label 宽度一致，避开 App 名称列 */
   right: 0;
   pointer-events: none; /* 让内部的 band 通过 auto 单独接收事件 */
+  overflow: hidden; /* 严格限制在时间轴区域内，防止负偏移的 band 溢出到左侧标签列 */
   z-index: 5; /* 位于色块之下、拖拽层之上 */
 }
 

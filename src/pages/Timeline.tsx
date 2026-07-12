@@ -392,11 +392,15 @@ function formatDateLabel(d: Date, isToday: boolean): string {
   return `${year}-${month}-${date} ${dow}`;
 }
 
-function dataRange(d: Date, isToday: boolean): { start_ms: number; end_ms: number } {
+function dataRange(
+  d: Date,
+  isToday: boolean,
+  nowMs: number
+): { start_ms: number; end_ms: number } {
   const start = startOfDay(d);
   let end: Date;
   if (isToday) {
-    end = new Date();
+    end = new Date(nowMs);
   } else {
     end = new Date(start);
     end.setDate(end.getDate() + 1);
@@ -404,8 +408,20 @@ function dataRange(d: Date, isToday: boolean): { start_ms: number; end_ms: numbe
   return { start_ms: start.getTime(), end_ms: end.getTime() };
 }
 
-function displayRange(d: Date): { start_ms: number; end_ms: number } {
+/**
+ * 显示范围（也是压缩计算所依据的"日范围"）：
+ *  - 今天：0 点 → 当前时刻（未来时间不参与渲染，也不作为空闲）
+ *  - 历史：完整 0 点 → 次日 0 点
+ */
+function displayRange(
+  d: Date,
+  isToday: boolean,
+  nowMs: number
+): { start_ms: number; end_ms: number } {
   const start = startOfDay(d);
+  if (isToday) {
+    return { start_ms: start.getTime(), end_ms: nowMs };
+  }
   const end = new Date(start);
   end.setDate(end.getDate() + 1);
   return { start_ms: start.getTime(), end_ms: end.getTime() };
@@ -459,11 +475,23 @@ export default function Timeline() {
     [selectedDate, isToday]
   );
 
+  // 当前时刻：仅在查看今天时按分钟推进（历史查看不需要）
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isToday) return;
+    setNowMs(Date.now());
+    const timer = setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => clearInterval(timer);
+  }, [isToday]);
+
   const fetchRange = useMemo(
-    () => dataRange(selectedDate, isToday),
-    [selectedDate, isToday]
+    () => dataRange(selectedDate, isToday, nowMs),
+    [selectedDate, isToday, nowMs]
   );
-  const fullDayRange = useMemo(() => displayRange(selectedDate), [selectedDate]);
+  const fullDayRange = useMemo(
+    () => displayRange(selectedDate, isToday, nowMs),
+    [selectedDate, isToday, nowMs]
+  );
 
   // 全局空白（基于所有 App 合并区间）
   const globalGaps = useMemo(
@@ -579,26 +607,27 @@ export default function Timeline() {
     }
   }, [compressed, viewport, segmentsData, fullDayRange, globalGaps]);
 
-  // 加载数据
+  // 加载数据（fetchRange 会随 nowMs 每分钟变化，天然驱动刷新，无需再挂 interval）
   useEffect(() => {
+    let cancelled = false;
     async function fetchData() {
       setLoading(true);
       try {
         const buckets = await fetchBucketsInRange(fetchRange);
+        if (cancelled) return;
         const appLanes = buildAppLanes(buckets);
         setLanes(appLanes);
       } catch (e) {
         console.error("Timeline refresh failed:", e);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     }
     fetchData();
-    if (isToday) {
-      const timer = setInterval(fetchData, 60_000);
-      return () => clearInterval(timer);
-    }
-  }, [fetchRange.start_ms, fetchRange.end_ms, isToday]);
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchRange.start_ms, fetchRange.end_ms]);
 
   // 滚轮缩放（虚拟坐标空间）
   useEffect(() => {
