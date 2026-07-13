@@ -337,8 +337,8 @@ body[data-platform="macos"] .sidebar-header {
   cursor: default;
   user-select: none;
   -webkit-user-select: none;
-  /* 视觉微调：上移 4px、右移 4px，与红绿灯圆心贴齐（不占布局） */
-  transform: translate(4px, -4px);
+  /* 视觉微调：上移 5px、右移 4px，与红绿灯圆心贴齐（不占布局） */
+  transform: translate(4px, -5px);
 }
 
 .sidebar-nav {
