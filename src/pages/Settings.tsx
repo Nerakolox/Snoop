@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
@@ -386,7 +387,7 @@ export default function Settings() {
         </SettingRow>
       </div>
 
-      {showDevConfirm && (
+      {showDevConfirm && createPortal(
         <div className="dev-confirm-overlay" onClick={cancelDevMode}>
           <div className="dev-confirm-dialog" onClick={(e) => e.stopPropagation()}>
             <div className="dev-confirm-header">
@@ -404,7 +405,8 @@ export default function Settings() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
