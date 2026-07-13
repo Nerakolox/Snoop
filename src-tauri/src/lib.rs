@@ -36,7 +36,7 @@ pub fn run() {
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
             // Windows：关闭原生装饰，改用前端自绘 title bar；圆角/阴影交给系统组合器
             #[cfg(target_os = "windows")]
@@ -218,13 +218,22 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| {
-            if let RunEvent::ExitRequested { api, code, .. } = event {
-                // 无退出码代表系统"最后一个窗口关闭"触发的退出，拦截以让 App 常驻托盘
+        .run(|app_handle, event| match event {
+            RunEvent::ExitRequested { api, code, .. } => {
                 if code.is_none() {
                     api.prevent_exit();
                 }
             }
+            #[cfg(target_os = "macos")]
+            RunEvent::Reopen { has_visible_windows, .. } => {
+                if !has_visible_windows {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+            _ => {}
         });
 }
 

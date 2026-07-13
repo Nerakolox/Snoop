@@ -47,8 +47,8 @@ export default function Sidebar({ active, onSelect }: Props) {
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-header">
-        <h1 className="sidebar-brand">Snoop</h1>
+      <div className="sidebar-header" data-tauri-drag-region>
+        <h1 className="sidebar-brand" data-tauri-drag-region>Snoop</h1>
       </div>
 
       <nav className="sidebar-nav">

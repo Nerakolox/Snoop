@@ -285,10 +285,19 @@ body[data-platform="windows"] {
 
 @media (prefers-color-scheme: dark) {
   .sidebar {
-    /* dark 模式改用 --color-surface-2 #2B2731 的暖深灰，语义对齐 */
     background: rgba(43, 39, 49, 0.8);
     border-right-color: rgba(255, 255, 255, 0.08);
   }
+}
+
+[data-theme="dark"] .sidebar {
+  background: rgba(43, 39, 49, 0.8);
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .sidebar {
+  background: rgba(250, 248, 245, 0.8);
+  border-right-color: rgba(0, 0, 0, 0.06);
 }
 
 .sidebar-header {
