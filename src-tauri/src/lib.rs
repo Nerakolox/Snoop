@@ -108,18 +108,20 @@ pub fn run() {
                         // 标题栏透明，让内容延伸到标题栏区域
                         let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
 
-                        // 微调红绿灯位置（相对于窗口左上角）
+                        // 微调红绿灯位置（AppKit 坐标：以标题栏为参考，y 越大越靠上）
+                        // Snoop 文字 font-size 16px + padding-top 17px，视觉中心约在窗口顶下 25px；
+                        // 红绿灯按钮圆直径 ~14px，y=14 时圆心约在窗口顶下 25px，与文字对齐。
                         let close_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
                         if close_button != nil {
-                            close_button.setFrameOrigin(NSPoint::new(16.0, 18.0));
+                            close_button.setFrameOrigin(NSPoint::new(16.0, 14.0));
                         }
                         let minimize_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
                         if minimize_button != nil {
-                            minimize_button.setFrameOrigin(NSPoint::new(36.0, 18.0));
+                            minimize_button.setFrameOrigin(NSPoint::new(36.0, 14.0));
                         }
                         let zoom_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
                         if zoom_button != nil {
-                            zoom_button.setFrameOrigin(NSPoint::new(56.0, 18.0));
+                            zoom_button.setFrameOrigin(NSPoint::new(56.0, 14.0));
                         }
                     }
                 }

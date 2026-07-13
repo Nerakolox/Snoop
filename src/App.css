@@ -51,7 +51,9 @@
 
   /* 侧边栏尺寸 */
   --sidebar-width: 240px;
-  --traffic-light-inset: 20px;
+  /* macOS 红绿灯（close/min/zoom）在侧栏顶部占据的左侧宽度：
+     close@x=16 + min@x=36 + zoom@x=56，每颗 ~14px，末端 ~70px，留 6px 呼吸 */
+  --traffic-light-inset: 76px;
 
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", sans-serif;
   font-size: var(--text-sm);
@@ -301,9 +303,8 @@ body[data-platform="windows"] {
 }
 
 .sidebar-header {
-  padding: var(--space-6) var(--space-4) var(--space-4);
-  padding-top: 52px;
-  padding-left: 20px;
+  /* 默认（Windows/Linux）：常规内边距，品牌名从最左开始 */
+  padding: var(--space-3) var(--space-4);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -311,10 +312,16 @@ body[data-platform="windows"] {
   -webkit-app-region: drag;
 }
 
-body[data-platform="windows"] .sidebar-header {
-  /* Windows 上侧栏顶天，减去红绿灯留白；与右侧 title bar 高度大致对齐 */
-  padding-top: var(--space-3);
-  padding-bottom: var(--space-3);
+/* macOS：红绿灯与 Snoop 品牌名同一行 —— 让出左侧红绿灯宽度，两者垂直居中对齐。
+   与 lib.rs 中 setFrameOrigin(_, 14.0) 的按钮位置（圆心距窗口顶 ~25px）配合，
+   header 高度 ~50px（padding 17 + brand 16 + padding 17），brand 中心即 y≈25，
+   使 h1 文字与红绿灯圆点落在同一水平视线上。
+   顶部整行作为拖拽区，不应显示文本光标或允许选中。 */
+body[data-platform="macos"] .sidebar-header {
+  padding: 17px var(--space-4) 17px var(--traffic-light-inset);
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sidebar-brand {
@@ -324,7 +331,12 @@ body[data-platform="windows"] .sidebar-header {
   color: var(--color-accent);
   margin: 0;
   flex: 1;
+  line-height: 1;
   -webkit-app-region: drag;
+  /* 品牌名不是可编辑文本：默认光标 + 禁选中，避免出现 I-beam */
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sidebar-nav {
