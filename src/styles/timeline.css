@@ -1,0 +1,632 @@
+/* ---------- Timeline page ----------
+   三列 grid：左侧时间（tabular-nums 定宽）· 中间轴（细线 + 圆点）· 右侧会话卡。
+   轴用 ::before 伪元素跨整条时间线画一根 --color-border 的细竖线。
+*/
+
+.timeline {
+  padding: var(--space-6) var(--space-8) var(--space-8);
+  max-width: 100%;
+}
+
+.timeline-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.timeline-item {
+  display: grid;
+  grid-template-columns: 44px 20px 1fr;
+  align-items: start;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.timeline-time {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  /* 与卡片顶部标题的 baseline 大致对齐（卡片内 padding + 图标行高） */
+  padding-top: 14px;
+  text-align: right;
+  font-weight: 600;
+}
+
+/* 轴列：细线贯穿整个 item 的竖直方向，圆点浮在线上 */
+.timeline-axis {
+  position: relative;
+  align-self: stretch;
+  display: flex;
+  justify-content: center;
+}
+
+.timeline-axis::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: calc(var(--space-4) * -1); /* 延伸穿过下一个 item 的间距 */
+  left: 50%;
+  width: 1px;
+  transform: translateX(-0.5px);
+  background: var(--color-border);
+}
+
+/* 最后一个 item 的轴不再向下延伸 */
+.timeline-item:last-child .timeline-axis::before {
+  bottom: 0;
+}
+
+.timeline-dot {
+  position: relative;
+  z-index: 1;
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  margin-top: 16px; /* 与卡片顶部内容中心大致对齐 */
+  background: var(--dot-color, var(--color-accent));
+  box-shadow: 0 0 0 3px var(--color-bg);
+}
+
+.timeline-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* 会话卡片 —— 左边缘一条强度色竖条 */
+.session-card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-border); /* 内联覆盖颜色 */
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.session-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.session-app-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.session-app-name {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-range {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.session-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.session-tag {
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+}
+
+.session-duration {
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 猫吐槽气泡 —— accent-soft 底、左上一个"猫"头像占位 */
+.cat-bubble {
+  align-self: stretch;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-md);
+  /* 稍微内缩，视觉上"从卡片伸出来"的话痨 */
+  margin-left: var(--space-4);
+}
+
+.cat-bubble-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cat-bubble-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: 1.5;
+  font-style: italic;
+  min-width: 0;
+}
+
+
+/* ---------- 时间线页：泳道图 ---------- */
+
+.swimlane-page {
+  padding: var(--space-6) var(--space-8);
+  height: 100%;
+  overflow: hidden; /* 禁止外层滚动 */
+  display: flex;
+  flex-direction: column;
+}
+
+/* 日期切换控件 */
+.swimlane-date-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-6);
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  width: fit-content;
+}
+
+.swimlane-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--color-text);
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.swimlane-nav-btn:hover:not(:disabled) {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.swimlane-nav-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.swimlane-date-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+  padding: 0 var(--space-2);
+  min-width: 200px;
+  justify-content: center;
+}
+
+.swimlane-today-btn {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
+}
+
+.swimlane-today-btn:hover {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  transform: translateY(-1px);
+}
+
+.swimlane-reset-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth);
+}
+
+.swimlane-reset-btn:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-text-3);
+  color: var(--color-text);
+}
+
+/* 空状态 */
+.swimlane-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: var(--space-8);
+  color: var(--color-text-3);
+  min-height: 400px;
+}
+
+.swimlane-empty p {
+  margin: 0;
+  font-size: var(--text-base);
+}
+
+.swimlane-chart {
+  display: flex;
+  flex-direction: column;
+  flex: 1; /* 占满剩余空间 */
+  min-height: 0; /* 允许 flex 子元素缩小 */
+  user-select: none;
+}
+
+/* 时间轴头部 */
+.swimlane-header {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: var(--space-3);
+  background: var(--color-bg);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  flex-shrink: 0; /* 不被压缩 */
+}
+
+.swimlane-axis-label {
+  width: 200px;
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.swimlane-axis {
+  flex: 1;
+  position: relative;
+  height: 32px;
+}
+
+.swimlane-tick {
+  position: absolute;
+  top: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+/* 泳道主体容器（带渐隐遮罩） */
+.swimlane-body-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden; /* 遮罩层需要容器 overflow: hidden */
+}
+
+/* 泳道主体 */
+.swimlane-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  overflow-y: auto; /* 容器内部纵向滚动 */
+  flex: 1; /* 占满剩余空间 */
+  height: 100%;
+  min-height: 0; /* 允许缩小 */
+  padding: var(--space-4) 0;
+
+  /* 隐藏滚动条但保留滚动能力 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+}
+
+.swimlane-body::-webkit-scrollbar {
+  display: none; /* Chrome/Safari/Opera */
+}
+
+/* 渐隐遮罩 */
+.swimlane-fade-mask {
+  position: absolute;
+  pointer-events: none; /* 不阻挡鼠标交互 */
+  z-index: 20;
+  transition: opacity var(--dur-normal) var(--ease-smooth);
+}
+
+/* 上边缘渐隐 */
+.swimlane-fade-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(
+    to bottom,
+    #FAF8F5 0%,
+    rgba(250, 248, 245, 0.8) 30%,
+    transparent 100%
+  );
+}
+
+/* 下边缘渐隐 */
+.swimlane-fade-bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 60px;
+  background: linear-gradient(
+    to top,
+    #FAF8F5 0%,
+    rgba(250, 248, 245, 0.8) 30%,
+    transparent 100%
+  );
+}
+
+/* 左边缘渐隐 */
+.swimlane-fade-left {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 80px;
+  background: linear-gradient(
+    to right,
+    #FAF8F5 0%,
+    rgba(250, 248, 245, 0.6) 40%,
+    transparent 100%
+  );
+}
+
+/* 右边缘渐隐 */
+.swimlane-fade-right {
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 80px;
+  background: linear-gradient(
+    to left,
+    #FAF8F5 0%,
+    rgba(250, 248, 245, 0.6) 40%,
+    transparent 100%
+  );
+}
+
+.swimlane-row {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+}
+
+.swimlane-label {
+  width: 200px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+}
+
+.swimlane-app-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.swimlane-app-name {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 泳道轨道 */
+.swimlane-track {
+  flex: 1;
+  position: relative;
+  height: 48px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  pointer-events: none; /* 轨道本身不响应鼠标，让 body 统一处理拖拽 */
+}
+
+/* 背景网格线 */
+.swimlane-grid-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-border);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* 色块 */
+.swimlane-block {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition:
+    opacity var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
+  opacity: 0.85;
+  pointer-events: auto; /* 色块响应 hover */
+}
+
+.swimlane-block:hover {
+  opacity: 1;
+  transform: scaleY(1.1);
+  z-index: 10;
+}
+
+/* 工具提示 */
+.swimlane-tooltip {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  z-index: 1000;
+  min-width: 180px;
+}
+
+.swimlane-tooltip-app {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: var(--space-1);
+}
+
+.swimlane-tooltip-time {
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+  margin-bottom: var(--space-1);
+}
+
+.swimlane-tooltip-duration {
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+}
+
+.swimlane-tooltip-intensity {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  margin-top: var(--space-1);
+}
+
+/* 压缩视图切换按钮 */
+.swimlane-compress-toggle {
+  margin-left: var(--space-2);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth);
+}
+
+.swimlane-compress-toggle:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-border-2, var(--color-border));
+}
+
+/* 空白压缩：灰色空闲板 —— 单层覆盖，横跨所有泳道 */
+.swimlane-gap-overlay {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 200px; /* 与 .swimlane-label 宽度一致，避开 App 名称列 */
+  right: 0;
+  pointer-events: none; /* 让内部的 band 通过 auto 单独接收事件 */
+  overflow: hidden; /* 严格限制在时间轴区域内，防止负偏移的 band 溢出到左侧标签列 */
+  z-index: 5; /* 位于色块之下、拖拽层之上 */
+}
+
+.swimlane-gap-band {
+  position: absolute;
+  top: var(--space-4);
+  bottom: var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(
+    45deg,
+    color-mix(in oklab, var(--color-text-3) 18%, transparent),
+    color-mix(in oklab, var(--color-text-3) 18%, transparent) 8px,
+    color-mix(in oklab, var(--color-text-3) 8%, transparent) 8px,
+    color-mix(in oklab, var(--color-text-3) 8%, transparent) 16px
+  );
+  border-left: 1px dashed color-mix(in oklab, var(--color-text-3) 40%, transparent);
+  border-right: 1px dashed color-mix(in oklab, var(--color-text-3) 40%, transparent);
+  border-radius: var(--radius-sm);
+  pointer-events: auto;
+  overflow: hidden;
+}
+
+.swimlane-gap-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+  background: color-mix(in oklab, var(--color-bg) 70%, transparent);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  pointer-events: none;
+  max-width: calc(100% - var(--space-2));
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+

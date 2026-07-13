@@ -1,0 +1,251 @@
+/* ---------- Overview page ----------
+   四段纵向：now-card / kpi-row / panel(App 榜) / panel(热力条)。
+   全走 tokens，深浅两套自动继承。
+*/
+
+.overview {
+  padding: var(--space-6) var(--space-8) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 100%;
+}
+
+/* ① 此刻状态 —— 猫的舞台 ------------------------------------------------- */
+
+.now-card {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.now-mascot {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.now-mascot-placeholder {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--color-text-2);
+  letter-spacing: -0.02em;
+}
+
+.now-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.now-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.now-app {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.now-mood {
+  align-self: flex-start;
+  margin-top: var(--space-1);
+  padding: 2px var(--space-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.now-quip {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+/* ② KPI 一排 ------------------------------------------------------------ */
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+.kpi-card {
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.kpi-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+/* 大数字 + 小单位混排：整块 baseline 对齐、段间 3px 紧凑间距，
+   让"2 时 14 分"看起来是一个整体，不是被空格切开的四块。 */
+.kpi-value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  line-height: 1.1;
+  min-width: 0;
+  color: var(--color-text);
+}
+
+.kpi-num {
+  font-size: var(--text-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.kpi-unit {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text-2);
+  letter-spacing: 0;
+}
+
+/* ③ App 榜 -------------------------------------------------------------- */
+
+.panel {
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.panel-title {
+  margin: 0 0 var(--space-4);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.app-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.app-row {
+  display: grid;
+  grid-template-columns: 100px 1fr auto;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.app-row-name {
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.app-row-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.app-row-track {
+  height: 10px;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.app-row-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width var(--dur-base) var(--ease-smooth);
+}
+
+.app-row-time {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  min-width: 48px;
+  text-align: right;
+}
+
+/* ④ 24h 热力条 ---------------------------------------------------------- */
+
+.heat-strip {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 3px;
+  height: 32px;
+}
+
+.heat-cell {
+  border-radius: var(--radius-sm);
+  transition: transform var(--dur-fast) var(--ease-smooth);
+}
+
+.heat-cell:hover {
+  transform: scaleY(1.15);
+}
+
+/* 刻度带跟热力条共用同一份 24 列网格（含 gap），每个 tick 显式 grid-column
+   到对应小时的格子，justify-self:center 让文字落在格中心，天然对齐格子。
+   两端 0/24 特殊锚定到格子的左/右缘。 */
+.heat-scale {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 3px;
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.heat-scale-tick {
+  justify-self: center;
+}
+
+.heat-scale-tick--edge-start {
+  justify-self: start;
+}
+
+.heat-scale-tick--edge-end {
+  justify-self: end;
+}
+
