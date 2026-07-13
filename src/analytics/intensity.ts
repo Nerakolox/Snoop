@@ -82,6 +82,31 @@ export function computeIntensity(buckets: RawBucket[]): Intensity {
   return bucketIntensityFromEpm(totalEvents / durationMin);
 }
 
+export function bucketByPercentile(n: number, allCounts: number[]): Intensity {
+  if (n <= 0) return 0;
+  const nonZero = allCounts.filter((c) => c > 0);
+  if (nonZero.length === 0) return 0;
+  const sorted = [...nonZero].sort((a, b) => a - b);
+  const p20 = sorted[Math.floor(sorted.length * 0.2)];
+  const p40 = sorted[Math.floor(sorted.length * 0.4)];
+  const p60 = sorted[Math.floor(sorted.length * 0.6)];
+  const p80 = sorted[Math.floor(sorted.length * 0.8)];
+  if (n >= p80) return 4;
+  if (n >= p60) return 3;
+  if (n >= p40) return 2;
+  if (n >= p20) return 1;
+  return 1;
+}
+
+export function bucketSimple(n: number, max: number): Intensity {
+  if (n <= 0) return 0;
+  const pct = n / (max || 1);
+  if (pct >= 0.7) return 4;
+  if (pct >= 0.5) return 3;
+  if (pct >= 0.3) return 2;
+  return 1;
+}
+
 /** CSS 强度变量引用。 */
 export function intensityVar(level: Intensity): string {
   return `var(--intensity-${level})`;

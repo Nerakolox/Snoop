@@ -17,7 +17,7 @@ import {
   type RawBucket,
   type RawKeyDetail,
 } from "../data";
-import { aggregateByApp, MOUSE_PIXELS_PER_METER, intensityVar } from "../analytics";
+import { aggregateByApp, MOUSE_PIXELS_PER_METER, intensityVar, bucketByPercentile, bucketSimple } from "../analytics";
 import { parseKLE, getLabelRdevCode, getDisplayLabel, type KLEKey } from "../kleParser";
 import { startOfDay, startOfWeek, isSameDay, isSameWeek, formatPeriodLabel } from "../utils/date";
 import KLEKeyboard from "../components/KLEKeyboard";
@@ -28,46 +28,8 @@ import KLELayoutPicker, {
 } from "../components/KLELayoutPicker";
 import AppIcon from "../components/AppIcon";
 
-type Intensity = 0 | 1 | 2 | 3 | 4;
-
 type AppFilter = "all" | string;
 type TimeFilter = "day" | "week";
-
-// ---- 强度分档：分位数分档，避免极值压垮 ---------------------------------------
-// 按相对排名而非绝对比例分档，让常用键之间有明显层次差异
-
-function bucketByPercentile(n: number, allCounts: number[]): Intensity {
-  if (n <= 0) return 0;
-  // 只对有按压的键（>0）计算分位数
-  const nonZero = allCounts.filter((c) => c > 0);
-  if (nonZero.length === 0) return 0;
-
-  // 排序
-  const sorted = [...nonZero].sort((a, b) => a - b);
-
-  // 计算分位数阈值（20/40/60/80 百分位）
-  const p20 = sorted[Math.floor(sorted.length * 0.2)];
-  const p40 = sorted[Math.floor(sorted.length * 0.4)];
-  const p60 = sorted[Math.floor(sorted.length * 0.6)];
-  const p80 = sorted[Math.floor(sorted.length * 0.8)];
-
-  // 按分位数分档：反映相对排名而非绝对值
-  if (n >= p80) return 4; // Top 20%
-  if (n >= p60) return 3; // 60-80%
-  if (n >= p40) return 2; // 40-60%
-  if (n >= p20) return 1; // 20-40%
-  return 1; // Bottom 20% 但有按压，用浅色
-}
-
-// 鼠标和 Top 按键用简单的相对归一化（它们场景不同，不需要分位数）
-function bucketSimple(n: number, max: number): Intensity {
-  if (n <= 0) return 0;
-  const pct = n / (max || 1);
-  if (pct >= 0.7) return 4;
-  if (pct >= 0.5) return 3;
-  if (pct >= 0.3) return 2;
-  return 1;
-}
 
 // ---- 展示常量 ---------------------------------------------------------------
 
