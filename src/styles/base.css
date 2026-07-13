@@ -1,0 +1,423 @@
+/* ---------- Shell ---------- */
+
+:root {
+  --titlebar-height: 0px;
+}
+
+body[data-platform="windows"] {
+  --titlebar-height: 36px;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: row;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: transparent;
+}
+
+/* 右侧列（title bar + 主内容）显式画上 --color-bg，
+   系统 vibrancy 只透过 sidebar 区域露出来 */
+.app-right {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--color-bg);
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--color-bg);
+  margin: 0;
+  padding: 0;
+}
+
+/* ---------- Page transition (main content only) ----------
+   两阶段 transition：先淡出旧页（is-hidden），换页并等新页 layout
+   完成后再淡入（is-entering）。用 transition 而非 animation，避开
+   "挂载同帧动画被吞"的老问题，也让新页的初次渲染不与动画抢主线程。
+   仅右侧主内容参与，侧栏不动。系统"减少动态效果"或关开关时禁用。 */
+.page-layer {
+  height: 100%;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--page-fade-dur, 220ms) cubic-bezier(0.22, 0.61, 0.36, 1),
+    transform var(--page-fade-dur, 220ms) cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+/* 淡出：旧内容往上飞出 */
+.page-layer.is-leaving {
+  opacity: 0;
+  transform: translateY(-2.5px);
+}
+
+/* 新页挂载起点：从下方浮上来（transition 前的静态起点，无过渡） */
+.page-layer.is-entering-start {
+  opacity: 0;
+  transform: translateY(3px);
+  transition: none;
+}
+
+/* 淡入终态：默认样式即目标态，transition 从起点过渡过来 */
+.page-layer.is-entering {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-layer {
+    transition: none !important;
+  }
+}
+
+/* ---------- Custom scrollbar (hidden by default, fades in on hover) ----------
+   任何需要滚动的容器都用 .scroll-area 或 .app-main 自动继承此样式。
+   - Firefox: scrollbar-color + scrollbar-width
+   - Chromium/WebKit (Tauri 双端): ::-webkit-scrollbar-*
+   - thumb 默认透明，容器 hover / 滚动时才淡入，视觉上与内容浮层贴合。
+*/
+
+.app-main,
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color var(--dur-base) var(--ease-smooth);
+}
+
+.app-main:hover,
+.app-main:focus-within,
+.scroll-area:hover,
+.scroll-area:focus-within {
+  scrollbar-color: rgba(107, 102, 112, 0.35) transparent;
+}
+
+.app-main::-webkit-scrollbar,
+.scroll-area::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+.app-main::-webkit-scrollbar-track,
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+  border: none;
+}
+
+.app-main::-webkit-scrollbar-thumb,
+.scroll-area::-webkit-scrollbar-thumb {
+  background-color: transparent;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition:
+    background-color var(--dur-base) var(--ease-smooth),
+    border-color var(--dur-base) var(--ease-smooth);
+}
+
+.app-main:hover::-webkit-scrollbar-thumb,
+.app-main:focus-within::-webkit-scrollbar-thumb,
+.scroll-area:hover::-webkit-scrollbar-thumb,
+.scroll-area:focus-within::-webkit-scrollbar-thumb {
+  background-color: rgba(42, 39, 48, 0.22);
+}
+
+.app-main::-webkit-scrollbar-thumb:hover,
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(42, 39, 48, 0.42);
+}
+
+.app-main::-webkit-scrollbar-thumb:active,
+.scroll-area::-webkit-scrollbar-thumb:active {
+  background-color: var(--color-accent);
+}
+
+.app-main::-webkit-scrollbar-corner,
+.scroll-area::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 隐藏 Windows/WebView2 默认的上下箭头按钮 */
+.app-main::-webkit-scrollbar-button,
+.scroll-area::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-main:hover,
+  .app-main:focus-within,
+  .scroll-area:hover,
+  .scroll-area:focus-within {
+    scrollbar-color: rgba(240, 237, 232, 0.28) transparent;
+  }
+
+  .app-main:hover::-webkit-scrollbar-thumb,
+  .app-main:focus-within::-webkit-scrollbar-thumb,
+  .scroll-area:hover::-webkit-scrollbar-thumb,
+  .scroll-area:focus-within::-webkit-scrollbar-thumb {
+    background-color: rgba(240, 237, 232, 0.2);
+  }
+
+  .app-main::-webkit-scrollbar-thumb:hover,
+  .scroll-area::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(240, 237, 232, 0.4);
+  }
+}
+
+/* ---------- Sidebar (vibrancy) ---------- */
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex: 0 0 var(--sidebar-width);
+  /* 0.8 米白叠色（--color-bg #FAF8F5）：系统 vibrancy 提供模糊底，这层暖调染色 */
+  background: rgba(250, 248, 245, 0.8);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  position: relative;
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  -webkit-app-region: drag;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar {
+    background: rgba(43, 39, 49, 0.8);
+    border-right-color: rgba(255, 255, 255, 0.08);
+  }
+}
+
+[data-theme="dark"] .sidebar {
+  background: rgba(43, 39, 49, 0.8);
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .sidebar {
+  background: rgba(250, 248, 245, 0.8);
+  border-right-color: rgba(0, 0, 0, 0.06);
+}
+
+.sidebar-header {
+  /* 默认（Windows/Linux）：常规内边距，品牌名从最左开始 */
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  -webkit-app-region: drag;
+}
+
+/* macOS：红绿灯与 Snoop 品牌名同一行 —— 让出左侧红绿灯宽度，两者垂直居中对齐。
+   与 lib.rs 中 setFrameOrigin(_, 14.0) 的按钮位置（圆心距窗口顶 ~25px）配合，
+   header 高度 ~50px（padding 17 + brand 16 + padding 17），brand 中心即 y≈25，
+   使 h1 文字与红绿灯圆点落在同一水平视线上。
+   顶部整行作为拖拽区，不应显示文本光标或允许选中。 */
+body[data-platform="macos"] .sidebar-header {
+  padding: 17px var(--space-4) 17px var(--traffic-light-inset);
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sidebar-brand {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--color-accent);
+  margin: 0;
+  flex: 1;
+  line-height: 1;
+  -webkit-app-region: drag;
+  /* 品牌名不是可编辑文本：默认光标 + 禁选中，避免出现 I-beam */
+  cursor: default;
+  user-select: none;
+  -webkit-user-select: none;
+  /* 视觉微调：上移 5px、右移 4px，与红绿灯圆心贴齐（不占布局） */
+  transform: translate(4px, -5px);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: 0 var(--space-3);
+}
+
+.sidebar-section {
+  margin-top: var(--space-6);
+  padding: 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sidebar-section-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-3);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.sidebar-bottom {
+  margin-top: auto;
+  padding: var(--space-4) var(--space-3) var(--space-6);
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-bottom {
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  text-align: left;
+  width: 100%;
+  /* 拆分：过渡只走廉价属性（背景/文字/阴影），不含 backdrop-filter —
+     那个每帧都要对 vibrancy 底重算高斯，插值会卡帧 */
+  transition:
+    background var(--dur-base) var(--ease-smooth),
+    color var(--dur-base) var(--ease-smooth),
+    box-shadow var(--dur-base) var(--ease-smooth),
+    font-weight var(--dur-fast) var(--ease-smooth);
+  font-weight: 500;
+  -webkit-app-region: no-drag;
+}
+
+.sidebar-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+
+.sidebar-item.is-active {
+  /* 磨砂玻璃选中态：半透明品牌紫 + backdrop blur，
+     视觉上像从 sidebar vibrancy 底透出的小玻璃片 */
+  background: rgba(109, 90, 230, 0.18);
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  color: var(--color-accent);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(109, 90, 230, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-item.is-active {
+    background: rgba(139, 124, 240, 0.22);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  }
+}
+
+.sidebar-item-icon {
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.sidebar-item-label {
+  flex: 1;
+}
+
+/* ---------- Custom Title Bar (Windows) ----------
+   与侧栏融为一体：
+   - 全宽横条，左侧留出 sidebar 宽度作为"侧栏顶部延伸"
+   - 背景与 sidebar 顶部渐变同色系，视觉贯通
+   - 左侧品牌名对齐 sidebar-header
+   - 右侧 min/max/close 三按钮，Windows 11 语义、App 配色
+*/
+
+.titlebar {
+  height: var(--titlebar-height);
+  flex-shrink: 0;
+  display: flex;
+  align-items: stretch;
+  background: var(--color-bg);
+  position: relative;
+  z-index: 10;
+  user-select: none;
+}
+
+.titlebar-drag {
+  flex: 1;
+  min-width: 0;
+}
+
+.titlebar-controls {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.titlebar-btn {
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+  -webkit-app-region: no-drag;
+}
+
+.titlebar-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
+}
+
+.titlebar-btn:active {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .titlebar-btn:hover {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  .titlebar-btn:active {
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+
+.titlebar-btn-close:hover {
+  background: var(--intensity-4);
+  color: #fff;
+}
+
+.titlebar-btn-close:active {
+  background: rgba(225, 90, 76, 0.85);
+  color: #fff;
+}

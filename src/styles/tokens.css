@@ -1,0 +1,136 @@
+:root {
+  /* ============================================================
+     SNOOP DESIGN TOKENS  —  深浅双轨，语义化命名
+     ============================================================ */
+
+  /* 品牌色（交互/身份：导航选中、按钮、链接） */
+  --color-accent:        #6D5AE6;
+  --color-accent-hover:  #5B48D4;
+  --color-accent-soft:   #ECE9FB;
+  --color-on-accent:     #FFFFFF;
+
+  /* 中性 —— 背景 / 表面 / 边框 / 文字 */
+  --color-bg:            #FAF8F5;
+  --color-surface:       #FFFFFF;
+  --color-surface-2:     #F3F0EA;
+  --color-border:        #E8E3D9;
+  --color-text:          #2A2730;
+  --color-text-2:        #6B6670;
+  --color-text-3:        #9B96A0;
+
+  /* 强度色阶（数据表达：键鼠活跃度低→高） */
+  --intensity-0:         #D9D5CE;
+  --intensity-1:         #F2D98C;
+  --intensity-2:         #F5B841;
+  --intensity-3:         #EE8B3D;
+  --intensity-4:         #E15A4C;
+
+  /* 圆角 */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  /* 间距 */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px;
+  --space-4: 16px; --space-6: 24px; --space-8: 32px;
+
+  /* 字号 */
+  --text-xs: 12px; --text-sm: 13px; --text-base: 14px;
+  --text-lg: 16px; --text-xl: 20px; --text-2xl: 28px;
+  --text-display: 36px;
+
+  /* 动效 */
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.2, 1);
+  --dur-fast: 150ms; --dur-base: 250ms;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(42,39,48,.06);
+  --shadow-md: 0 4px 16px rgba(42,39,48,.08);
+
+  /* 侧边栏尺寸 */
+  --sidebar-width: 240px;
+  /* macOS 红绿灯（close/min/zoom）在侧栏顶部占据的左侧宽度：
+     close@x=16 + min@x=36 + zoom@x=56，每颗 ~14px，末端 ~70px，留 6px 呼吸 */
+  --traffic-light-inset: 76px;
+
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", sans-serif;
+  font-size: var(--text-sm);
+  line-height: 1.45;
+  color: var(--color-text);
+  background-color: transparent;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+[data-theme="dark"] {
+  --color-accent:        #8B7CF0;
+  --color-accent-hover:  #9E90F5;
+  --color-accent-soft:   #2A2540;
+  --color-on-accent:     #FFFFFF;
+  --color-bg:            #17151A;
+  --color-surface:       #211E26;
+  --color-surface-2:     #2B2731;
+  --color-border:        #38333F;
+  --color-text:          #F0EDE8;
+  --color-text-2:        #A8A2AE;
+  --color-text-3:        #726C78;
+  --intensity-0:         #3A3640;
+  --intensity-1:         #C9A94E;
+  --intensity-2:         #E0A63A;
+  --intensity-3:         #E88238;
+  --intensity-4:         #E15A4C;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.4);
+}
+
+[data-theme="light"] {
+  --color-accent:        #6C5CE7;
+  --color-accent-hover:  #7D6EF0;
+  --color-accent-soft:   #EDE9FF;
+  --color-on-accent:     #FFFFFF;
+  --color-bg:            #F5F4F7;
+  --color-surface:       #FFFFFF;
+  --color-surface-2:     #F0EEF3;
+  --color-border:        #E2DFE8;
+  --color-text:          #1A1820;
+  --color-text-2:        #5C5868;
+  --color-text-3:        #9B96A4;
+  --intensity-0:         #E8E5EE;
+  --intensity-1:         #D4A843;
+  --intensity-2:         #E09030;
+  --intensity-3:         #E07030;
+  --intensity-4:         #D94438;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
+  --shadow-md: 0 4px 16px rgba(0,0,0,.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* 主窗口 transparent: true 后，透明色一路穿到系统 vibrancy/mica。
+   任何在这一层设不透明背景都会挡住系统模糊，所以 body/root 保持透明。 */
+html,
+body,
+#root {
+  background: transparent;
+}
+
+button {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
