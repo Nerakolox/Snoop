@@ -46,23 +46,23 @@ export default function Sidebar({ active, onSelect }: Props) {
   );
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" data-tauri-drag-region>
       <div className="sidebar-header" data-tauri-drag-region>
         <h1 className="sidebar-brand" data-tauri-drag-region>Snoop</h1>
       </div>
 
-      <nav className="sidebar-nav">
+      <nav className="sidebar-nav" data-tauri-drag-region>
         {MAIN_ITEMS.map(renderItem)}
       </nav>
 
       {devMode && (
-        <div className="sidebar-section">
-          <div className="sidebar-section-title">开发</div>
+        <div className="sidebar-section" data-tauri-drag-region>
+          <div className="sidebar-section-title" data-tauri-drag-region>开发</div>
           {DEV_ITEMS.map(renderItem)}
         </div>
       )}
 
-      <div className="sidebar-bottom">
+      <div className="sidebar-bottom" data-tauri-drag-region>
         {renderItem(SETTINGS_ITEM)}
       </div>
     </aside>
