@@ -82,10 +82,11 @@ export function computeIntensity(buckets: RawBucket[]): Intensity {
   return bucketIntensityFromEpm(totalEvents / durationMin);
 }
 
-/**
- * 直接从"键 + 鼠点击 + 移动 + 滚动 + 时长"算强度。
- * 便于测试或调用方已有聚合值时使用。
- */
+/** CSS 强度变量引用。 */
+export function intensityVar(level: Intensity): string {
+  return `var(--intensity-${level})`;
+}
+
 export function computeIntensityFromTotals(totals: {
   key_total: number;
   mouse_left: number;

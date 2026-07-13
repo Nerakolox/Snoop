@@ -17,8 +17,9 @@ import {
   type RawBucket,
   type RawKeyDetail,
 } from "../data";
-import { aggregateByApp, MOUSE_PIXELS_PER_METER } from "../analytics";
+import { aggregateByApp, MOUSE_PIXELS_PER_METER, intensityVar } from "../analytics";
 import { parseKLE, getLabelRdevCode, getDisplayLabel, type KLEKey } from "../kleParser";
+import { startOfDay, startOfWeek, isSameDay, isSameWeek, formatPeriodLabel } from "../utils/date";
 import KLEKeyboard from "../components/KLEKeyboard";
 import KLELayoutPicker, {
   getSavedLayout,
@@ -68,10 +69,6 @@ function bucketSimple(n: number, max: number): Intensity {
   return 1;
 }
 
-function intensityVar(level: Intensity) {
-  return `var(--intensity-${level})`;
-}
-
 // ---- 展示常量 ---------------------------------------------------------------
 
 const TIME_LABELS: { id: TimeFilter; label: string }[] = [
@@ -81,57 +78,8 @@ const TIME_LABELS: { id: TimeFilter; label: string }[] = [
 
 // ---- 日期工具函数 -----------------------------------------------------------
 
-function startOfDay(d: Date): Date {
-  const result = new Date(d);
-  result.setHours(0, 0, 0, 0);
-  return result;
-}
 
-function startOfWeek(d: Date): Date {
-  const result = new Date(d);
-  result.setHours(0, 0, 0, 0);
-  const dow = result.getDay();
-  const offsetToMonday = dow === 0 ? 6 : dow - 1;
-  result.setDate(result.getDate() - offsetToMonday);
-  return result;
-}
 
-function isSameDay(a: Date, b: Date): boolean {
-  return (
-    a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate()
-  );
-}
-
-function isSameWeek(a: Date, b: Date): boolean {
-  const weekA = startOfWeek(a);
-  const weekB = startOfWeek(b);
-  return isSameDay(weekA, weekB);
-}
-
-function formatDateLabel(d: Date, mode: TimeFilter, isCurrentPeriod: boolean): string {
-  if (isCurrentPeriod) {
-    return mode === "day" ? "今天" : "本周";
-  }
-
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const date = String(d.getDate()).padStart(2, "0");
-
-  if (mode === "day") {
-    const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-    const dow = days[d.getDay()];
-    return `${year}-${month}-${date} ${dow}`;
-  } else {
-    // 周模式：显示周一和周日
-    const weekStart = startOfWeek(d);
-    const weekEnd = new Date(weekStart.getTime() + 6 * DAY_MS);
-    const endMonth = String(weekEnd.getMonth() + 1).padStart(2, "0");
-    const endDate = String(weekEnd.getDate()).padStart(2, "0");
-    return `${month}-${date} ~ ${endMonth}-${endDate}`;
-  }
-}
 
 function getTimeRange(d: Date, mode: TimeFilter): { start_ms: number; end_ms: number } {
   if (mode === "day") {
@@ -186,7 +134,7 @@ export default function Keyboard() {
     }
   }, [selectedDate, today, timeFilter]);
   const dateLabel = useMemo(
-    () => formatDateLabel(selectedDate, timeFilter, isCurrentPeriod),
+    () => formatPeriodLabel(selectedDate, timeFilter, isCurrentPeriod),
     [selectedDate, timeFilter, isCurrentPeriod]
   );
 

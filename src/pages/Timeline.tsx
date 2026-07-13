@@ -22,6 +22,8 @@ import {
 import { fetchBucketsInRange, type RawBucket } from "../data";
 import { computeBucketIntensity } from "../analytics";
 import AppIcon from "../components/AppIcon";
+import { startOfDay, isSameDay, formatPeriodLabel } from "../utils/date";
+import { formatTime, formatDuration } from "../utils/format";
 
 // ---- 压缩配置（可调） -------------------------------------------------------
 
@@ -353,44 +355,6 @@ function buildTicks(
 
 // ---- 时间格式化 -------------------------------------------------------------
 
-function formatTime(ms: number): string {
-  const d = new Date(ms);
-  const h = d.getHours();
-  const m = d.getMinutes();
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-}
-
-function formatDuration(ms: number): string {
-  const totalMin = Math.floor(ms / 60_000);
-  if (totalMin < 60) return `${totalMin} 分钟`;
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
-}
-
-// ---- 日期工具 ---------------------------------------------------------------
-
-function startOfDay(d: Date): Date {
-  const result = new Date(d);
-  result.setHours(0, 0, 0, 0);
-  return result;
-}
-
-function isSameDay(a: Date, b: Date): boolean {
-  return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
-}
-
-function formatDateLabel(d: Date, isToday: boolean): string {
-  if (isToday) return "今天";
-  const days = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, "0");
-  const date = String(d.getDate()).padStart(2, "0");
-  const dow = days[d.getDay()];
-  return `${year}-${month}-${date} ${dow}`;
-}
 
 function dataRange(
   d: Date,
@@ -474,7 +438,7 @@ export default function Timeline() {
     [selectedDate, today]
   );
   const dateLabel = useMemo(
-    () => formatDateLabel(selectedDate, isToday),
+    () => formatPeriodLabel(selectedDate, "day", isToday),
     [selectedDate, isToday]
   );
 

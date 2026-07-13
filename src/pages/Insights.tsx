@@ -23,10 +23,12 @@ import {
   aggregateByDay,
   aggregateByApp,
   aggregateWeekHourGrid,
+  intensityVar,
   type DayStat,
   type AppStat,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
+import { fmtHours } from "../utils/format";
 
 type Intensity = 0 | 1 | 2 | 3 | 4;
 
@@ -51,14 +53,6 @@ const DAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
 // ---- 工具 -------------------------------------------------------------------
 
-function intensityVar(level: Intensity) {
-  return `var(--intensity-${level})`;
-}
-
-/** 把小时数（含小数）格式化为 "X 小时" 或 "X.X 小时"。 */
-function fmtHours(h: number) {
-  return Number.isInteger(h) ? `${h}` : h.toFixed(1);
-}
 
 /** 根据本周真实数据生成猫周报文案 */
 function generateCatReport(
