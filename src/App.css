@@ -192,13 +192,13 @@ body[data-platform="windows"] {
 /* 淡出：旧内容往上飞出 */
 .page-layer.is-leaving {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-2.5px);
 }
 
 /* 新页挂载起点：从下方浮上来（transition 前的静态起点，无过渡） */
 .page-layer.is-entering-start {
   opacity: 0;
-  transform: translateY(10px);
+  transform: translateY(3px);
   transition: none;
 }
 
