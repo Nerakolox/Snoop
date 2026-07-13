@@ -10,7 +10,7 @@
  *  缩放和平移直接操作虚拟坐标，避免坐标系混用。
  */
 
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { CSSProperties } from "react";
 import {
   ChevronLeft,
@@ -435,10 +435,12 @@ export default function Timeline() {
   const [loading, setLoading] = useState(false);
   const [hoveredBlock, setHoveredBlock] = useState<{
     app: string;
+    bundleId: string;
     block: TimeBlock;
     x: number;
     y: number;
   } | null>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
 
   /** 压缩开关：默认开启 */
   const [compressed, setCompressed] = useState(true);
@@ -543,6 +545,22 @@ export default function Timeline() {
     () => buildTicks(segmentsData.segments, viewRange.start, viewRange.end),
     [segmentsData, viewRange.start, viewRange.end]
   );
+
+  useLayoutEffect(() => {
+    if (!hoveredBlock || !tooltipRef.current || !pageRef.current) return;
+    const tip = tooltipRef.current;
+    const rect = tip.getBoundingClientRect();
+    const container = pageRef.current.getBoundingClientRect();
+
+    let dx = 0;
+    let dy = 0;
+    if (rect.right > container.right - 8) dx = container.right - 8 - rect.right;
+    if (rect.left < container.left + 8) dx = container.left + 8 - rect.left;
+    if (rect.top < container.top + 8) dy = container.top + 8 - rect.top;
+
+    tip.style.transform = `translate(calc(-50% + ${dx}px), calc(-100% + ${dy}px))`;
+    tip.style.visibility = "visible";
+  }, [hoveredBlock]);
 
   const resetView = useCallback(() => {
     setViewport(null);
@@ -969,6 +987,7 @@ export default function Timeline() {
                           const pageRect = pageRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
                           setHoveredBlock({
                             app: lane.app_name,
+                            bundleId: lane.app_bundle_id,
                             block,
                             x: rect.left + rect.width / 2 - pageRect.left,
                             y: rect.top - pageRect.top,
@@ -988,10 +1007,14 @@ export default function Timeline() {
       {/* Tooltip */}
       {hoveredBlock && (
         <div
+          ref={tooltipRef}
           className="swimlane-tooltip"
-          style={{ left: hoveredBlock.x, top: hoveredBlock.y - 8 }}
+          style={{ left: hoveredBlock.x, top: hoveredBlock.y - 8, visibility: "hidden" }}
         >
-          <div className="swimlane-tooltip-app">{hoveredBlock.app}</div>
+          <div className="swimlane-tooltip-app">
+            <AppIcon bundleId={hoveredBlock.bundleId} appName={hoveredBlock.app} size={16} />
+            {hoveredBlock.app}
+          </div>
           <div className="swimlane-tooltip-time">
             {formatTime(hoveredBlock.block.start_ms)} –{" "}
             {formatTime(hoveredBlock.block.end_ms)}

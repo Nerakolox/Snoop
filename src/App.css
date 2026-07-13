@@ -2560,6 +2560,9 @@ body[data-platform="macos"] .sidebar-header {
 }
 
 .swimlane-tooltip-app {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: var(--text-sm);
   font-weight: 600;
   color: var(--color-text);
