@@ -180,7 +180,7 @@ body[data-platform="windows"] {
    "挂载同帧动画被吞"的老问题，也让新页的初次渲染不与动画抢主线程。
    仅右侧主内容参与，侧栏不动。系统"减少动态效果"或关开关时禁用。 */
 .page-layer {
-  min-height: 100%;
+  height: 100%;
   opacity: 1;
   transform: translateY(0);
   transition:
