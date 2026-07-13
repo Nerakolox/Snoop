@@ -93,6 +93,9 @@ export default function Settings() {
   const [devMode, setDevMode] = useState(() =>
     localStorage.getItem("dev_mode") === "true"
   );
+  const [pageTransition, setPageTransition] = useState(() =>
+    localStorage.getItem("page_transition_enabled") !== "false"
+  );
   const [showDevConfirm, setShowDevConfirm] = useState(false);
   const [dbInfo, setDbInfo] = useState<DbInfo | null>(null);
   const [newApp, setNewApp] = useState("");
@@ -146,6 +149,12 @@ export default function Settings() {
   function saveSnarky(v: SnarkyLevel) {
     setSnarky(v);
     localStorage.setItem("snarky", v);
+  }
+
+  function savePageTransition(v: boolean) {
+    setPageTransition(v);
+    localStorage.setItem("page_transition_enabled", String(v));
+    window.dispatchEvent(new CustomEvent("page-transition-change", { detail: v }));
   }
 
   function toggleDevMode(v: boolean) {
@@ -236,6 +245,10 @@ export default function Settings() {
               { value: "quit", label: "直接退出", icon: <Power size={13} /> },
             ]}
           />
+        </SettingRow>
+
+        <SettingRow label="页面切换动画" desc="切换页面时的淡入过渡；系统开启减少动态效果时自动禁用">
+          <Toggle checked={pageTransition} onChange={savePageTransition} />
         </SettingRow>
       </div>
 

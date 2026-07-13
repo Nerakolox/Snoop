@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Sidebar, { NavKey } from "./components/Sidebar";
 import TitleBar from "./components/TitleBar";
 import Overview from "./pages/Overview";
@@ -33,13 +33,31 @@ function renderPage(key: NavKey) {
 
 export default function App() {
   const [active, setActive] = useState<NavKey>("overview");
+  const [transitionEnabled, setTransitionEnabled] = useState(
+    () => localStorage.getItem("page_transition_enabled") !== "false"
+  );
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      setTransitionEnabled((e as CustomEvent<boolean>).detail);
+    };
+    window.addEventListener("page-transition-change", handler);
+    return () => window.removeEventListener("page-transition-change", handler);
+  }, []);
 
   return (
     <div className="app-shell">
       <Sidebar active={active} onSelect={setActive} />
       <div className="app-right">
         {isWindows && <TitleBar />}
-        <main className="app-main">{renderPage(active)}</main>
+        <main className="app-main">
+          <div
+            key={active}
+            className={`page-transition${transitionEnabled ? "" : " is-disabled"}`}
+          >
+            {renderPage(active)}
+          </div>
+        </main>
       </div>
     </div>
   );
