@@ -14,7 +14,7 @@ const DOM_TO_RDEV: Record<string, string> = {
   BracketLeft: "LeftBracket", BracketRight: "RightBracket",
   Backslash: "BackSlash", Semicolon: "SemiColon", Quote: "Quote",
   Comma: "Comma", Period: "Period", Slash: "Slash",
-  Backspace: "BackSpace", Tab: "Tab", CapsLock: "CapsLock",
+  Backspace: "Backspace", Tab: "Tab", CapsLock: "CapsLock",
   Enter: "Return", Space: "Space", Escape: "Escape",
   ShiftLeft: "ShiftLeft", ShiftRight: "ShiftRight",
   ControlLeft: "ControlLeft", ControlRight: "ControlRight",
@@ -127,7 +127,8 @@ export default function KeymapTest() {
     setPressedCodes((prev) => new Set([...prev, code]));
     const keys = kleKeysRef.current;
     const indices = rdevIndexMapRef.current.get(code);
-    const matchedLabel = indices?.length ? getDisplayLabel(keys[indices[0]]?.label ?? "") || null : null;
+    const matched = indices?.length ?? 0 > 0;
+    const matchedLabel = matched ? (getDisplayLabel(keys[indices![0]]?.label ?? "") || "Space") : null;
     const isMouseBtn = eventType === "ButtonPress";
     setLog((prev) => [
       { ts: Date.now(), source, eventType, code, matchedLabel,
