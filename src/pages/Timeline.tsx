@@ -457,6 +457,16 @@ export default function Timeline() {
   const chartRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const [bodyContentHeight, setBodyContentHeight] = useState<number | null>(null);
+
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => setBodyContentHeight(el.scrollHeight));
+    ro.observe(el);
+    setBodyContentHeight(el.scrollHeight);
+    return () => ro.disconnect();
+  }, []);
 
   const [fadeMasks, setFadeMasks] = useState({
     top: false,
@@ -915,7 +925,7 @@ export default function Timeline() {
 
             {/* 空白压缩：灰色空闲板 —— 单层覆盖，不随泳道滚动 */}
             {gapBands.length > 0 && (
-              <div className="swimlane-gap-overlay">
+              <div className="swimlane-gap-overlay" style={bodyContentHeight !== null ? { height: bodyContentHeight } : undefined}>
                 {gapBands.map((g) => (
                   <div
                     key={g.key}
