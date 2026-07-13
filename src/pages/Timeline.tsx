@@ -457,6 +457,7 @@ export default function Timeline() {
   const chartRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
 
   const [fadeMasks, setFadeMasks] = useState({
     top: false,
@@ -827,7 +828,7 @@ export default function Timeline() {
   }, [segmentsData, viewRange.start, viewRange.end]);
 
   return (
-    <div className="swimlane-page">
+    <div ref={pageRef} className="swimlane-page">
       {/* 日期切换控件 */}
       <div className="swimlane-date-picker">
         <button
@@ -885,7 +886,7 @@ export default function Timeline() {
         <div
           ref={chartRef}
           className="swimlane-chart"
-          style={{ cursor: isDragging ? "grabbing" : "grab" }}
+          style={{ cursor: isDragging ? "grabbing" : "grab", userSelect: "none", WebkitUserSelect: "none" }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
           onMouseUp={handleMouseUp}
@@ -965,11 +966,12 @@ export default function Timeline() {
                         }}
                         onMouseEnter={(e) => {
                           const rect = e.currentTarget.getBoundingClientRect();
+                          const pageRect = pageRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
                           setHoveredBlock({
                             app: lane.app_name,
                             block,
-                            x: rect.left + rect.width / 2,
-                            y: rect.top,
+                            x: rect.left + rect.width / 2 - pageRect.left,
+                            y: rect.top - pageRect.top,
                           });
                         }}
                         onMouseLeave={() => setHoveredBlock(null)}
