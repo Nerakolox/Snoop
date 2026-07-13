@@ -85,12 +85,13 @@ pub fn run() {
             }
 
             // 配置红绿灯位置：嵌入侧边栏顶部左侧
+            // 注意：仅在 setup 时摆一次不够——系统在全屏进出、resize、becomeMain、appearance
+            // 切换等 layout pass 后会把按钮拨回默认位置。install_traffic_light_pinner
+            // 会注册 NSWindow 通知观察者，每次状态变化自动重放坐标。
             #[cfg(target_os = "macos")]
             {
                 if let Some(window) = app.get_webview_window("main") {
-                    use cocoa::appkit::{NSView, NSWindow, NSWindowButton};
-                    use cocoa::base::{id, nil, YES};
-                    use cocoa::foundation::NSPoint;
+                    use cocoa::base::{id, YES};
                     use objc::{msg_send, sel, sel_impl};
                     use window_vibrancy::{apply_vibrancy, NSVisualEffectMaterial};
 
@@ -108,20 +109,8 @@ pub fn run() {
                         // 标题栏透明，让内容延伸到标题栏区域
                         let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
 
-                        // 微调红绿灯位置（AppKit 坐标：以标题栏为参考，y 越大越靠上）
-                        // y=12 让红绿灯较原来再下移 2px，配合文字上移 2px，两者视觉更贴齐。
-                        let close_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
-                        if close_button != nil {
-                            close_button.setFrameOrigin(NSPoint::new(16.0, 5.0));
-                        }
-                        let minimize_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
-                        if minimize_button != nil {
-                            minimize_button.setFrameOrigin(NSPoint::new(36.0, 5.0));
-                        }
-                        let zoom_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
-                        if zoom_button != nil {
-                            zoom_button.setFrameOrigin(NSPoint::new(56.0, 5.0));
-                        }
+                        // 摆红绿灯 + 装观察者钉死位置
+                        platform::install_traffic_light_pinner(ns_window);
                     }
                 }
             }
