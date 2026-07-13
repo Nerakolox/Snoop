@@ -112,15 +112,15 @@ pub fn run() {
                         // y=12 让红绿灯较原来再下移 2px，配合文字上移 2px，两者视觉更贴齐。
                         let close_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowCloseButton);
                         if close_button != nil {
-                            close_button.setFrameOrigin(NSPoint::new(16.0, 9.0));
+                            close_button.setFrameOrigin(NSPoint::new(16.0, 5.0));
                         }
                         let minimize_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowMiniaturizeButton);
                         if minimize_button != nil {
-                            minimize_button.setFrameOrigin(NSPoint::new(36.0, 9.0));
+                            minimize_button.setFrameOrigin(NSPoint::new(36.0, 5.0));
                         }
                         let zoom_button = ns_window.standardWindowButton_(NSWindowButton::NSWindowZoomButton);
                         if zoom_button != nil {
-                            zoom_button.setFrameOrigin(NSPoint::new(56.0, 9.0));
+                            zoom_button.setFrameOrigin(NSPoint::new(56.0, 5.0));
                         }
                     }
                 }
