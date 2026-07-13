@@ -1,6 +1,129 @@
 @import "./styles/tokens.css";
 @import "./styles/base.css";
 
+/* ---------- Placeholder pages ---------- */
+
+.page-placeholder {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+}
+
+.page-placeholder-title {
+  font-size: var(--text-2xl);
+  color: var(--color-text-2);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* ---------- Dev page ---------- */
+
+.dev-page {
+  padding: var(--space-6) var(--space-8) var(--space-8);
+  max-width: 100%;
+}
+
+.dev-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dev-header h2 {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.dev-header button {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  transition: all var(--dur-fast) var(--ease-smooth);
+  font-weight: 500;
+}
+
+.dev-header button:hover:not(:disabled) {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.dev-header button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.dev-error {
+  color: var(--intensity-4);
+  margin: var(--space-2) 0 var(--space-4);
+  font-size: var(--text-sm);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(225, 90, 76, 0.1);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--intensity-4);
+}
+
+.dev-section {
+  margin-bottom: var(--space-8);
+}
+
+.dev-section h3 {
+  margin: 0 0 var(--space-3);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.dev-table {
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--color-surface);
+}
+
+.dev-table th,
+.dev-table td {
+  padding: var(--space-2) var(--space-3);
+  text-align: left;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.dev-table th {
+  background: var(--color-surface-2);
+  font-weight: 600;
+  color: var(--color-text);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dev-table tbody tr {
+  transition: background var(--dur-fast);
+}
+
+.dev-table tbody tr:hover {
+  background: var(--color-surface-2);
+}
+
+.dev-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
 /* ---------- Overview page ----------
    四段纵向：now-card / kpi-row / panel(App 榜) / panel(热力条)。
    全走 tokens，深浅两套自动继承。
