@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import {
   Sun, Moon, Monitor, Power, Minimize2,
   Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code,
@@ -104,6 +105,9 @@ export default function Settings() {
   const [recentApps, setRecentApps] = useState<string[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearMsg, setClearMsg] = useState("");
+  const [autostart, setAutostart] = useState(false);
+  const [autostartBusy, setAutostartBusy] = useState(false);
+  const [autostartMsg, setAutostartMsg] = useState("");
   const [iconRefreshState, setIconRefreshState] = useState<
     | { status: "idle" }
     | { status: "running"; done: number; total: number }
@@ -114,6 +118,8 @@ export default function Settings() {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
     invoke<DbInfo>("get_db_info").then(setDbInfo).catch(console.error);
     invoke<string[]>("get_recent_apps").then(setRecentApps).catch(console.error);
+    // 以系统实际注册状态为准显示开关初始值，避免本地布尔和真实注册项漂移
+    isAutostartEnabled().then(setAutostart).catch(console.error);
 
     // 监听系统主题变化（仅当用户选择"跟随系统"时生效）
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -156,6 +162,29 @@ export default function Settings() {
   function saveSnarky(v: SnarkyLevel) {
     setSnarky(v);
     localStorage.setItem("snarky", v);
+  }
+
+  async function toggleAutostart(v: boolean) {
+    if (autostartBusy) return;
+    setAutostartBusy(true);
+    setAutostartMsg("");
+    // 乐观更新，失败再回滚，避免开关点击后没反馈
+    setAutostart(v);
+    try {
+      if (v) await enableAutostart();
+      else await disableAutostart();
+      // 以插件回读为准，防止系统层拒写导致状态漂移
+      const actual = await isAutostartEnabled();
+      setAutostart(actual);
+      setAutostartMsg(actual === v ? (v ? "已开启" : "已关闭") : "状态与预期不符");
+    } catch (e) {
+      console.error(e);
+      setAutostart(!v);
+      setAutostartMsg("操作失败");
+    } finally {
+      setAutostartBusy(false);
+      window.setTimeout(() => setAutostartMsg(""), 2000);
+    }
   }
 
   function savePageTransition(v: boolean) {
@@ -287,6 +316,17 @@ export default function Settings() {
               { value: "dark", label: "深色", icon: <Moon size={13} /> },
             ]}
           />
+        </SettingRow>
+
+        <SettingRow label="开机自启" desc="开机时自动在后台启动 Snoop，不弹出主窗口">
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {autostartMsg && (
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-3)" }}>
+                {autostartMsg}
+              </span>
+            )}
+            <Toggle checked={autostart} onChange={toggleAutostart} />
+          </div>
         </SettingRow>
 
         <SettingRow label="关闭按钮行为" desc="点击窗口关闭按钮时的动作">

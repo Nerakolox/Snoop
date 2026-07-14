@@ -15,10 +15,18 @@ mod icon_cache;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 判断本次是否走开机自启：autostart 插件注册项里带的 --autostart 参数
+    // 会跟随可执行文件命令行传进来。用它决定是否静默启动到托盘。
+    let launched_via_autostart = std::env::args().any(|a| a == "--autostart");
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec!["--autostart"]),
+        ))
         .invoke_handler(tauri::generate_handler![
             commands::get_buckets,
             commands::get_key_details,
@@ -38,7 +46,7 @@ pub fn run() {
             commands::clear_icon_cache,
             commands::list_all_bundle_ids,
         ])
-        .setup(|app| {
+        .setup(move |app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
@@ -277,6 +285,20 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // 主窗口显示策略：
+            // - 正常启动 → 显式 show（配置里 visible:false 是为了避免白屏，这里补一次真正的 show）
+            // - 开机自启（命令行带 --autostart）→ 保持隐藏，只在托盘常驻，静默采集
+            if let Some(window) = app.get_webview_window("main") {
+                if launched_via_autostart {
+                    #[cfg(target_os = "windows")]
+                    let _ = window.set_skip_taskbar(true);
+                    let _ = window.hide();
+                } else {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
 
             Ok(())
         })
