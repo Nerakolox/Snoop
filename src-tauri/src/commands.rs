@@ -452,6 +452,35 @@ pub fn clear_icon_cache(cache: State<'_, crate::icon_cache::IconCache>) -> Resul
     Ok(())
 }
 
+// ─── Updater commands ─────────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn check_update(app: tauri::AppHandle) {
+    crate::updater::check_and_download(app).await;
+}
+
+#[tauri::command]
+pub async fn get_update_state(state: State<'_, crate::updater::UpdaterState>) -> Result<crate::updater::UpdateState, String> {
+    Ok(state.snapshot().await)
+}
+
+#[tauri::command]
+pub fn install_pending_update(app: tauri::AppHandle) -> Result<(), String> {
+    // Windows: 静默运行 NSIS installer 并退出当前进程接管重启
+    // macOS: 打开雨云下载页,让用户手拖到 Applications
+    #[cfg(target_os = "windows")]
+    { crate::updater::run_pending_installer(&app) }
+    #[cfg(target_os = "macos")]
+    { crate::updater::open_manual_download(&app) }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    { let _ = app; Err("当前平台暂不支持自动更新".into()) }
+}
+
+#[tauri::command]
+pub fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
 #[tauri::command]
 pub fn list_all_bundle_ids(state: State<'_, DbPath>) -> Result<Vec<String>, String> {
     let conn = Connection::open(&state.0).map_err(|e| e.to_string())?;

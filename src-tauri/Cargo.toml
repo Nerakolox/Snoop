@@ -1,6 +1,6 @@
 [package]
 name = "snoop"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -31,6 +31,10 @@ tokio = { version = "1", features = ["full"] }
 rdev = { git = "https://github.com/rustdesk-org/rdev" }
 base64 = "0.22"
 image = "0.25"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+sha2 = "0.10"
+hex = "0.4"
+futures-util = "0.3"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 cocoa = "0.25"

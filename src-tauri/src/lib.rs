@@ -1,8 +1,9 @@
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Manager, RunEvent, WindowEvent,
+    Emitter, Listener, Manager, RunEvent, WindowEvent,
 };
+use std::time::Duration;
 
 const REPO_URL: &str = "https://github.com/Nerakolox/Snoop";
 
@@ -12,9 +13,18 @@ mod db;
 mod platform;
 mod settings;
 mod icon_cache;
+mod updater;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // 启动前先看有没有 pending 更新需要静默装。装上后 installer 会替换本进程,
+    // try_install_pending_on_startup 内部已 spawn 好新进程；这里直接 return
+    // 让当前旧版进程尽快退出,把可执行文件释放给 installer 覆盖。
+    #[cfg(target_os = "windows")]
+    if updater::try_install_pending_on_startup() {
+        std::process::exit(0);
+    }
+
     // 判断本次是否走开机自启：autostart 插件注册项里带的 --autostart 参数
     // 会跟随可执行文件命令行传进来。用它决定是否静默启动到托盘。
     let launched_via_autostart = std::env::args().any(|a| a == "--autostart");
@@ -45,6 +55,10 @@ pub fn run() {
             commands::get_app_icon,
             commands::clear_icon_cache,
             commands::list_all_bundle_ids,
+            commands::check_update,
+            commands::get_update_state,
+            commands::install_pending_update,
+            commands::get_app_version,
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -151,6 +165,7 @@ pub fn run() {
             app.manage(commands::DbPath(db_path));
             app.manage(settings);
             app.manage(icon_cache);
+            app.manage(updater::UpdaterState::new());
 
             // macOS 应用菜单：仅 App / 窗口 / 帮助 三块，去掉 File/Edit/View
             #[cfg(target_os = "macos")]
@@ -236,7 +251,7 @@ pub fn run() {
                 });
             }
 
-            // 创建托盘菜单
+            // 创建托盘菜单（初始无更新项，收到 updater://ready 事件后动态重建）
             let show = MenuItemBuilder::with_id("show", "打开 Snoop").build(app)?;
             let quit = MenuItemBuilder::with_id("quit", "退出").build(app)?;
             let menu = MenuBuilder::new(app).item(&show).item(&quit).build()?;
@@ -271,6 +286,17 @@ pub fn run() {
                         "quit" => {
                             menu_handle.exit(0);
                         }
+                        "install-update" => {
+                            // Windows: 静默重启装 pending;macOS: 走 openUrl 打开雨云 dmg 页面
+                            #[cfg(target_os = "windows")]
+                            if let Err(e) = updater::run_pending_installer(app) {
+                                eprintln!("[updater] 手动触发安装失败: {e}");
+                            }
+                            #[cfg(target_os = "macos")]
+                            if let Err(e) = updater::open_manual_download(app) {
+                                eprintln!("[updater] 打开下载页失败: {e}");
+                            }
+                        }
                         _ => {}
                     }
                 })
@@ -285,6 +311,47 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // 监听「已就绪」事件：重建托盘菜单,插入更新入口置顶项
+            // Windows 文案「点击重启安装」;macOS 文案「点击打开下载页」
+            let ready_handle = app.handle().clone();
+            app.listen("updater://ready", move |_ev| {
+                let Some(tray) = ready_handle.tray_by_id("main-tray") else { return };
+                #[cfg(target_os = "windows")]
+                let update_label = "有新版本待安装 · 点击重启安装";
+                #[cfg(target_os = "macos")]
+                let update_label = "有新版本可下载 · 点击打开下载页";
+                #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+                let update_label = "有新版本可下载";
+                let install = match MenuItemBuilder::with_id("install-update", update_label).build(&ready_handle) {
+                    Ok(m) => m,
+                    Err(_) => return,
+                };
+                let show = match MenuItemBuilder::with_id("show", "打开 Snoop").build(&ready_handle) {
+                    Ok(m) => m,
+                    Err(_) => return,
+                };
+                let quit = match MenuItemBuilder::with_id("quit", "退出").build(&ready_handle) {
+                    Ok(m) => m,
+                    Err(_) => return,
+                };
+                let Ok(menu) = MenuBuilder::new(&ready_handle)
+                    .item(&install)
+                    .separator()
+                    .item(&show)
+                    .item(&quit)
+                    .build()
+                else { return };
+                let _ = tray.set_menu(Some(menu));
+            });
+
+            // 应用启动 3 秒后触发后台静默检查更新,失败静默吞掉。
+            // 3 秒延迟让主界面先渲染完,再走网络请求不抢资源。
+            let update_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_secs(3)).await;
+                updater::check_and_download(update_handle).await;
+            });
 
             // 主窗口显示策略：
             // - 正常启动 → 显式 show（配置里 visible:false 是为了避免白屏，这里补一次真正的 show）

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -10,6 +11,15 @@ import {
   Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code,
 } from "lucide-react";
 import { resetAppIconCache } from "../components/AppIcon";
+
+type UpdateState =
+  | { status: "idle" }
+  | { status: "checking" }
+  | { status: "up_to_date"; current: string }
+  | { status: "downloading"; version: string; done: number; total: number }
+  | { status: "ready"; version: string }
+  | { status: "manual_download"; version: string; url: string }
+  | { status: "error"; message: string };
 
 type ThemeMode = "system" | "light" | "dark";
 type CloseMode = "tray" | "quit";
@@ -113,13 +123,22 @@ export default function Settings() {
     | { status: "running"; done: number; total: number }
     | { status: "done"; count: number }
   >({ status: "idle" });
+  const [version, setVersion] = useState<string>("");
+  const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
 
   useEffect(() => {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
     invoke<DbInfo>("get_db_info").then(setDbInfo).catch(console.error);
     invoke<string[]>("get_recent_apps").then(setRecentApps).catch(console.error);
+    invoke<string>("get_app_version").then(setVersion).catch(console.error);
+    invoke<UpdateState>("get_update_state").then(setUpdateState).catch(console.error);
     // 以系统实际注册状态为准显示开关初始值，避免本地布尔和真实注册项漂移
     isAutostartEnabled().then(setAutostart).catch(console.error);
+
+    // 订阅后端 updater 状态推送(后台静默检查/下载完成后前端立刻切到 ready)
+    const unlistenPromise = listen<UpdateState>("updater://state", (e) => {
+      setUpdateState(e.payload);
+    });
 
     // 监听系统主题变化（仅当用户选择"跟随系统"时生效）
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
@@ -130,7 +149,10 @@ export default function Settings() {
       }
     };
     mediaQuery.addEventListener("change", handleSystemThemeChange);
-    return () => mediaQuery.removeEventListener("change", handleSystemThemeChange);
+    return () => {
+      mediaQuery.removeEventListener("change", handleSystemThemeChange);
+      unlistenPromise.then((u) => u()).catch(() => {});
+    };
   }, []);
 
   function applyTheme(t: ThemeMode) {
@@ -252,6 +274,32 @@ export default function Settings() {
     }
   }
 
+  async function handleCheckUpdate() {
+    // ready(Windows) / manual_download(Mac) 都直接触发对应动作,不再请求 latest.json
+    if (updateState.status === "ready") {
+      try {
+        await invoke("install_pending_update");
+      } catch (e) {
+        console.error(e);
+      }
+      return;
+    }
+    if (updateState.status === "manual_download") {
+      try {
+        await openUrl(updateState.url);
+      } catch (e) {
+        console.error(e);
+      }
+      return;
+    }
+    if (updateState.status === "checking" || updateState.status === "downloading") return;
+    try {
+      await invoke("check_update");
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
   async function handleRefreshIcons() {
     if (iconRefreshState.status === "running") return;
     try {
@@ -297,8 +345,6 @@ export default function Settings() {
       setIconRefreshState({ status: "idle" });
     }
   }
-
-  const version = "0.1.0";
 
   return (
     <div className="settings-page">
@@ -483,7 +529,7 @@ export default function Settings() {
 
         <SettingRow label="版本">
           <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-2)", fontVariantNumeric: "tabular-nums" }}>
-            v{version}
+            {version ? `v${version}` : ""}
           </span>
         </SettingRow>
 
@@ -497,11 +543,54 @@ export default function Settings() {
           </button>
         </SettingRow>
 
-        <SettingRow label="检查更新" desc="当前已是最新版本">
-          <button className="setting-btn" disabled>
-            <RefreshCw size={13} />
-            检查更新
-          </button>
+        <SettingRow
+          label="检查更新"
+          desc={
+            updateState.status === "ready"
+              ? `新版本 v${updateState.version} 已下载，重启即可安装`
+              : updateState.status === "manual_download"
+              ? `发现新版本 v${updateState.version}，点击打开下载页手动更新`
+              : updateState.status === "downloading"
+              ? `正在后台下载 v${updateState.version}…`
+              : updateState.status === "checking"
+              ? "正在检查更新…"
+              : updateState.status === "error"
+              ? `检查失败：${updateState.message}`
+              : updateState.status === "up_to_date"
+              ? "当前已是最新版本"
+              : "从云端获取最新版本"
+          }
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {updateState.status === "downloading" && updateState.total > 0 && (
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-3)", fontVariantNumeric: "tabular-nums" }}>
+                {Math.floor((updateState.done / updateState.total) * 100)}%
+              </span>
+            )}
+            <button
+              className={`setting-btn${updateState.status === "ready" || updateState.status === "manual_download" ? " setting-btn-primary" : ""}`}
+              onClick={handleCheckUpdate}
+              disabled={updateState.status === "checking" || updateState.status === "downloading"}
+            >
+              {updateState.status === "manual_download" ? (
+                <ExternalLink size={13} />
+              ) : (
+                <RefreshCw
+                  size={13}
+                  className={updateState.status === "checking" || updateState.status === "downloading" ? "is-spin" : ""}
+                />
+              )}
+              {updateState.status === "ready"
+                ? "重启安装"
+                : updateState.status === "manual_download"
+                ? "打开下载页"
+                : updateState.status === "downloading"
+                ? "下载中…"
+                : updateState.status === "checking"
+                ? "检查中…"
+                : "检查更新"}
+            </button>
+          </div>
         </SettingRow>
       </div>
 
