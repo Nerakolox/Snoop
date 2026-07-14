@@ -13,7 +13,6 @@ import {
   fetchHourlyActivity,
   thisWeekRange,
   DAY_MS,
-  type RawBucket,
 } from "../data";
 import {
   aggregateByDay,
@@ -22,7 +21,6 @@ import {
   bucketSimple,
   intensityVar,
   type DayStat,
-  type AppStat,
   type Intensity,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
@@ -125,7 +123,7 @@ function buildWeekDays(dayStats: DayStat[], weekStartMs: number): WeekDay[] {
 // ---- 渲染 -------------------------------------------------------------------
 
 export default function Insights() {
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
   const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
   const [weekApps, setWeekApps] = useState<WeekApp[]>([]);
   const [hourlyGrid, setHourlyGrid] = useState<Intensity[][]>(

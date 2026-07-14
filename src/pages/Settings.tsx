@@ -5,7 +5,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  Sun, Moon, Monitor, Power, Minimize2, Database,
+  Sun, Moon, Monitor, Power, Minimize2,
   Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code,
 } from "lucide-react";
 import { resetAppIconCache } from "../components/AppIcon";

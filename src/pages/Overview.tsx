@@ -86,7 +86,7 @@ function formatMouseDistance(pixels: number): KpiPart[] {
 }
 
 export default function Overview() {
-  const [buckets, setBuckets] = useState<RawBucket[]>([]);
+  const [, setBuckets] = useState<RawBucket[]>([]);
   const [now, setNow] = useState<NowStatus>({
     appName: "—",
     appBundleId: "",
@@ -97,7 +97,7 @@ export default function Overview() {
   const [kpis, setKpis] = useState<Kpi[]>([]);
   const [apps, setApps] = useState<AppRow[]>([]);
   const [hourly, setHourly] = useState<Intensity[]>(Array(24).fill(0));
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
 
   async function refresh() {
     setLoading(true);
