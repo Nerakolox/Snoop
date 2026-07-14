@@ -12,13 +12,12 @@
   max-width: 100%;
 }
 
-/* 顶部筛选栏 —— 左侧 App 标签组 + 右侧 segmented */
+/* 顶部筛选栏 —— 三行结构：App / 日期 / 配列，全部左对齐 */
 .kb-filters {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
 }
 
 /* 吸顶固定 */
@@ -33,16 +32,23 @@
   padding-right: 0;
 }
 
+/* 单行容器：左对齐，行内元素之间留出合理间距，允许应用行按需换行 */
+.kb-filter-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.kb-filter-row--date {
+  gap: var(--space-4);
+}
+
 .kb-filter-group {
   display: inline-flex;
   gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.kb-filter-right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
   flex-wrap: wrap;
 }
 
@@ -251,25 +257,26 @@
   line-height: 1;
 }
 
-/* Segmented（日/周）—— 单个容器胶囊，里面两个按钮平分 */
+/* Segmented（日/周）—— 融入日期容器，内部按钮为圆角矩形 */
 .kb-segmented {
   display: inline-flex;
-  padding: 3px;
-  background: var(--color-surface-2);
-  border-radius: var(--radius-full);
-  border: 1px solid var(--color-border);
+  padding: 0;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  border: none;
+  gap: 2px;
 }
 
 .kb-segmented-btn {
   padding: 4px var(--space-3);
-  border-radius: var(--radius-full);
+  border-radius: var(--radius-sm);
   border: none;
   background: transparent;
   color: var(--color-text-2);
   font-size: var(--text-xs);
   font-weight: 600;
   cursor: pointer;
-  min-width: 56px;
+  min-width: 40px;
   transition:
     background var(--dur-fast) var(--ease-smooth),
     color var(--dur-fast) var(--ease-smooth),
@@ -286,7 +293,7 @@
   box-shadow: var(--shadow-sm);
 }
 
-/* 日期选择器 */
+/* 日期选择器 —— 统一容器（圆角矩形），容纳日/周切换 + 日期导航 + 刷新 */
 .kb-date-picker {
   display: inline-flex;
   align-items: center;
@@ -295,6 +302,15 @@
   background: var(--color-surface-2);
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
+}
+
+/* 组内分隔竖线 */
+.kb-picker-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--color-border);
+  margin: 0 2px;
+  flex-shrink: 0;
 }
 
 .kb-nav-btn {

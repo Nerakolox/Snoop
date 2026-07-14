@@ -283,47 +283,48 @@ export default function Keyboard() {
 
   return (
     <div className="kb-page">
-      {/* ① 顶部筛选栏（吸顶） */}
+      {/* ① 顶部筛选栏（吸顶，三行：App / 日期 / 配列） */}
       <div className="kb-filters kb-filters--sticky">
-        <div className="kb-filter-group">
-          {appFilterButtons.map((a) => (
-            <button
-              key={a.id}
-              className={`kb-filter-btn${appFilter === a.id ? " is-active" : ""}`}
-              onClick={() => setAppFilter(a.id)}
-              type="button"
-              disabled={loading}
-              title={a.label}
-            >
-              {a.id !== "all" && (
-                <AppIcon bundleId={a.bundleId} appName={a.label} size={16} />
-              )}
-              <span>{a.label}</span>
-            </button>
-          ))}
-        </div>
-        <div className="kb-filter-right">
-          <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
-
-          {/* 日/周切换 */}
-          <div className="kb-segmented" role="tablist" aria-label="时间范围">
-            {TIME_LABELS.map((t) => (
+        {/* 第 1 行：App 筛选 */}
+        <div className="kb-filter-row kb-filter-row--apps">
+          <div className="kb-filter-group">
+            {appFilterButtons.map((a) => (
               <button
-                key={t.id}
-                className={`kb-segmented-btn${timeFilter === t.id ? " is-active" : ""}`}
-                onClick={() => setTimeFilter(t.id)}
+                key={a.id}
+                className={`kb-filter-btn${appFilter === a.id ? " is-active" : ""}`}
+                onClick={() => setAppFilter(a.id)}
                 type="button"
-                role="tab"
-                aria-selected={timeFilter === t.id}
                 disabled={loading}
+                title={a.label}
               >
-                {t.label}
+                {a.id !== "all" && (
+                  <AppIcon bundleId={a.bundleId} appName={a.label} size={16} />
+                )}
+                <span>{a.label}</span>
               </button>
             ))}
           </div>
+        </div>
 
-          {/* 日期选择 */}
+        {/* 第 2 行：日/周切换融入日期导航（同一胶囊） */}
+        <div className="kb-filter-row kb-filter-row--date">
           <div className="kb-date-picker">
+            <div className="kb-segmented" role="tablist" aria-label="时间范围">
+              {TIME_LABELS.map((t) => (
+                <button
+                  key={t.id}
+                  className={`kb-segmented-btn${timeFilter === t.id ? " is-active" : ""}`}
+                  onClick={() => setTimeFilter(t.id)}
+                  type="button"
+                  role="tab"
+                  aria-selected={timeFilter === t.id}
+                  disabled={loading}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+            <span className="kb-picker-divider" aria-hidden="true" />
             <button
               className="kb-nav-btn"
               onClick={goPrevPeriod}
@@ -353,6 +354,7 @@ export default function Keyboard() {
                 回到今天
               </button>
             )}
+            <span className="kb-picker-divider" aria-hidden="true" />
             <button
               className="kb-nav-btn"
               onClick={refresh}
@@ -362,6 +364,11 @@ export default function Keyboard() {
               <RefreshCw size={16} className={loading ? "kb-spin" : ""} />
             </button>
           </div>
+        </div>
+
+        {/* 第 3 行：KLE 配列选择 */}
+        <div className="kb-filter-row kb-filter-row--layout">
+          <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
         </div>
       </div>
 
