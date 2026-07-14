@@ -219,7 +219,9 @@
 .ins-delta {
   display: inline-flex;
   align-items: center;
-  justify-content: flex-end;
+  /* 箭头左对齐、数字右对齐：中间用 margin-left:auto 把数字推到最右
+     这样每行的箭头列和数字列在视觉上都是对齐的 */
+  justify-content: flex-start;
   gap: 2px;
   padding: 2px 6px;
   border-radius: var(--radius-full);
@@ -239,6 +241,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  margin-left: auto;
 }
 
 .ins-delta--up {
