@@ -207,6 +207,18 @@
 }
 
 .kle-layout-option {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-3);
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
+}
+
+.kle-layout-option-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -215,12 +227,8 @@
   border-radius: var(--radius-sm);
   border: none;
   background: transparent;
-  color: var(--color-text-3);
+  color: inherit;
   cursor: pointer;
-  transition:
-    background var(--dur-fast) var(--ease-smooth),
-    color var(--dur-fast) var(--ease-smooth),
-    transform var(--dur-fast) var(--ease-smooth);
 }
 
 .kle-layout-option:hover {
@@ -233,6 +241,50 @@
   background: var(--color-surface);
   color: var(--color-accent);
   box-shadow: var(--shadow-sm);
+}
+
+.kle-layout-badge {
+  color: var(--color-accent);
+  margin-right: 3px;
+  font-weight: 700;
+}
+
+.kle-layout-delete {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-3);
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-fast) var(--ease-smooth), color var(--dur-fast) var(--ease-smooth);
+}
+
+.kle-layout-option.is-custom:hover .kle-layout-delete,
+.kle-layout-option.is-custom.is-active .kle-layout-delete {
+  display: inline-flex;
+}
+
+.kle-layout-delete:hover {
+  background: var(--intensity-4);
+  color: var(--color-on-accent);
+}
+
+.kle-import-btn {
+  margin-left: 4px;
+  color: var(--color-text-2);
+}
+
+.kle-import-btn:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
 }
 
 .kle-layout-preview {

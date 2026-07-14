@@ -7,6 +7,7 @@ import {
   saveLayout,
   loadLayoutJSON,
 } from "../components/KLELayoutPicker";
+import { getAllLayouts } from "../layouts";
 import KLEKeyboard from "../components/KLEKeyboard";
 
 const DOM_TO_RDEV: Record<string, string> = {
@@ -93,17 +94,27 @@ type LogEntry = {
 };
 
 const MAX_LOG = 30;
-const KNOWN = ["40","60","68","84","87","98","104","apple-wireless"];
-const NAME_MAP: Record<string,string> = {
-  "40":"40%","60":"60%","68":"68%","84":"75%","87":"TKL","98":"98%","104":"100%","apple-wireless":"Apple"
-};
 
 export default function KeymapTest() {
+  const [layouts, setLayouts] = useState(() => getAllLayouts());
+  const KNOWN = useMemo(() => layouts.map((l) => l.id), [layouts]);
+  const NAME_MAP = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const l of layouts) m[l.id] = l.name;
+    return m;
+  }, [layouts]);
   const [layoutId, setLayoutId] = useState(() => getSavedLayout());
   const [kleKeys, setKleKeys] = useState<KLEKey[]>([]);
   const [pressedCodes, setPressedCodes] = useState<Set<string>>(new Set());
   const [log, setLog] = useState<LogEntry[]>([]);
   const [pickerIdx, setPickerIdx] = useState(() => Math.max(0, KNOWN.indexOf(getSavedLayout())));
+
+  // 允许其他页面（Keyboard 页导入/删除自定义配列）后同步刷新
+  useEffect(() => {
+    const onStorage = () => setLayouts(getAllLayouts());
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   const kleKeysRef = useRef<KLEKey[]>([]);
   kleKeysRef.current = kleKeys;
