@@ -372,7 +372,7 @@ export default function Settings() {
         <SettingRow label="开源仓库">
           <button
             className="setting-btn"
-            onClick={() => openUrl("https://github.com/placeholder/snoop")}
+            onClick={() => openUrl("https://github.com/Nerakolox/Snoop")}
           >
             <ExternalLink size={13} />
             GitHub

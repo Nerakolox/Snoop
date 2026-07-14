@@ -1,8 +1,10 @@
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager, RunEvent, WindowEvent,
+    Emitter, Manager, RunEvent, WindowEvent,
 };
+
+const REPO_URL: &str = "https://github.com/Nerakolox/Snoop";
 
 mod activity_tracker;
 mod commands;
@@ -144,6 +146,82 @@ pub fn run() {
             app.manage(commands::DbPath(db_path));
             app.manage(settings);
             app.manage(icon_cache);
+
+            // macOS 应用菜单：仅 App / 窗口 / 帮助 三块，去掉 File/Edit/View
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::menu::{AboutMetadataBuilder, SubmenuBuilder};
+
+                let about_meta = AboutMetadataBuilder::new()
+                    .name(Some("Snoop"))
+                    .version(Some(env!("CARGO_PKG_VERSION")))
+                    .website(Some(REPO_URL))
+                    .website_label(Some("GitHub"))
+                    .build();
+
+                let settings_item = MenuItemBuilder::with_id("menu:open-settings", "设置…")
+                    .accelerator("Cmd+,")
+                    .build(app)?;
+                let check_update_item =
+                    MenuItemBuilder::with_id("menu:check-update", "检查更新…").build(app)?;
+
+                let app_submenu = SubmenuBuilder::new(app, "Snoop")
+                    .about(Some(about_meta))
+                    .separator()
+                    .item(&settings_item)
+                    .item(&check_update_item)
+                    .separator()
+                    .services()
+                    .separator()
+                    .hide()
+                    .hide_others()
+                    .show_all()
+                    .separator()
+                    .quit()
+                    .build()?;
+
+                let window_submenu = SubmenuBuilder::new(app, "窗口")
+                    .minimize()
+                    .maximize()
+                    .separator()
+                    .close_window()
+                    .build()?;
+
+                let github_item = MenuItemBuilder::with_id("menu:open-repo", "Snoop 开源仓库")
+                    .build(app)?;
+                let help_submenu = SubmenuBuilder::new(app, "帮助").item(&github_item).build()?;
+
+                let app_menu = MenuBuilder::new(app)
+                    .item(&app_submenu)
+                    .item(&window_submenu)
+                    .item(&help_submenu)
+                    .build()?;
+
+                app.set_menu(app_menu)?;
+
+                let menu_app_handle = app.handle().clone();
+                app.on_menu_event(move |_app, event| match event.id().as_ref() {
+                    "menu:open-settings" => {
+                        if let Some(window) = menu_app_handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                        let _ = menu_app_handle.emit("menu-navigate", "settings");
+                    }
+                    "menu:check-update" => {
+                        if let Some(window) = menu_app_handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                        let _ = menu_app_handle.emit("menu-navigate", "settings");
+                    }
+                    "menu:open-repo" => {
+                        use tauri_plugin_opener::OpenerExt;
+                        let _ = menu_app_handle.opener().open_url(REPO_URL, None::<&str>);
+                    }
+                    _ => {}
+                });
+            }
 
             // 创建托盘菜单
             let show = MenuItemBuilder::with_id("show", "打开 Snoop").build(app)?;

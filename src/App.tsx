@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 import Sidebar, { NavKey } from "./components/Sidebar";
 import TitleBar from "./components/TitleBar";
 import Overview from "./pages/Overview";
@@ -56,6 +57,18 @@ export default function App() {
     return () => window.removeEventListener("page-transition-change", handler);
   }, []);
 
+  const handleSelectRef = useRef<(k: NavKey) => void>(() => {});
+
+  useEffect(() => {
+    const unlistenPromise = listen<string>("menu-navigate", (event) => {
+      const target = event.payload as NavKey;
+      handleSelectRef.current(target);
+    });
+    return () => {
+      unlistenPromise.then((un) => un()).catch(() => {});
+    };
+  }, []);
+
   useEffect(() => {
     return () => {
       if (timerRef.current) window.clearTimeout(timerRef.current);
@@ -107,6 +120,8 @@ export default function App() {
       });
     }, FADE_OUT_MS);
   }
+
+  handleSelectRef.current = handleSelect;
 
   let layerClass = "page-layer";
   if (phase === "leaving") layerClass += " is-leaving";
