@@ -5,7 +5,8 @@
 
 import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, Plus, Trash2, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Plus, Trash2, X } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { parseKLE, type KLEKey } from "../kleParser";
 import KLELayoutPreview from "./KLELayoutPreview";
 import {
@@ -34,6 +35,7 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
   const [layouts, setLayouts] = useState<LayoutEntry[]>(() => getAllLayouts());
   const [currentPage, setCurrentPage] = useState(0);
   const [importError, setImportError] = useState<string | null>(null);
+  const [showImportIntro, setShowImportIntro] = useState(false);
   const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
   const [draftName, setDraftName] = useState("");
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -71,9 +73,15 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
     setLayouts(getAllLayouts());
   }
 
-  function openFilePicker() {
+  function openImportIntro() {
     setImportError(null);
-    fileInputRef.current?.click();
+    setShowImportIntro(true);
+  }
+
+  function proceedToFilePicker() {
+    setShowImportIntro(false);
+    // 等 overlay 卸载后再打开系统文件框，避免 blur/focus 冲突
+    setTimeout(() => fileInputRef.current?.click(), 0);
   }
 
   async function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
@@ -207,7 +215,7 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
         <button
           type="button"
           className="kle-carousel-btn kle-import-btn"
-          onClick={openFilePicker}
+          onClick={openImportIntro}
           title="导入 KLE 配列（keyboard-layout-editor.com 导出的 JSON）"
         >
           <Plus size={16} />
@@ -221,6 +229,38 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
         onChange={handleFileSelected}
         style={{ display: "none" }}
       />
+
+      {showImportIntro &&
+        createPortal(
+          <div className="dev-confirm-overlay" onClick={() => setShowImportIntro(false)}>
+            <div className="dev-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+              <div className="dev-confirm-header">
+                <h3>导入自定义配列</h3>
+              </div>
+              <p className="dev-confirm-desc">
+                Snoop 支持导入 keyboard-layout-editor.com 制作的配列。前往下方网站编辑好配列后，点右上角
+                「Download JSON」下载 JSON 文件，再回到这里选中导入。
+              </p>
+              <button
+                className="setting-btn"
+                onClick={() => openUrl("https://www.keyboard-layout-editor.com")}
+                style={{ alignSelf: "flex-start" }}
+              >
+                <ExternalLink size={13} />
+                keyboard-layout-editor.com
+              </button>
+              <div className="dev-confirm-actions">
+                <button className="setting-btn" onClick={() => setShowImportIntro(false)}>
+                  取消
+                </button>
+                <button className="setting-btn setting-btn-primary" onClick={proceedToFilePicker}>
+                  选择 JSON 文件
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       {importError &&
         createPortal(
