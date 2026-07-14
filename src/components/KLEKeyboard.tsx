@@ -118,10 +118,10 @@ export default function KLEKeyboard({
                 })()}
               </span>
             ) : hasDualLabel ? (
-              // 渲染双字符（主+副）
+              // 渲染双字符：main 是 \n 前的顶部副标签，sub 是 \n 后的底部主标签
               <div className="kle-key-dual">
-                <span className="kle-key-sub">{sub}</span>
-                <span className="kle-key-main">{main}</span>
+                <span className="kle-key-sub">{main}</span>
+                <span className="kle-key-main">{sub}</span>
               </div>
             ) : (
               // 渲染单字符

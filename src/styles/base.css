@@ -240,7 +240,10 @@ body[data-platform="macos"] .sidebar-header {
   cursor: default;
   user-select: none;
   -webkit-user-select: none;
-  /* 视觉微调：上移 5px、右移 4px，与红绿灯圆心贴齐（不占布局） */
+}
+
+/* 视觉微调仅 macOS 需要：上移 5px、右移 4px，与红绿灯圆心贴齐（不占布局） */
+body[data-platform="macos"] .sidebar-brand {
   transform: translate(4px, -5px);
 }
 
