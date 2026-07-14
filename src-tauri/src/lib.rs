@@ -1,10 +1,13 @@
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Emitter, Listener, Manager, RunEvent, WindowEvent,
+    Listener, Manager, RunEvent, WindowEvent,
 };
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 use std::time::Duration;
 
+#[cfg(target_os = "macos")]
 const REPO_URL: &str = "https://github.com/Nerakolox/Snoop";
 
 mod activity_tracker;
@@ -390,7 +393,7 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| match event {
+        .run(|_app_handle, event| match event {
             RunEvent::ExitRequested { api, code, .. } => {
                 if code.is_none() {
                     api.prevent_exit();
@@ -399,7 +402,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             RunEvent::Reopen { has_visible_windows, .. } => {
                 if !has_visible_windows {
-                    if let Some(window) = app_handle.get_webview_window("main") {
+                    if let Some(window) = _app_handle.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
                     }

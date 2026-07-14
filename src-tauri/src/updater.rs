@@ -97,6 +97,7 @@ pub enum UpdateState {
     Downloading { version: String, done: u64, total: u64 },
     Ready { version: String },
     /// macOS 分支:只提示,不下载。前端点按钮 openUrl 到 url。
+    #[allow(dead_code)]
     ManualDownload { version: String, url: String },
     Error { message: String },
 }
