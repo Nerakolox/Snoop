@@ -33,8 +33,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["app", "dmg"],
+    "targets": ["app", "dmg", "nsis"],
     "category": "Productivity",
+    "publisher": "Feedra",
     "copyright": "Copyright © 2026 Feedra",
     "shortDescription": "Snoop — 应用与键鼠活动记录",
     "longDescription": "Snoop 在本机记录应用切换与键鼠活动，数据仅保存在本地。",
@@ -47,6 +48,15 @@
     ],
     "macOS": {
       "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine",
+        "languages": ["SimpChinese"],
+        "displayLanguageSelector": false,
+        "startMenuFolder": "Snoop",
+        "compression": "lzma"
+      }
     }
   }
 }
