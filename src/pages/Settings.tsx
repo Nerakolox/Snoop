@@ -8,6 +8,7 @@ import {
   Sun, Moon, Monitor, Power, Minimize2, Database,
   Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code,
 } from "lucide-react";
+import { resetAppIconCache } from "../components/AppIcon";
 
 type ThemeMode = "system" | "light" | "dark";
 type CloseMode = "tray" | "quit";
@@ -103,6 +104,11 @@ export default function Settings() {
   const [recentApps, setRecentApps] = useState<string[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearMsg, setClearMsg] = useState("");
+  const [iconRefreshState, setIconRefreshState] = useState<
+    | { status: "idle" }
+    | { status: "running"; done: number; total: number }
+    | { status: "done"; count: number }
+  >({ status: "idle" });
 
   useEffect(() => {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
@@ -214,6 +220,52 @@ export default function Settings() {
       invoke<DbInfo>("get_db_info").then(setDbInfo);
     } catch (e) {
       console.error(e);
+    }
+  }
+
+  async function handleRefreshIcons() {
+    if (iconRefreshState.status === "running") return;
+    try {
+      await invoke("clear_icon_cache");
+      resetAppIconCache();
+      const bundleIds = await invoke<string[]>("list_all_bundle_ids");
+      const total = bundleIds.length;
+      if (total === 0) {
+        setIconRefreshState({ status: "done", count: 0 });
+        return;
+      }
+      setIconRefreshState({ status: "running", done: 0, total });
+
+      let done = 0;
+      let extracted = 0;
+      const CONCURRENCY = 4;
+      let cursor = 0;
+
+      async function worker() {
+        while (cursor < bundleIds.length) {
+          const idx = cursor++;
+          const bid = bundleIds[idx];
+          try {
+            const res = await invoke<string | null>("get_app_icon", { bundleId: bid });
+            if (res) extracted++;
+          } catch (e) {
+            console.warn("refresh icon failed:", bid, e);
+          }
+          done++;
+          setIconRefreshState({ status: "running", done, total });
+        }
+      }
+
+      await Promise.all(
+        Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker())
+      );
+
+      // 后端已重建，让前端组件重新拉一遍以更新 UI
+      resetAppIconCache();
+      setIconRefreshState({ status: "done", count: extracted });
+    } catch (e) {
+      console.error(e);
+      setIconRefreshState({ status: "idle" });
     }
   }
 
@@ -358,6 +410,32 @@ export default function Settings() {
         <SettingRow label="开发模式" desc="显示原始数据、键盘映射测试等调试功能">
           <Toggle checked={devMode} onChange={toggleDevMode} />
         </SettingRow>
+
+        {devMode && (
+          <SettingRow
+            label="刷新 App 图标"
+            desc="清空图标缓存并重新提取所有 App 的图标"
+          >
+            <div className="setting-row-actions">
+              {iconRefreshState.status === "done" && (
+                <span className="setting-hint">已刷新 {iconRefreshState.count} 个图标</span>
+              )}
+              <button
+                className="setting-btn"
+                onClick={handleRefreshIcons}
+                disabled={iconRefreshState.status === "running"}
+              >
+                <RefreshCw
+                  size={13}
+                  className={iconRefreshState.status === "running" ? "is-spin" : ""}
+                />
+                {iconRefreshState.status === "running"
+                  ? `正在刷新… ${iconRefreshState.done}/${iconRefreshState.total}`
+                  : "刷新"}
+              </button>
+            </div>
+          </SettingRow>
+        )}
       </div>
 
       <div className="settings-group">

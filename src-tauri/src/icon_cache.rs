@@ -81,6 +81,22 @@ impl IconCache {
         self.disk_cache_dir.join(format!("{}.{}", hash, NEG_CACHE_EXT))
     }
 
+    /// 清空所有缓存（内存 HashMap + 磁盘目录里的 png / none sentinel）
+    pub fn clear(&self) {
+        self.memory_cache.lock().unwrap().clear();
+        if let Ok(entries) = std::fs::read_dir(&self.disk_cache_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                match path.extension().and_then(|s| s.to_str()) {
+                    Some("png") | Some(NEG_CACHE_EXT) => {
+                        let _ = std::fs::remove_file(&path);
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     fn extract_and_cache(&self, bundle_id: &str) -> Option<String> {
         match extract_icon_png(bundle_id) {
             Some(png_data) => {

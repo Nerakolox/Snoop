@@ -35,6 +35,8 @@ pub fn run() {
             commands::export_data,
             commands::get_recent_apps,
             commands::get_app_icon,
+            commands::clear_icon_cache,
+            commands::list_all_bundle_ids,
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]

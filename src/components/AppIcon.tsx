@@ -11,9 +11,25 @@ type Props = {
 // 全局图标缓存，避免重复请求
 const iconCache = new Map<string, string | null>();
 
+// 缓存 reset 事件：AppIcon 组件监听后重新 invoke
+const RESET_EVENT = "app-icon-cache-reset";
+
+/** 清空前端 iconCache 并通知所有渲染中的 AppIcon 重新拉取（后端缓存另行清空）。 */
+export function resetAppIconCache() {
+  iconCache.clear();
+  window.dispatchEvent(new CustomEvent(RESET_EVENT));
+}
+
 export default function AppIcon({ bundleId, appName, size = 20, className = "" }: Props) {
   const [iconData, setIconData] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    const onReset = () => setTick((t) => t + 1);
+    window.addEventListener(RESET_EVENT, onReset);
+    return () => window.removeEventListener(RESET_EVENT, onReset);
+  }, []);
 
   useEffect(() => {
     // 检查缓存
@@ -22,6 +38,8 @@ export default function AppIcon({ bundleId, appName, size = 20, className = "" }
       setLoading(false);
       return;
     }
+
+    setLoading(true);
 
     // 异步获取图标
     invoke<string | null>("get_app_icon", { bundleId })
@@ -35,7 +53,7 @@ export default function AppIcon({ bundleId, appName, size = 20, className = "" }
         setIconData(null);
       })
       .finally(() => setLoading(false));
-  }, [bundleId]);
+  }, [bundleId, tick]);
 
   // 提取 App 名首字母作兜底
   const firstLetter = appName.charAt(0).toUpperCase() || "?";

@@ -319,3 +319,25 @@
   background: rgba(255, 255, 255, 0.9);
 }
 
+/* 右侧动作组：按钮 + 提示文案并排 */
+.setting-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.setting-btn .is-spin {
+  animation: settings-spin 0.8s linear infinite;
+}
+
+@keyframes settings-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+

@@ -445,3 +445,21 @@ pub fn get_app_icon(
 ) -> Result<Option<String>, String> {
     Ok(cache.get_icon(&bundle_id))
 }
+
+#[tauri::command]
+pub fn clear_icon_cache(cache: State<'_, crate::icon_cache::IconCache>) -> Result<(), String> {
+    cache.clear();
+    Ok(())
+}
+
+#[tauri::command]
+pub fn list_all_bundle_ids(state: State<'_, DbPath>) -> Result<Vec<String>, String> {
+    let conn = Connection::open(&state.0).map_err(|e| e.to_string())?;
+    let mut stmt = conn
+        .prepare("SELECT DISTINCT app_bundle_id FROM activity_buckets")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |r| r.get::<_, String>(0))
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
