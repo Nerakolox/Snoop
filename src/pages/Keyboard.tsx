@@ -4,29 +4,29 @@
  * 切换 App 筛选/时段可查看不同使用场景的真实数据。
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight, Calendar, RefreshCw } from "lucide-react";
 import {
   fetchBucketsInRange,
   fetchKeyDetailsInRange,
   fetchKeyDetailsOfBucket,
-  todayRange,
-  thisWeekRange,
   dayRangeOf,
   DAY_MS,
   type RawBucket,
   type RawKeyDetail,
 } from "../data";
-import { aggregateByApp, MOUSE_PIXELS_PER_METER, intensityVar, bucketByPercentile, bucketSimple } from "../analytics";
-import { parseKLE, getLabelRdevCode, getDisplayLabel, type KLEKey } from "../kleParser";
+import { aggregateByApp } from "../analytics";
+import { parseKLE, getLabelRdevCode, type KLEKey } from "../kleParser";
 import { startOfDay, startOfWeek, isSameDay, isSameWeek, formatPeriodLabel } from "../utils/date";
-import KLEKeyboard from "../components/KLEKeyboard";
 import KLELayoutPicker, {
   getSavedLayout,
   saveLayout,
   loadLayoutJSON,
 } from "../components/KLELayoutPicker";
 import AppIcon from "../components/AppIcon";
+import TopKeysPanel from "../components/keyboard/TopKeysPanel";
+import MousePanel from "../components/keyboard/MousePanel";
+import KeyboardPanel from "../components/keyboard/KeyboardPanel";
 
 type AppFilter = "all" | string;
 type TimeFilter = "day" | "week";
@@ -67,24 +67,6 @@ export default function Keyboard() {
   const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
   const [kleKeys, setKleKeys] = useState<KLEKey[]>([]);
   const [kleLoading, setKleLoading] = useState(false);
-
-  const kbContainerRef = useRef<HTMLDivElement>(null);
-  const [unitSize, setUnitSize] = useState(48);
-
-  useEffect(() => {
-    const el = kbContainerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      const w = entry.contentRect.width;
-      if (kleKeys.length === 0) return;
-      const maxX = Math.max(...kleKeys.map((k) => k.x + k.w));
-      const gap = 6;
-      const computed = Math.floor(w / maxX);
-      setUnitSize(Math.min(Math.max(computed, 28), 56));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [kleKeys]);
 
   // 当前日期/周标签
   const today = useMemo(() => startOfDay(new Date()), []);
@@ -284,49 +266,6 @@ export default function Keyboard() {
     return Object.values(kleKeyCounts);
   }, [kleKeyCounts]);
 
-  // 鼠标数据（从 filteredData.buckets 聚合）
-  const mouseData = useMemo(() => {
-    let left = 0;
-    let right = 0;
-    let middle = 0;
-    let back = 0;
-    let forward = 0;
-    let moveDist = 0;
-    let scrollDist = 0;
-    for (const b of filteredData.buckets) {
-      left += b.mouse_left || 0;
-      right += b.mouse_right || 0;
-      middle += b.mouse_middle || 0;
-      back += b.mouse_back || 0;
-      forward += b.mouse_forward || 0;
-      moveDist += b.mouse_move_dist || 0;
-      scrollDist += b.scroll_dist || 0;
-    }
-    const meters = moveDist / MOUSE_PIXELS_PER_METER;
-    const travelKm =
-      meters >= 1000 ? Number((meters / 1000).toFixed(1)) : Number((meters / 1000).toFixed(2));
-    return {
-      left,
-      right,
-      middle,
-      back,
-      forward,
-      wheel: middle + Math.round(scrollDist / 100),
-      travelKm,
-    };
-  }, [filteredData.buckets]);
-
-  const maxMouse = Math.max(mouseData.left, mouseData.right, mouseData.wheel, mouseData.back, mouseData.forward, 1);
-
-  // Top 按键排行（从 kleKeyCounts 派生）
-  const topKeys = useMemo(() => {
-    return Object.entries(kleKeyCounts)
-      .filter(([, n]) => n > 0)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 6)
-      .map(([label, n]) => ({ label, n }));
-  }, [kleKeyCounts]);
-
   const topPanelTitle = timeFilter === "week" ? "本周按得最多" : "今天按得最多";
 
   // App 筛选按钮列表
@@ -444,123 +383,21 @@ export default function Keyboard() {
           </div>
         ) : (
           <>
-            {/* 键盘热力图 */}
-            <div className="kb-keyboard-section" ref={kbContainerRef}>
-              <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
-                <KLEKeyboard
-                  keys={kleKeys}
-                  keyCounts={kleKeyCounts}
-                  allCounts={allKeyCounts}
-                  unitSize={unitSize}
-                />
-              </div>
-            </div>
+            <KeyboardPanel
+              kleKeys={kleKeys}
+              kleKeyCounts={kleKeyCounts}
+              allKeyCounts={allKeyCounts}
+            />
 
             {/* 下方分栏：鼠标 + Top 按键 */}
             <div className="kb-lower-section">
-              {/* 鼠标热力 */}
-              <div className="kb-subsection">
-                <h3 className="kb-subsection-title">鼠标</h3>
-                <div className="mouse-card">
-                  <div className="mouse-shape" aria-hidden>
-                    <div
-                      className="mouse-btn mouse-btn--left"
-                      style={{
-                        background: intensityVar(bucketSimple(mouseData.left, maxMouse)),
-                      }}
-                      title={`左键 · ${mouseData.left.toLocaleString()} 次`}
-                    />
-                    <div
-                      className="mouse-btn mouse-btn--right"
-                      style={{
-                        background: intensityVar(bucketSimple(mouseData.right, maxMouse)),
-                      }}
-                      title={`右键 · ${mouseData.right.toLocaleString()} 次`}
-                    />
-                    <div
-                      className="mouse-wheel"
-                      style={{
-                        background: intensityVar(bucketSimple(mouseData.wheel, maxMouse)),
-                      }}
-                      title={`滚轮 · ${mouseData.wheel.toLocaleString()}`}
-                    />
-                    {(mouseData.back > 0 || mouseData.forward > 0) && (
-                      <>
-                        <div
-                          className="mouse-side mouse-side--back"
-                          style={{
-                            background: intensityVar(bucketSimple(mouseData.back, maxMouse)),
-                          }}
-                          title={`后退侧键 · ${mouseData.back.toLocaleString()} 次`}
-                        />
-                        <div
-                          className="mouse-side mouse-side--forward"
-                          style={{
-                            background: intensityVar(bucketSimple(mouseData.forward, maxMouse)),
-                          }}
-                          title={`前进侧键 · ${mouseData.forward.toLocaleString()} 次`}
-                        />
-                      </>
-                    )}
-                  </div>
-                  <dl className="mouse-stats">
-                    <div className="mouse-stat">
-                      <dt>左键</dt>
-                      <dd>{mouseData.left.toLocaleString()}</dd>
-                    </div>
-                    <div className="mouse-stat">
-                      <dt>右键</dt>
-                      <dd>{mouseData.right.toLocaleString()}</dd>
-                    </div>
-                    <div className="mouse-stat">
-                      <dt>滚轮</dt>
-                      <dd>{mouseData.wheel.toLocaleString()}</dd>
-                    </div>
-                    {(mouseData.back > 0 || mouseData.forward > 0) && (
-                      <>
-                        <div className="mouse-stat">
-                          <dt>侧键</dt>
-                          <dd>{(mouseData.back + mouseData.forward).toLocaleString()}</dd>
-                        </div>
-                      </>
-                    )}
-                    <div className="mouse-stat">
-                      <dt>移动</dt>
-                      <dd>
-                        {mouseData.travelKm}
-                        <span className="mouse-stat-unit">公里</span>
-                      </dd>
-                    </div>
-                  </dl>
-                </div>
-              </div>
+              <MousePanel buckets={filteredData.buckets} />
 
-              {/* Top 按键排行 */}
-              <div className="kb-subsection">
-                <h3 className="kb-subsection-title">{topPanelTitle}</h3>
-                <div className="topkey-list">
-                  {topKeys.length === 0 && (
-                    <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>还没有数据</div>
-                  )}
-                  {topKeys.map((k) => {
-                    const pct = topKeys[0] ? (k.n / topKeys[0].n) * 100 : 0;
-                    const level = bucketByPercentile(k.n, allKeyCounts);
-                    const displayLabel = getDisplayLabel(k.label);
-                    return (
-                      <div key={k.label} className="topkey-row">
-                        <div className="topkey-name">{displayLabel}</div>
-                        <div className="topkey-track">
-                          <div
-                            className="topkey-fill"
-                            style={{ width: `${pct}%`, background: intensityVar(level) }}
-                          />
-                        </div>
-                        <div className="topkey-count">{k.n.toLocaleString()}</div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <TopKeysPanel
+                kleKeyCounts={kleKeyCounts}
+                allKeyCounts={allKeyCounts}
+                title={topPanelTitle}
+              />
             </div>
           </>
         )}

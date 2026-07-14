@@ -10,22 +10,18 @@
  *  缩放和平移直接操作虚拟坐标，避免坐标系混用。
  */
 
-import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { CSSProperties } from "react";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  Maximize2,
-  Minimize2,
-} from "lucide-react";
+import { Calendar } from "lucide-react";
 import { fetchBucketsInRange } from "../data";
 import {
   buildAppLanes, computeGlobalGaps, buildSegments, timeToVirt, virtToTime, buildTicks,
   COMPRESS_THRESHOLD_MS,
   type AppLane, type TimeBlock,
 } from "../analytics";
-import AppIcon from "../components/AppIcon";
+import TimelineHeader from "../components/timeline/TimelineHeader";
+import TimelineTooltip from "../components/timeline/TimelineTooltip";
+import SwimLane from "../components/timeline/SwimLane";
 import { startOfDay, isSameDay, formatPeriodLabel } from "../utils/date";
 import { formatTime, formatDuration } from "../utils/format";
 
@@ -78,7 +74,6 @@ export default function Timeline() {
     x: number;
     y: number;
   } | null>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
 
   /** 压缩开关：默认开启 */
   const [compressed, setCompressed] = useState(true);
@@ -183,22 +178,6 @@ export default function Timeline() {
     () => buildTicks(segmentsData.segments, viewRange.start, viewRange.end),
     [segmentsData, viewRange.start, viewRange.end]
   );
-
-  useLayoutEffect(() => {
-    if (!hoveredBlock || !tooltipRef.current || !pageRef.current) return;
-    const tip = tooltipRef.current;
-    const rect = tip.getBoundingClientRect();
-    const container = pageRef.current.getBoundingClientRect();
-
-    let dx = 0;
-    let dy = 0;
-    if (rect.right > container.right - 8) dx = container.right - 8 - rect.right;
-    if (rect.left < container.left + 8) dx = container.left + 8 - rect.left;
-    if (rect.top < container.top + 8) dy = container.top + 8 - rect.top;
-
-    tip.style.transform = `translate(calc(-50% + ${dx}px), calc(-100% + ${dy}px))`;
-    tip.style.visibility = "visible";
-  }, [hoveredBlock]);
 
   const resetView = useCallback(() => {
     setViewport(null);
@@ -485,51 +464,17 @@ export default function Timeline() {
 
   return (
     <div ref={pageRef} className="swimlane-page">
-      {/* 日期切换控件 */}
-      <div className="swimlane-date-picker">
-        <button
-          className="swimlane-nav-btn"
-          onClick={goPrevDay}
-          title="前一天"
-        >
-          <ChevronLeft size={18} />
-        </button>
-        <div className="swimlane-date-label">
-          <Calendar size={16} />
-          <span>{dateLabel}</span>
-        </div>
-        <button
-          className="swimlane-nav-btn"
-          onClick={goNextDay}
-          disabled={isToday}
-          title="后一天"
-        >
-          <ChevronRight size={18} />
-        </button>
-        {!isToday && (
-          <button className="swimlane-today-btn" onClick={goToday}>
-            回到今天
-          </button>
-        )}
-        {viewport && (
-          <button
-            className="swimlane-reset-btn"
-            onClick={resetView}
-            title="重置视图"
-          >
-            <Maximize2 size={16} />
-            <span>重置视图</span>
-          </button>
-        )}
-        <button
-          className="swimlane-compress-toggle"
-          onClick={toggleCompressed}
-          title={compressed ? "切换到完整视图" : "切换到压缩视图"}
-        >
-          {compressed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
-          <span>{compressed ? "展开空白" : "压缩空白"}</span>
-        </button>
-      </div>
+      <TimelineHeader
+        dateLabel={dateLabel}
+        isToday={isToday}
+        hasCustomViewport={viewport !== null}
+        compressed={compressed}
+        onPrevDay={goPrevDay}
+        onNextDay={goNextDay}
+        onToday={goToday}
+        onResetView={resetView}
+        onToggleCompressed={toggleCompressed}
+      />
 
       {lanes.length === 0 && !loading && (
         <div className="swimlane-empty">
@@ -591,79 +536,25 @@ export default function Timeline() {
             {/* 泳道列表 */}
             <div ref={bodyRef} className="swimlane-body">
               {lanes.map((lane) => (
-                <div key={lane.app_bundle_id} className="swimlane-row">
-                  <div className="swimlane-label">
-                    <AppIcon
-                      bundleId={lane.app_bundle_id}
-                      appName={lane.app_name}
-                      size={16}
-                    />
-                    <span className="swimlane-app-name" title={lane.app_name}>
-                      {lane.app_name}
-                    </span>
-                  </div>
-                  <div ref={trackRef} className="swimlane-track">
-                    {/* 背景网格线 */}
-                    {ticks.map((tk) => (
-                      <div
-                        key={tk.time_ms}
-                        className="swimlane-grid-line"
-                        style={{ left: `${virtToPct(tk.virt)}%` }}
-                      />
-                    ))}
-                    {/* 色块（只渲染可见的） */}
-                    {lane.blocks.filter(isBlockVisible).map((block, i) => (
-                      <div
-                        key={i}
-                        className="swimlane-block"
-                        style={{
-                          ...blockStyle(block),
-                          background: lane.color,
-                        }}
-                        onMouseEnter={(e) => {
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          const pageRect = pageRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
-                          setHoveredBlock({
-                            app: lane.app_name,
-                            bundleId: lane.app_bundle_id,
-                            block,
-                            x: rect.left + rect.width / 2 - pageRect.left,
-                            y: rect.top - pageRect.top,
-                          });
-                        }}
-                        onMouseLeave={() => setHoveredBlock(null)}
-                      />
-                    ))}
-                  </div>
-                </div>
+                <SwimLane
+                  key={lane.app_bundle_id}
+                  lane={lane}
+                  ticks={ticks}
+                  virtToPct={virtToPct}
+                  blockStyle={blockStyle}
+                  isBlockVisible={isBlockVisible}
+                  pageRef={pageRef}
+                  trackRef={trackRef}
+                  onHoverBlock={setHoveredBlock}
+                />
               ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* Tooltip */}
       {hoveredBlock && (
-        <div
-          ref={tooltipRef}
-          className="swimlane-tooltip"
-          style={{ left: hoveredBlock.x, top: hoveredBlock.y - 8, visibility: "hidden" }}
-        >
-          <div className="swimlane-tooltip-app">
-            <AppIcon bundleId={hoveredBlock.bundleId} appName={hoveredBlock.app} size={16} />
-            {hoveredBlock.app}
-          </div>
-          <div className="swimlane-tooltip-time">
-            {formatTime(hoveredBlock.block.start_ms)} –{" "}
-            {formatTime(hoveredBlock.block.end_ms)}
-          </div>
-          <div className="swimlane-tooltip-duration">
-            {formatDuration(hoveredBlock.block.duration_ms)}
-          </div>
-          <div className="swimlane-tooltip-intensity">
-            强度 {hoveredBlock.block.intensity}
-          </div>
-        </div>
+        <TimelineTooltip hoveredBlock={hoveredBlock} pageRef={pageRef} />
       )}
     </div>
   );
