@@ -14,6 +14,8 @@ mod platform;
 mod settings;
 mod icon_cache;
 mod updater;
+#[cfg(target_os = "windows")]
+mod raw_input_windows;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {

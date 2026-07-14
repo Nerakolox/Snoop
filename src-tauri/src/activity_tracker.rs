@@ -1,4 +1,6 @@
-use rdev::{listen, Event, EventType};
+#[cfg(not(target_os = "windows"))]
+use rdev::listen;
+use rdev::{Event, EventType};
 use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -207,42 +209,53 @@ pub fn start_activity_tracking(
     });
 
     // ============ 键鼠监听 ============
+    // Windows 走 Raw Input(WM_INPUT):不受 low-level hook 拦截影响,
+    // EAC / 小蓝熊 / 反宏工具都挡不住。其它平台继续用 rdev。
     let counters_input = Arc::clone(&counters);
     let app_handle_input = app_handle.clone();
     thread::spawn(move || {
-        println!("🎹 rdev 监听线程启动");
+        println!("🎹 输入监听线程启动");
+        let callback = move |event: Event| {
+            // emit 实时事件供前端调试页使用
+            let payload = match &event.event_type {
+                EventType::KeyPress(key) => Some(InputEventPayload {
+                    event_type: "KeyPress".into(),
+                    code: format!("{:?}", key),
+                }),
+                EventType::KeyRelease(key) => Some(InputEventPayload {
+                    event_type: "KeyRelease".into(),
+                    code: format!("{:?}", key),
+                }),
+                EventType::ButtonPress(btn) => Some(InputEventPayload {
+                    event_type: "ButtonPress".into(),
+                    code: format!("{:?}", btn),
+                }),
+                EventType::ButtonRelease(btn) => Some(InputEventPayload {
+                    event_type: "ButtonRelease".into(),
+                    code: format!("{:?}", btn),
+                }),
+                _ => None,
+            };
+            if let Some(p) = payload {
+                let _ = app_handle_input.emit("input-event", p);
+            }
+            handle_input_event(&event, &counters_input);
+        };
+
+        #[cfg(target_os = "windows")]
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            listen(move |event| {
-                // emit 实时事件供前端调试页使用
-                let payload = match &event.event_type {
-                    EventType::KeyPress(key) => Some(InputEventPayload {
-                        event_type: "KeyPress".into(),
-                        code: format!("{:?}", key),
-                    }),
-                    EventType::KeyRelease(key) => Some(InputEventPayload {
-                        event_type: "KeyRelease".into(),
-                        code: format!("{:?}", key),
-                    }),
-                    EventType::ButtonPress(btn) => Some(InputEventPayload {
-                        event_type: "ButtonPress".into(),
-                        code: format!("{:?}", btn),
-                    }),
-                    EventType::ButtonRelease(btn) => Some(InputEventPayload {
-                        event_type: "ButtonRelease".into(),
-                        code: format!("{:?}", btn),
-                    }),
-                    _ => None,
-                };
-                if let Some(p) = payload {
-                    let _ = app_handle_input.emit("input-event", p);
-                }
-                handle_input_event(&event, &counters_input);
-            })
+            crate::raw_input_windows::listen(callback).map_err(|e| format!("{e:?}"))
         }));
+
+        #[cfg(not(target_os = "windows"))]
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            listen(callback).map_err(|e| format!("{:?}", e))
+        }));
+
         match result {
-            Ok(Ok(())) => eprintln!("⚠️ rdev listen 正常返回（不应该发生）"),
-            Ok(Err(e)) => eprintln!("❌ rdev 监听错误: {:?}", e),
-            Err(p) => eprintln!("❌ rdev 线程 panic: {:?}", p),
+            Ok(Ok(())) => eprintln!("⚠️ 输入监听正常返回（不应该发生）"),
+            Ok(Err(e)) => eprintln!("❌ 输入监听错误: {}", e),
+            Err(p) => eprintln!("❌ 输入监听线程 panic: {:?}", p),
         }
     });
 
