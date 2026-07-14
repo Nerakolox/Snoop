@@ -153,6 +153,17 @@ pub fn get_frontmost_app() -> FrontmostApp {
                 return FrontmostApp::unknown();
             }
 
+            let pid: i32 = msg_send![frontmost_app, processIdentifier];
+            if pid > 0 && pid as u32 == std::process::id() {
+                // 前台就是自己：dev 环境从终端启动没 .app bundle，
+                // bundleIdentifier 会返回 nil，localizedName 也可能是 "snoop"。
+                // 直接固定成正式包名 + 大写显示名，图标匹配与展示都一致。
+                return FrontmostApp {
+                    name: "Snoop".to_string(),
+                    bundle_id: "org.feedra.snoop".to_string(),
+                };
+            }
+
             let app_name: id = msg_send![frontmost_app, localizedName];
             let bundle_id: id = msg_send![frontmost_app, bundleIdentifier];
 

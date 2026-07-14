@@ -48,6 +48,21 @@ impl Database {
 
         self.migrate_duration_column()?;
         self.migrate_mouse_side_buttons()?;
+        self.migrate_snoop_bundle_id()?;
+        Ok(())
+    }
+
+    fn migrate_snoop_bundle_id(&self) -> Result<()> {
+        let changed = self.conn.execute(
+            "UPDATE activity_buckets
+             SET app_name = 'Snoop', app_bundle_id = 'org.feedra.snoop'
+             WHERE app_bundle_id = 'com.snoop.app'
+                OR (app_bundle_id = 'org.feedra.snoop' AND app_name != 'Snoop')",
+            [],
+        )?;
+        if changed > 0 {
+            println!("✓ 迁移 Snoop 自身记录到 org.feedra.snoop / 'Snoop'：{} 行", changed);
+        }
         Ok(())
     }
 
