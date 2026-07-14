@@ -235,12 +235,20 @@ pub fn run() {
 
             let handle = app.handle().clone();
             let menu_handle = app.handle().clone();
+
+            #[cfg(target_os = "windows")]
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/tray-icon-windows.png"
+            ))?;
+            #[cfg(not(target_os = "windows"))]
             let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
                 "../icons/tray-icon.png"
             ))?;
-            TrayIconBuilder::with_id("main-tray")
-                .icon(tray_icon)
-                .icon_as_template(true)
+
+            let tray_builder = TrayIconBuilder::with_id("main-tray").icon(tray_icon);
+            #[cfg(not(target_os = "windows"))]
+            let tray_builder = tray_builder.icon_as_template(true);
+            tray_builder
                 .tooltip("Snoop")
                 .menu(&menu)
                 .show_menu_on_left_click(false)
