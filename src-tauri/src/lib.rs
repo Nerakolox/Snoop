@@ -172,6 +172,21 @@ pub fn run() {
             app.manage(icon_cache);
             app.manage(updater::UpdaterState::new());
 
+            // Windows release 自启自愈:若注册表里已有自启项,用当前 exe 路径覆盖一次。
+            // 用途是修 dev 期开过自启、后来装了正式版的老用户 —— 注册表里那条 Run 项
+            // 可能还指向 target\debug\snoop.exe,开机时会拉起一个带控制台的旧 debug 进程
+            // (加载 devUrl 显示「未连接」),黑窗一闪就没了。debug 不做,免得开发时反向覆盖。
+            #[cfg(all(target_os = "windows", not(debug_assertions)))]
+            {
+                use tauri_plugin_autostart::ManagerExt;
+                let autostart = app.autolaunch();
+                if let Ok(true) = autostart.is_enabled() {
+                    if let Err(e) = autostart.enable() {
+                        eprintln!("[autostart] 自愈失败: {e}");
+                    }
+                }
+            }
+
             // macOS 应用菜单：仅 App / 窗口 / 帮助 三块，去掉 File/Edit/View
             #[cfg(target_os = "macos")]
             {

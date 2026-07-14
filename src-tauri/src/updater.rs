@@ -427,14 +427,45 @@ pub fn run_pending_installer(app: &AppHandle) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        use std::process::Command;
-        Command::new(&rec.installer_path)
-            .arg("/S")
-            .spawn()
-            .map_err(|e| format!("启动 installer 失败: {e}"))?;
-        // 给 installer 一点时间接管,再退出当前进程
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::PCWSTR;
+        use windows::Win32::Foundation::HWND;
+        use windows::Win32::UI::Shell::ShellExecuteW;
+        use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+        // NSIS perMachine 装到 Program Files 需要管理员权限。CreateProcessW
+        // (std::process::Command::spawn) 遇到 requireAdministrator manifest 会直接
+        // 返回 ERROR_ELEVATION_REQUIRED (740),连 UAC 弹窗都不会触发。
+        // 必须走 ShellExecuteW + "runas" 让 shell 层触发 UAC 提权对话框。
+        let file: Vec<u16> = OsStr::new(&rec.installer_path)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+        let params: Vec<u16> = "/S\0".encode_utf16().collect();
+
+        let hinst = unsafe {
+            ShellExecuteW(
+                HWND(std::ptr::null_mut()),
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(file.as_ptr()),
+                PCWSTR(params.as_ptr()),
+                PCWSTR::null(),
+                SW_HIDE,
+            )
+        };
+        // MSDN: 返回值 > 32 表示成功;<= 32 是错误码(如 SE_ERR_ACCESSDENIED=5 代表用户
+        // 在 UAC 对话框里点了「否」)。指针值转 usize 拿到那个数字直接比较。
+        let code = hinst.0 as usize;
+        if code <= 32 {
+            return Err(format!(
+                "启动 installer 失败(shell 错误码 {code}),可能是被 UAC 取消或安装包被拦截"
+            ));
+        }
+        // 给 installer 一点时间接管,再退出当前进程,让 NSIS 释放可执行文件占用
         std::thread::spawn(|| {
-            std::thread::sleep(Duration::from_millis(300));
+            std::thread::sleep(Duration::from_millis(500));
             std::process::exit(0);
         });
         Ok(())
@@ -490,14 +521,39 @@ pub fn try_install_pending_on_startup() -> bool {
         return false;
     }
 
-    use std::process::Command;
-    match Command::new(&installer).arg("/S").spawn() {
-        Ok(_) => {
-            // pending 交给 installer 完成,清掉记录让下次启动不重复安装
-            let _ = std::fs::remove_file(&pending);
-            true
-        }
-        Err(_) => false,
+    // 同 run_pending_installer:perMachine NSIS 要 UAC,只能走 ShellExecuteW/runas。
+    // 用 CreateProcessW 会因 ERROR_ELEVATION_REQUIRED 直接失败,连 UAC 弹窗都没有。
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_HIDE;
+
+    let file: Vec<u16> = installer
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    let params: Vec<u16> = "/S\0".encode_utf16().collect();
+
+    let hinst = unsafe {
+        ShellExecuteW(
+            HWND(std::ptr::null_mut()),
+            PCWSTR(verb.as_ptr()),
+            PCWSTR(file.as_ptr()),
+            PCWSTR(params.as_ptr()),
+            PCWSTR::null(),
+            SW_HIDE,
+        )
+    };
+    if (hinst.0 as usize) > 32 {
+        // pending 交给 installer 完成,清掉记录让下次启动不重复安装
+        let _ = std::fs::remove_file(&pending);
+        true
+    } else {
+        // 用户拒了 UAC 或其他失败:留着 pending,让用户下次或手动再触发
+        false
     }
 }
 
