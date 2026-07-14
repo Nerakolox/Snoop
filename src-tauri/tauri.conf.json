@@ -55,7 +55,8 @@
         "languages": ["SimpChinese"],
         "displayLanguageSelector": false,
         "startMenuFolder": "Snoop",
-        "compression": "lzma"
+        "compression": "lzma",
+        "installerIcon": "icons/icon.ico"
       }
     }
   }
