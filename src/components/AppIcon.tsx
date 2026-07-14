@@ -9,9 +9,19 @@ type Props = {
   className?: string;
 };
 
-// Snoop 自己的 bundle id：直接用内置图标，绕过系统提取（dev 环境系统里
-// 拿不到 .app 图标会退化成 macOS 空白文件图标）
-const SNOOP_BUNDLE_ID = "org.feedra.snoop";
+// Snoop 自己的识别：直接用内置图标，绕过系统提取（dev 环境系统里
+// 拿不到 .app 图标会退化成 macOS 空白文件图标）。
+// - org.feedra.snoop：正式包名
+// - com.snoop.app：历史包名，老数据里可能残留
+// - unknown.bundle.id + name=snoop：tauri dev 从终端启动时，NSWorkspace
+//   返回的 bundleIdentifier 为 nil，落库成 unknown.bundle.id
+const SNOOP_BUNDLE_IDS = new Set(["org.feedra.snoop", "com.snoop.app"]);
+
+function isSnoopSelf(bundleId: string, appName: string) {
+  if (SNOOP_BUNDLE_IDS.has(bundleId)) return true;
+  if (bundleId === "unknown.bundle.id" && appName.toLowerCase() === "snoop") return true;
+  return false;
+}
 
 // 全局图标缓存，避免重复请求
 const iconCache = new Map<string, string | null>();
@@ -26,7 +36,7 @@ export function resetAppIconCache() {
 }
 
 export default function AppIcon({ bundleId, appName, size = 20, className = "" }: Props) {
-  const isSelf = bundleId === SNOOP_BUNDLE_ID;
+  const isSelf = isSnoopSelf(bundleId, appName);
   const [iconData, setIconData] = useState<string | null>(null);
   const [loading, setLoading] = useState(!isSelf);
   const [tick, setTick] = useState(0);
