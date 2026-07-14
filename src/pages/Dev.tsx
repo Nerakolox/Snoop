@@ -16,6 +16,7 @@ import {
   aggregateWeekHourGrid,
   classifyKeys,
   computeIntensity,
+  debugEpm,
   mergeSessions,
 } from "../analytics";
 
@@ -59,6 +60,9 @@ type AnalyticsSummary = {
   dailyActive: { day_of_week: number; hours: number }[];
   weekGridPreview: string;
   overallIntensity: number;
+  overallEpm: number;
+  intensityDist: [number, number, number, number, number];
+  epmBreakdown: { keys: number; clicks: number; moveEvents: number; scrollEvents: number };
   keyDetailRows: number;
   hourRows: number;
 };
@@ -111,7 +115,13 @@ export default function Dev() {
         console.log("weekGrid", weekGrid);
         console.log("appRank (server-side)", appRank);
         console.log("overall intensity", computeIntensity(rawBuckets));
+        console.log("EPM debug", debugEpm(rawBuckets));
         console.groupEnd();
+
+        // 用 App 级 EPM 拆一份分档分布，肉眼确认"不是全4"
+        const dist: [number, number, number, number, number] = [0, 0, 0, 0, 0];
+        for (const a of appStats) dist[a.intensity] += 1;
+        const dbg = debugEpm(rawBuckets);
 
         summaries.push({
           scope: s.scope,
@@ -137,6 +147,9 @@ export default function Dev() {
             .map((row) => row.join(""))
             .join("\n"),
           overallIntensity: computeIntensity(rawBuckets),
+          overallEpm: +dbg.epm.toFixed(1),
+          intensityDist: dist,
+          epmBreakdown: dbg.breakdown,
           keyDetailRows: keyDetails.length,
           hourRows: hourly.length,
         });
@@ -226,6 +239,20 @@ export default function Dev() {
                 {s.aggregatedSessionCount}（碎片处理后）· 整体强度 {s.overallIntensity} ·
                 key_detail 行 {s.keyDetailRows} · hour 行 {s.hourRows}
               </h3>
+              <div
+                style={{
+                  fontFamily: "ui-monospace, monospace",
+                  fontSize: 12,
+                  background: "var(--color-bg-2)",
+                  padding: 8,
+                  borderRadius: 6,
+                  margin: "6px 0 12px",
+                }}
+              >
+                整体 EPM {s.overallEpm}（keys {s.epmBreakdown.keys} · clicks {s.epmBreakdown.clicks}{" "}
+                · moveEv {s.epmBreakdown.moveEvents} · scrollEv {s.epmBreakdown.scrollEvents}）
+                · App 分档分布 [0..4] = [{s.intensityDist.join(", ")}]
+              </div>
               <div style={{ display: "grid", gap: 16, gridTemplateColumns: "1fr 1fr" }}>
                 <div>
                   <b>Top Apps</b>

@@ -14,6 +14,7 @@ import {
   aggregateByApp,
   aggregateByHour,
   computeIntensity,
+  intensityVar,
   type Intensity,
   MOOD_LABELS,
   MOUSE_PIXELS_PER_METER,
@@ -42,10 +43,6 @@ type AppRow = {
   minutes: number;
   intensity: Intensity;
 };
-
-function intensityVar(level: Intensity) {
-  return `var(--intensity-${level})`;
-}
 
 /** 格式化时长：毫秒 → "X时Y分" 或 "X分" */
 function formatDuration(ms: number): KpiPart[] {

@@ -19,14 +19,14 @@ import {
   aggregateByDay,
   aggregateByApp,
   aggregateWeekHourGrid,
+  bucketSimple,
   intensityVar,
   type DayStat,
   type AppStat,
+  type Intensity,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
 import { fmtHours } from "../utils/format";
-
-type Intensity = 0 | 1 | 2 | 3 | 4;
 
 type WeekDay = {
   short: string; // 一二三四五六日
@@ -286,9 +286,8 @@ export default function Insights() {
           <div className="ins-trend">
             {weekDays.map((d) => {
               const pct = d.hours > 0 ? (d.hours / maxDay) * 100 : 0;
-              // 柱子强度：按天时长在本周内相对占比映射
-              const level: Intensity =
-                pct >= 85 ? 4 : pct >= 65 ? 3 : pct >= 40 ? 2 : pct > 0 ? 1 : 0;
+              // 柱子颜色：按天时长占本周最忙一天的比例分档（相对量，不是活跃强度本身）
+              const level = bucketSimple(d.hours, maxDay);
               const barStyle: CSSProperties = {
                 height: d.isFuture ? "0%" : `${pct}%`,
                 background: d.isToday
