@@ -35,3 +35,10 @@ _snoop_link.db
 
 # Claude Code 会话数据
 .claude/
+
+# 自更新清单：每次发版由 bump 脚本生成 + build 后回填 sha256，
+# 上传到雨云而不是进仓库
+latest.json
+
+# 编辑器/临时备份文件
+*.bak
