@@ -135,11 +135,6 @@ pub fn run() {
             database.init_schema().expect("无法初始化数据库表结构");
             println!("✓ 数据库初始化成功");
 
-            database.insert_test_data().expect("无法插入测试数据");
-            println!("✓ 测试数据插入成功");
-
-            database.verify_test_data().expect("无法验证测试数据");
-
             // 启动集成的活动追踪（5秒桶 + 实时键鼠 + 前台应用）
             activity_tracker::start_activity_tracking(db_path.clone(), app.handle().clone(), paused, ignore_list);
 
