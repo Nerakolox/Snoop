@@ -154,11 +154,19 @@ pub fn run() {
             {
                 use tauri::menu::{AboutMetadataBuilder, SubmenuBuilder};
 
+                // 关于面板用打包进 app 的 Snoop 猫图标；dev 环境系统里没有
+                // .app bundle，从系统提取会退化成 macOS 空白文件图标。
+                let about_icon = tauri::image::Image::from_bytes(include_bytes!(
+                    "../icons/128x128@2x.png"
+                ))
+                .ok();
+
                 let about_meta = AboutMetadataBuilder::new()
                     .name(Some("Snoop"))
                     .version(Some(env!("CARGO_PKG_VERSION")))
                     .website(Some(REPO_URL))
                     .website_label(Some("GitHub"))
+                    .icon(about_icon)
                     .build();
 
                 let settings_item = MenuItemBuilder::with_id("menu:open-settings", "设置…")

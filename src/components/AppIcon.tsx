@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import snoopIcon from "../assets/snoop-icon.png";
 
 type Props = {
   bundleId: string;
@@ -7,6 +8,10 @@ type Props = {
   size?: number;
   className?: string;
 };
+
+// Snoop 自己的 bundle id：直接用内置图标，绕过系统提取（dev 环境系统里
+// 拿不到 .app 图标会退化成 macOS 空白文件图标）
+const SNOOP_BUNDLE_ID = "org.feedra.snoop";
 
 // 全局图标缓存，避免重复请求
 const iconCache = new Map<string, string | null>();
@@ -21,8 +26,9 @@ export function resetAppIconCache() {
 }
 
 export default function AppIcon({ bundleId, appName, size = 20, className = "" }: Props) {
+  const isSelf = bundleId === SNOOP_BUNDLE_ID;
   const [iconData, setIconData] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!isSelf);
   const [tick, setTick] = useState(0);
 
   useEffect(() => {
@@ -32,6 +38,12 @@ export default function AppIcon({ bundleId, appName, size = 20, className = "" }
   }, []);
 
   useEffect(() => {
+    if (isSelf) {
+      setLoading(false);
+      setIconData(null);
+      return;
+    }
+
     // 检查缓存
     if (iconCache.has(bundleId)) {
       setIconData(iconCache.get(bundleId) || null);
@@ -53,7 +65,7 @@ export default function AppIcon({ bundleId, appName, size = 20, className = "" }
         setIconData(null);
       })
       .finally(() => setLoading(false));
-  }, [bundleId, tick]);
+  }, [bundleId, tick, isSelf]);
 
   // 提取 App 名首字母作兜底
   const firstLetter = appName.charAt(0).toUpperCase() || "?";
@@ -67,6 +79,22 @@ export default function AppIcon({ bundleId, appName, size = 20, className = "" }
     const hue = Math.abs(hash) % 360;
     return `hsl(${hue}, 60%, 55%)`;
   };
+
+  if (isSelf) {
+    return (
+      <img
+        src={snoopIcon}
+        alt={appName}
+        className={`app-icon ${className}`}
+        style={{
+          width: size,
+          height: size,
+          borderRadius: "20%",
+          objectFit: "contain",
+        }}
+      />
+    );
+  }
 
   if (loading) {
     // 加载中占位：灰色圆角块
