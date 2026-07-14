@@ -1,5 +1,8 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 
+/** 环比百分比封顶：超过此值一律显示 "999%+"，避免分母极小时的百分比爆炸把布局撑破 */
+const MAX_DELTA_PCT = 999;
+
 export default function DeltaBadge({ delta }: { delta: number | null }) {
   if (delta === null) {
     return (
@@ -16,18 +19,30 @@ export default function DeltaBadge({ delta }: { delta: number | null }) {
       </span>
     );
   }
+
+  const abs = Math.abs(delta);
+  const capped = abs > MAX_DELTA_PCT;
+  const numText = capped ? `${MAX_DELTA_PCT}%+` : `${abs}%`;
+
   if (delta > 0) {
+    const title = capped
+      ? `较上周 +${abs}%（已封顶显示 ${MAX_DELTA_PCT}%+）`
+      : `较上周 +${abs}%`;
     return (
-      <span className="ins-delta ins-delta--up" title={`较上周 +${delta}%`}>
+      <span className="ins-delta ins-delta--up" title={title}>
         <ArrowUpRight size={12} />
-        <span className="ins-delta-num">{delta}%</span>
+        <span className="ins-delta-num">{numText}</span>
       </span>
     );
   }
+
+  const title = capped
+    ? `较上周 -${abs}%（已封顶显示 ${MAX_DELTA_PCT}%+）`
+    : `较上周 -${abs}%`;
   return (
-    <span className="ins-delta ins-delta--down" title={`较上周 ${delta}%`}>
+    <span className="ins-delta ins-delta--down" title={title}>
       <ArrowDownRight size={12} />
-      <span className="ins-delta-num">{Math.abs(delta)}%</span>
+      <span className="ins-delta-num">{numText}</span>
     </span>
   );
 }

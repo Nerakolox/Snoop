@@ -171,7 +171,8 @@
 
 .ins-app-row {
   display: grid;
-  grid-template-columns: 76px minmax(0, 1fr) 48px 64px;
+  /* 图标+名称 · 横条 · 时长 · 环比胶囊；环比列固定 72px，能容纳到 "999%+" 而不会撑破布局 */
+  grid-template-columns: 96px minmax(0, 1fr) 48px 72px;
   align-items: center;
   gap: var(--space-3);
 }
@@ -186,12 +187,24 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-width: 0;
+}
+
+/* 图标在 flex 容器中默认可被压缩，锁死尺寸避免被文字/其他兄弟节点挤小 */
+.ins-app-name > .app-icon,
+.ins-app-name > .app-icon-fallback,
+.ins-app-name > .app-icon-placeholder {
+  flex-shrink: 0;
 }
 
 .ins-app-name > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
+}
+
+.ins-app-row > .app-row-track {
   min-width: 0;
 }
 
@@ -214,11 +227,18 @@
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   border: 1px solid transparent;
+  /* 占满 grid 列，无论文本长短都不再撑破 App 排行的整行布局 */
+  width: 100%;
   min-width: 0;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 
 .ins-delta-num {
   line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ins-delta--up {
