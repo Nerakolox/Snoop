@@ -11,6 +11,9 @@ const platform =
   /Linux/i.test(ua) ? "linux" : "unknown";
 document.body.dataset.platform = platform;
 
+// 禁用 webview 默认右键菜单，让 App 更像原生程序（Ctrl+C/V 依然可用）
+window.addEventListener("contextmenu", (e) => e.preventDefault());
+
 // 主题初始化：在渲染前立即应用，避免闪烁
 const savedTheme = localStorage.getItem("theme") as "system" | "light" | "dark" | null;
 const theme = savedTheme || "system";
