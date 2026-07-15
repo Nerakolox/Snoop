@@ -1,7 +1,127 @@
-# Tauri + React + Typescript
+# Snoop
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+> 一只叫 Snoop 的猫，盯着你的键盘鼠标，帮你把今天到底"做了什么、忙没忙、忙在哪"看清楚。
 
-## Recommended IDE Setup
+本地运行、开源、隐私安全的桌面键鼠活动记录工具。数据只落在本机 SQLite，永远不上传。
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+**支持平台**：Windows 10/11 · macOS 10.15+
+**品牌**：Feedra · 吉祥物是一只嘴不太好的猫
+
+---
+
+## 它是干什么的
+
+你每天在电脑前坐八九个小时，到底是真的在干活，还是切了三十次 App、刷了两个小时空转？Snoop 在后台悄悄记着，晚上给你一份复盘：
+
+- **哪些 App 吃掉了你今天的时间**
+- **你什么时段最活跃、什么时段在装忙**
+- **键盘鼠标的强度曲线长什么样**——高强度打字的时段、鼠标狂点的时段、一动不动的时段
+- **一整周的作息热力图**，看看你以为的规律和实际的规律差多远
+
+外加一只嘴很欠的猫在旁边盯着，看到你摸鱼会阴阳你两句。
+
+---
+
+## 隐私红线
+
+Snoop **只记录键鼠的频次和强度**。不记录：
+
+- 你按了哪个键的具体键值序列（密码、聊天内容、搜索词都不会被捕获）
+- 剪贴板、截屏、麦克风、摄像头
+- 任何需要上传网络的东西
+
+数据库里只有"某个 App 在某个 5 秒时段内敲了 N 下键、鼠标移动了多少像素"这种颗粒度。键盘热力图靠的是"每个键位被按了多少次"这种去序列化的计数，重建不出你打了什么字。
+
+这条线不会为了任何"更聪明的分析"让步。所有数据都在你本机的 SQLite 里，卸载即删。
+
+---
+
+## 主要功能
+
+**概览 · 今日快照**
+此刻状态卡（当前 App + 强度分档 + 猫的吐槽）、今日数字总览、App 使用时长排行、24 小时时段强度热力条。
+
+**时间线 · 泳道甘特图**
+每个 App 一行，横轴是时间，色块按 App 固定色。滚轮缩放、拖拽平移、日期切换。超过 2 小时的空白自动压缩成灰块——你没在电脑前的时候不占版面。
+
+**键盘 · 热力图**
+真实键盘布局渲染，内置 40/60/68/87/98/104 多种配列，一键切换。可按 App 和时段筛选，键盘、鼠标、Top 按键三块联动。染色走分位数分档，避免"回车键一个人把全盘拉爆"。
+
+**洞察 · 跨周报告**
+一周趋势柱状图、App 排行带环比涨跌、7×24 作息热力网格。看你是"每天晚上 10 点后才真正开始干活"的那种人，还是"周三下午必然摸鱼"的那种人。
+
+**其他**
+托盘常驻（关掉窗口后台继续记录）、开机自启（可关）、深浅色主题、忽略 App 名单、猫吐槽开关与毒舌度调节、一键数据导出/清空。
+
+---
+
+## 下载安装
+
+前往 [Releases](../../releases) 下载对应平台的安装包：
+
+- **Windows**：`Snoop_x.y.z_x64-setup.exe`，双击安装。SmartScreen 拦截时点「更多信息 → 仍要运行」。
+- **macOS Apple Silicon**：`Snoop_x.y.z_aarch64.dmg`
+- **macOS Intel**：`Snoop_x.y.z_x64.dmg`
+
+首次启动时：
+
+- **Windows**：直接开跑，不用授权。
+- **macOS**：需要在「系统设置 → 隐私与安全性 → 辅助功能」里给 Snoop 打勾（用于全局键鼠监听）。Gatekeeper 首次会拦一下，右键 → 打开 即可。
+
+自动更新已内置：Windows 会后台下载新版本，在托盘菜单出现「重启安装」；macOS 会提示打开下载页手动拖新版覆盖。
+
+---
+
+## 常见问题
+
+**这会不会拖慢我的电脑？**
+不会。全局监听走的是操作系统提供的原生通道（Windows 用 Raw Input、macOS 用底层事件通道），事件回调只做内存计数，每 5 秒批量落库一次。CPU 占用日常在 1% 以下。
+
+**它会不会跟游戏、反外挂打架？**
+Windows 版特意不用 low-level hook，改用 Raw Input（游戏本身收键盘用的就是这个通道），所以 EAC、Vanguard、小蓝熊这类反外挂拦不到、也不该拦。Snoop 是纯读的被动订阅，不注入 DLL、不读别的进程内存、不发任何模拟输入。
+
+**数据存在哪里？**
+- Windows：`%APPDATA%\org.feedra.snoop\`
+- macOS：`~/Library/Application Support/org.feedra.snoop/`
+
+一个 SQLite 文件。想跑就跑，想删就删。
+
+**能同步到手机 / 云端吗？**
+不能。这是设计选择，不是没做完。本地工具就该是本地的。
+
+**支持 Linux 吗？**
+暂不支持。不是当前发布目标。
+
+---
+
+## 想自己编译？
+
+需要 Node 18+、Rust stable，以及各平台的构建工具链。
+
+```bash
+npm ci
+npm run tauri dev       # 开发模式
+npm run tauri build     # 出安装包
+```
+
+- Windows 构建需要 Visual Studio Build Tools（C++ 桌面开发工作负载）
+- macOS 构建需要 Xcode Command Line Tools（`xcode-select --install`）
+
+发布流程和自更新协议看 [docs/打包与发布.md](docs/打包与发布.md)。
+
+---
+
+## 技术栈
+
+- **前端**：Tauri 2 + React 19 + TypeScript + Vite
+- **后端**：Rust（rusqlite 存储、rdev/Raw Input 采集、平台代码用 `#[cfg]` 隔离）
+- **UI**：自建组件 + 语义化 CSS 变量做深浅双轨主题
+
+---
+
+## 品牌与许可
+
+- 品牌 · 版权：Feedra © 2026
+- Snoop 这只猫的形象、名字、文案人格由本项目所有。技术代码开源，但请不要拿"Snoop"这个品牌和吉祥物做同类产品。
+
+正式许可条款见后续 `LICENSE` 文件（暂未落定）。
