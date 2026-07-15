@@ -8,7 +8,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import {
   Sun, Moon, Monitor, Power, Minimize2,
-  Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code,
+  Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code, Hammer,
 } from "lucide-react";
 import { resetAppIconCache } from "../components/AppIcon";
 
@@ -431,24 +431,33 @@ export default function Settings() {
         </SettingRow>
       </div>
 
-      <div className="settings-group">
+      <div className="settings-group is-wip">
         <div className="settings-group-title">猫</div>
 
-        <SettingRow label="吐槽开关" desc="关闭后各页面不显示猫的吐槽">
-          <Toggle checked={catEnabled} onChange={saveCat} />
-        </SettingRow>
+        <div className="settings-group-wip-body">
+          <div className="settings-group-wip-inner" aria-hidden="true">
+            <SettingRow label="吐槽开关" desc="关闭后各页面不显示猫的吐槽">
+              <Toggle checked={catEnabled} onChange={saveCat} />
+            </SettingRow>
 
-        <SettingRow label="毒舌程度" desc="影响吐槽文案的风格">
-          <SegmentedControl<SnarkyLevel>
-            value={snarky}
-            onChange={saveSnarky}
-            options={[
-              { value: "mild", label: "温和" },
-              { value: "normal", label: "正常" },
-              { value: "savage", label: "毒舌" },
-            ]}
-          />
-        </SettingRow>
+            <SettingRow label="毒舌程度" desc="影响吐槽文案的风格">
+              <SegmentedControl<SnarkyLevel>
+                value={snarky}
+                onChange={saveSnarky}
+                options={[
+                  { value: "mild", label: "温和" },
+                  { value: "normal", label: "正常" },
+                  { value: "savage", label: "毒舌" },
+                ]}
+              />
+            </SettingRow>
+          </div>
+
+          <div className="settings-group-wip-mask">
+            <Hammer size={18} />
+            <span>施工中</span>
+          </div>
+        </div>
       </div>
 
       <div className="settings-group">

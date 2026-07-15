@@ -17,6 +17,41 @@
   overflow: hidden;
 }
 
+/* 施工中：分组内容不可交互，覆盖一层带斜纹的遮罩，仅盖住内容不盖标题 */
+.settings-group-wip-body {
+  position: relative;
+}
+
+.settings-group-wip-inner {
+  pointer-events: none;
+  user-select: none;
+  filter: saturate(0.6);
+  opacity: 0.55;
+}
+
+.settings-group-wip-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-2);
+  letter-spacing: 0.02em;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent 0 12px,
+      color-mix(in srgb, var(--color-text-3) 8%, transparent) 12px 24px
+    ),
+    color-mix(in srgb, var(--color-surface) 70%, transparent);
+  backdrop-filter: blur(1.5px);
+  -webkit-backdrop-filter: blur(1.5px);
+  cursor: not-allowed;
+}
+
 .settings-group-title {
   font-size: var(--text-xs);
   font-weight: 700;
