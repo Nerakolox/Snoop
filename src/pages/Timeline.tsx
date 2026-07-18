@@ -71,8 +71,8 @@ export default function Timeline() {
     app: string;
     bundleId: string;
     block: TimeBlock;
-    x: number;
-    y: number;
+    anchorX: number;
+    anchorY: number;
   } | null>(null);
 
   /** 压缩开关：默认开启 */
@@ -543,7 +543,6 @@ export default function Timeline() {
                   virtToPct={virtToPct}
                   blockStyle={blockStyle}
                   isBlockVisible={isBlockVisible}
-                  pageRef={pageRef}
                   trackRef={trackRef}
                   onHoverBlock={setHoveredBlock}
                 />
@@ -554,7 +553,7 @@ export default function Timeline() {
       )}
 
       {hoveredBlock && (
-        <TimelineTooltip hoveredBlock={hoveredBlock} pageRef={pageRef} />
+        <TimelineTooltip hoveredBlock={hoveredBlock} onClose={() => setHoveredBlock(null)} />
       )}
     </div>
   );

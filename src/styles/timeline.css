@@ -521,7 +521,6 @@
 /* 工具提示 */
 .swimlane-tooltip {
   position: fixed;
-  transform: translate(-50%, -100%);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);

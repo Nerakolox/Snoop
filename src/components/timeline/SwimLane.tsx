@@ -15,7 +15,6 @@ type SwimLaneProps = {
   virtToPct: (v: number) => number;
   blockStyle: (block: TimeBlock) => CSSProperties;
   isBlockVisible: (block: TimeBlock) => boolean;
-  pageRef: RefObject<HTMLDivElement | null>;
   /** 轨道 DOM ref —— 主组件用它做视口 rect 测量，用于滚轮缩放和拖拽 */
   trackRef: RefObject<HTMLDivElement | null>;
   onHoverBlock: (hovered: HoveredBlock | null) => void;
@@ -27,7 +26,6 @@ export default function SwimLane({
   virtToPct,
   blockStyle,
   isBlockVisible,
-  pageRef,
   trackRef,
   onHoverBlock,
 }: SwimLaneProps) {
@@ -61,13 +59,12 @@ export default function SwimLane({
             }}
             onMouseEnter={(e) => {
               const rect = e.currentTarget.getBoundingClientRect();
-              const pageRect = pageRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
               onHoverBlock({
                 app: lane.app_name,
                 bundleId: lane.app_bundle_id,
                 block,
-                x: rect.left + rect.width / 2 - pageRect.left,
-                y: rect.top - pageRect.top,
+                anchorX: rect.left + rect.width / 2,
+                anchorY: rect.top,
               });
             }}
             onMouseLeave={() => onHoverBlock(null)}

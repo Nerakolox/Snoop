@@ -6,6 +6,10 @@ export function formatTime(ms: number): string {
 }
 
 export function formatDuration(ms: number): string {
+  if (ms < 60_000) {
+    const s = Math.round(ms / 1000);
+    return s < 1 ? "<1 秒" : `${s} 秒`;
+  }
   const totalMin = Math.floor(ms / 60_000);
   if (totalMin < 60) return `${totalMin} 分钟`;
   const h = Math.floor(totalMin / 60);
