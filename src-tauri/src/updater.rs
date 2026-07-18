@@ -488,6 +488,9 @@ pub fn try_install_pending_on_startup() -> bool {
         Ok(v) => PathBuf::from(v),
         Err(_) => return false,
     };
+    #[cfg(debug_assertions)]
+    let dir = base.join("org.feedra.snoop.dev").join("updates");
+    #[cfg(not(debug_assertions))]
     let dir = base.join("org.feedra.snoop").join("updates");
     let pending = dir.join("pending_update.json");
     let Ok(text) = std::fs::read_to_string(&pending) else { return false };

@@ -1,0 +1,6 @@
+{
+  "identifier": "org.feedra.snoop.dev",
+  "build": {
+    "beforeDevCommand": "npm run vite"
+  }
+}

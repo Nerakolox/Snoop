@@ -34,14 +34,18 @@ pub fn run() {
     // 会跟随可执行文件命令行传进来。用它决定是否静默启动到托盘。
     let launched_via_autostart = std::env::args().any(|a| a == "--autostart");
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec!["--autostart"]),
-        ))
+        .plugin(tauri_plugin_fs::init());
+
+    #[cfg(not(debug_assertions))]
+    let builder = builder.plugin(tauri_plugin_autostart::init(
+        tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+        Some(vec!["--autostart"]),
+    ));
+
+    builder
         .invoke_handler(tauri::generate_handler![
             commands::get_buckets,
             commands::get_key_details,
@@ -144,6 +148,11 @@ pub fn run() {
                         platform::install_traffic_light_pinner(ns_window);
                     }
                 }
+            }
+
+            #[cfg(debug_assertions)]
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.set_title("Snoop (Dev)");
             }
 
             let app_data_dir = app.path().app_data_dir().expect("无法获取应用数据目录");
@@ -279,20 +288,29 @@ pub fn run() {
             let handle = app.handle().clone();
             let menu_handle = app.handle().clone();
 
-            #[cfg(target_os = "windows")]
+            #[cfg(debug_assertions)]
+            let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
+                "../icons/tray-dev.png"
+            ))?;
+            #[cfg(all(not(debug_assertions), target_os = "windows"))]
             let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
                 "../icons/tray-icon-windows.png"
             ))?;
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(all(not(debug_assertions), not(target_os = "windows")))]
             let tray_icon = tauri::image::Image::from_bytes(include_bytes!(
                 "../icons/tray-icon.png"
             ))?;
+
+            #[cfg(debug_assertions)]
+            let tray_tooltip = "Snoop (Dev)";
+            #[cfg(not(debug_assertions))]
+            let tray_tooltip = "Snoop";
 
             let tray_builder = TrayIconBuilder::with_id("main-tray").icon(tray_icon);
             #[cfg(not(target_os = "windows"))]
             let tray_builder = tray_builder.icon_as_template(true);
             tray_builder
-                .tooltip("Snoop")
+                .tooltip(tray_tooltip)
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(move |app, event| {
