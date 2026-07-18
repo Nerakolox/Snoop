@@ -32,12 +32,23 @@ export default function TimelineTooltip({ hoveredBlock, pageRef }: TimelineToolt
     const tip = tooltipRef.current;
     const rect = tip.getBoundingClientRect();
     const container = pageRef.current.getBoundingClientRect();
+    const tipW = tip.offsetWidth;
 
     let dx = 0;
+    if (rect.right > container.right - 8) {
+      // 右侧空间不足：翻转到光标左侧
+      dx = -tipW / 2;
+      // 翻转后仍超出左边界则直接 clamp
+      if (rect.left - tipW / 2 < container.left + 8) {
+        dx = container.left + 8 - rect.left;
+      }
+    } else if (rect.left < container.left + 8) {
+      dx = container.left + 8 - rect.left;
+    }
+
     let dy = 0;
-    if (rect.right > container.right - 8) dx = container.right - 8 - rect.right;
-    if (rect.left < container.left + 8) dx = container.left + 8 - rect.left;
     if (rect.top < container.top + 8) dy = container.top + 8 - rect.top;
+    if (rect.bottom > container.bottom - 8) dy = container.bottom - 8 - rect.bottom;
 
     tip.style.transform = `translate(calc(-50% + ${dx}px), calc(-100% + ${dy}px))`;
     tip.style.visibility = "visible";
