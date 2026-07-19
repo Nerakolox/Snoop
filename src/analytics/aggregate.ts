@@ -7,6 +7,64 @@ import { computeIntensityFromTotals } from "./intensity";
 import type { AppStat, DayStat, HourStat, Intensity, WeekHourGrid } from "./types";
 
 /**
+ * 对桶的时间区间 [bucket_start, bucket_start + duration_ms) 求并集后再求和，
+ * 得到"真实墙钟活跃时长"。这是总时长的权威口径：与"各桶 duration_ms 直接相加"
+ * 不同的地方仅在于会自动吸收任何时间重叠（理论上落库端已用唯一索引 + 单一归因
+ * 杜绝了重叠，这里是聚合层的防御性兜底，正常情况下两个值应几乎相等）。
+ */
+export function unionDurationMs(buckets: RawBucket[]): number {
+  if (buckets.length === 0) return 0;
+  const intervals = buckets
+    .map((b) => [b.bucket_start, b.bucket_start + (b.duration_ms || 0)] as const)
+    .sort((a, b) => a[0] - b[0]);
+
+  let total = 0;
+  let curStart = intervals[0][0];
+  let curEnd = intervals[0][1];
+  for (let i = 1; i < intervals.length; i++) {
+    const [s, e] = intervals[i];
+    if (s <= curEnd) {
+      curEnd = Math.max(curEnd, e);
+    } else {
+      total += curEnd - curStart;
+      curStart = s;
+      curEnd = e;
+    }
+  }
+  total += curEnd - curStart;
+  return total;
+}
+
+/**
+ * 直接对桶的 duration_ms 求和（不去重）。用于跟 unionDurationMs 对比校验：
+ * 若两者差值过大，说明存在时间重叠的桶，落库端的单一归因可能失效了。
+ */
+function sumDurationMs(buckets: RawBucket[]): number {
+  let total = 0;
+  for (const b of buckets) total += b.duration_ms || 0;
+  return total;
+}
+
+/**
+ * 开发环境下的去重校验：若"直接相加"与"并集求和"的差值超过 1%，
+ * 说明桶之间存在时间重叠，落库端的单一归因假设被打破了，输出 warn 便于回归监控。
+ */
+function warnIfDivergent(buckets: RawBucket[], context: string): void {
+  if (!import.meta.env?.DEV) return;
+  if (buckets.length === 0) return;
+  const summed = sumDurationMs(buckets);
+  if (summed === 0) return;
+  const unioned = unionDurationMs(buckets);
+  const diffRatio = Math.abs(summed - unioned) / summed;
+  if (diffRatio > 0.01) {
+    console.warn(
+      `[aggregate] ${context}: 直接相加(${summed}ms) 与并集去重(${unioned}ms) 差值 ${(diffRatio * 100).toFixed(1)}%，` +
+        `疑似存在重叠桶，请检查落库端单一归因是否失效`
+    );
+  }
+}
+
+/**
  * 按 **本地时区小时**（0..23）平均聚合。
  * 输入的 hour_start 已是"本地整点对应的 UTC ms"，所以 new Date().getHours() 直出本地小时。
  * 输出 24 行；某个小时无数据则强度 = 0。
@@ -124,6 +182,9 @@ export function aggregateWeekHourGrid(hourBuckets: RawHourBucket[]): WeekHourGri
 /**
  * 按天聚合。返回按 day_ms 升序的每日活跃。
  * 若某天没有任何桶，就不会出现在结果里；调用方需要"补齐 7 天"时可用返回值填空。
+ *
+ * active_ms 用区间并集去重求和（见 unionDurationMs），而非各桶 duration_ms 直接相加，
+ * 防御任何时间重叠导致的时长虚高——正常情况下（落库端单一归因生效）两者应几乎相等。
  */
 export function aggregateByDay(buckets: RawBucket[]): DayStat[] {
   const acc = new Map<
@@ -131,9 +192,9 @@ export function aggregateByDay(buckets: RawBucket[]): DayStat[] {
     {
       day_ms: number;
       day_of_week: number;
-      active_ms: number;
       key_total: number;
       mouse_total: number;
+      buckets: RawBucket[];
     }
   >();
   for (const b of buckets) {
@@ -144,23 +205,31 @@ export function aggregateByDay(buckets: RawBucket[]): DayStat[] {
       acc.set(key, {
         day_ms: key,
         day_of_week: mondayIndex(d.getDay()),
-        active_ms: 0,
         key_total: 0,
         mouse_total: 0,
+        buckets: [],
       });
     }
     const slot = acc.get(key)!;
-    slot.active_ms += b.duration_ms || 0;
     slot.key_total += b.key_total || 0;
     slot.mouse_total +=
       (b.mouse_left || 0) + (b.mouse_right || 0) + (b.mouse_middle || 0);
+    slot.buckets.push(b);
   }
-  return [...acc.values()].sort((a, b) => a.day_ms - b.day_ms);
+  return [...acc.values()]
+    .sort((a, b) => a.day_ms - b.day_ms)
+    .map(({ buckets: dayBuckets, ...rest }) => {
+      warnIfDivergent(dayBuckets, `aggregateByDay day_ms=${rest.day_ms}`);
+      return { ...rest, active_ms: unionDurationMs(dayBuckets) };
+    });
 }
 
 /**
  * 按 app_bundle_id 聚合时长、键鼠、平均强度。
  * 返回按 duration_ms 降序。
+ *
+ * duration_ms 用区间并集去重求和（见 unionDurationMs），而非各桶 duration_ms 直接相加，
+ * 防御任何时间重叠导致的时长虚高——正常情况下（落库端单一归因生效）两者应几乎相等。
  */
 export function aggregateByApp(buckets: RawBucket[]): AppStat[] {
   const acc = new Map<
@@ -168,7 +237,7 @@ export function aggregateByApp(buckets: RawBucket[]): AppStat[] {
     {
       app_bundle_id: string;
       app_name: string;
-      duration_ms: number;
+      buckets: RawBucket[];
       key_total: number;
       mouse_left: number;
       mouse_right: number;
@@ -182,9 +251,8 @@ export function aggregateByApp(buckets: RawBucket[]): AppStat[] {
     if (!acc.has(b.app_bundle_id)) {
       acc.set(b.app_bundle_id, {
         app_bundle_id: b.app_bundle_id,
-        // 用最近一次遇到的 app_name（同一 bundle 一般不变，但个别 App 会跟着窗口标题变动）
         app_name: b.app_name,
-        duration_ms: 0,
+        buckets: [],
         key_total: 0,
         mouse_left: 0,
         mouse_right: 0,
@@ -196,7 +264,7 @@ export function aggregateByApp(buckets: RawBucket[]): AppStat[] {
     }
     const slot = acc.get(b.app_bundle_id)!;
     slot.app_name = b.app_name;
-    slot.duration_ms += b.duration_ms || 0;
+    slot.buckets.push(b);
     slot.key_total += b.key_total || 0;
     slot.mouse_left += b.mouse_left || 0;
     slot.mouse_right += b.mouse_right || 0;
@@ -206,11 +274,20 @@ export function aggregateByApp(buckets: RawBucket[]): AppStat[] {
     slot.bucket_count += 1;
   }
   const out: AppStat[] = [...acc.values()].map((s) => {
-    const intensity: Intensity = computeIntensityFromTotals(s);
+    warnIfDivergent(s.buckets, `aggregateByApp app=${s.app_bundle_id}`);
+    const intensity: Intensity = computeIntensityFromTotals({
+      key_total: s.key_total,
+      mouse_left: s.mouse_left,
+      mouse_right: s.mouse_right,
+      mouse_middle: s.mouse_middle,
+      mouse_move_dist: s.mouse_move_dist,
+      scroll_dist: s.scroll_dist,
+      duration_ms: unionDurationMs(s.buckets),
+    });
     return {
       app_bundle_id: s.app_bundle_id,
       app_name: s.app_name,
-      duration_ms: s.duration_ms,
+      duration_ms: unionDurationMs(s.buckets),
       key_total: s.key_total,
       mouse_total: s.mouse_left + s.mouse_right + s.mouse_middle,
       intensity,

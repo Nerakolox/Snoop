@@ -20,6 +20,7 @@ import {
   MOUSE_PIXELS_PER_METER,
   RECENT_ACTIVITY_WINDOW_MS,
   pickCatQuip,
+  unionDurationMs,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
 

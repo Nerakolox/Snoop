@@ -8,6 +8,11 @@ pub struct Database {
 impl Database {
     pub fn new(db_path: PathBuf) -> Result<Self> {
         let conn = Connection::open(db_path)?;
+
+        // WAL 模式是数据库级持久设置，只需在连接建立时执行一次；
+        // 不要放在高频写入路径（如每次写桶）里重复调用。
+        conn.pragma_update(None, "journal_mode", "WAL")?;
+
         Ok(Database { conn })
     }
 
@@ -49,6 +54,66 @@ impl Database {
         self.migrate_duration_column()?;
         self.migrate_mouse_side_buttons()?;
         self.migrate_snoop_bundle_id()?;
+        // 必须在建唯一索引之前跑：存量库里已有重复行，索引创建会因
+        // UNIQUE 冲突直接失败，导致老用户升级后启动崩溃。
+        self.migrate_dedup_buckets()?;
+        self.migrate_unique_index()?;
+        Ok(())
+    }
+
+    /// 删除 (bucket_start, app_bundle_id) 完全重复的历史桶，保留 id 较小者
+    /// （更早写入的那一行携带 key_details，后写入的重复行没有）。
+    fn migrate_dedup_buckets(&self) -> Result<()> {
+        let dup_rows: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM activity_buckets a
+             WHERE EXISTS (
+                 SELECT 1 FROM activity_buckets b
+                 WHERE b.bucket_start = a.bucket_start
+                   AND b.app_bundle_id = a.app_bundle_id
+                   AND b.id < a.id
+             )",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if dup_rows == 0 {
+            return Ok(());
+        }
+
+        // 重复行的 key_details 本就为空（写入时被计数清空），无需额外清理子表，
+        // 但以防万一，仍先删子表再删主表。
+        self.conn.execute_batch(
+            "
+            DELETE FROM key_details WHERE bucket_id IN (
+                SELECT a.id FROM activity_buckets a
+                WHERE EXISTS (
+                    SELECT 1 FROM activity_buckets b
+                    WHERE b.bucket_start = a.bucket_start
+                      AND b.app_bundle_id = a.app_bundle_id
+                      AND b.id < a.id
+                )
+            );
+            DELETE FROM activity_buckets WHERE id IN (
+                SELECT a.id FROM activity_buckets a
+                WHERE EXISTS (
+                    SELECT 1 FROM activity_buckets b
+                    WHERE b.bucket_start = a.bucket_start
+                      AND b.app_bundle_id = a.app_bundle_id
+                      AND b.id < a.id
+                )
+            );
+            ",
+        )?;
+
+        println!("✓ 清理历史重复桶：{} 行", dup_rows);
+        Ok(())
+    }
+
+    fn migrate_unique_index(&self) -> Result<()> {
+        self.conn.execute_batch(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_bucket_unique
+             ON activity_buckets(bucket_start, app_bundle_id);",
+        )?;
         Ok(())
     }
 
