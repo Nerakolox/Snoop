@@ -12,6 +12,7 @@ import WeekSelector from "../components/insights/WeekSelector";
 import {
   fetchBucketsInRange,
   fetchHourlyActivity,
+  fetchHourlyHeartbeats,
   DAY_MS,
 } from "../data";
 import {
@@ -127,8 +128,12 @@ export default function Insights() {
   const [, setLoading] = useState(false);
   const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
   const [weekApps, setWeekApps] = useState<WeekApp[]>([]);
-  const [hourlyGrid, setHourlyGrid] = useState<Intensity[][]>(
-    Array.from({ length: 7 }, () => Array(24).fill(0))
+  const [hourlyGrid, setHourlyGrid] = useState<
+    Array<Array<{ intensity: Intensity; state: "active" | "idle" | "no_data" }>>
+  >(
+    Array.from({ length: 7 }, () =>
+      Array(24).fill({ intensity: 0, state: "no_data" as const })
+    )
   );
   const [catReport, setCatReport] = useState("");
   const [weekTotalHours, setWeekTotalHours] = useState(0);
@@ -171,6 +176,13 @@ export default function Insights() {
         fetchHourlyActivity(range),
       ]);
 
+      // 拉取心跳数据
+      const heartbeatList = await fetchHourlyHeartbeats(range);
+      const heartbeatMap = new Map<number, boolean>();
+      for (const hb of heartbeatList) {
+        heartbeatMap.set(hb.hour_start, hb.has_heartbeat);
+      }
+
       const dayStats = aggregateByDay(thisWeekBuckets);
       const days = buildWeekDays(dayStats, weekStartMs);
       setWeekDays(days);
@@ -206,7 +218,7 @@ export default function Insights() {
       });
       setWeekApps(apps);
 
-      const grid = aggregateWeekHourGrid(thisWeekHourly);
+      const grid = aggregateWeekHourGrid(thisWeekHourly, heartbeatMap, weekStartMs);
       setHourlyGrid(grid);
 
       const topApp = apps[0] || null;
@@ -381,14 +393,32 @@ export default function Insights() {
           <div className="ins-rhythm-body">
             <div className="ins-rhythm-grid">
               {hourlyGrid.map((row, ri) =>
-                row.map((level, ci) => (
-                  <div
-                    key={`${ri}-${ci}`}
-                    className="ins-rhythm-cell"
-                    style={{ background: intensityVar(level) }}
-                    title={`周${DAY_LABELS[ri]} ${ci}:00 · 强度 ${level}`}
-                  />
-                ))
+                row.map((cell, ci) => {
+                  let bg: string;
+                  let tooltipText: string;
+                  const dayLabel = `周${DAY_LABELS[ri]}`;
+                  const hourLabel = `${ci}:00`;
+
+                  if (cell.state === "active") {
+                    bg = intensityVar(cell.intensity);
+                    tooltipText = `${dayLabel} ${hourLabel} · 活跃强度 ${cell.intensity}`;
+                  } else if (cell.state === "idle") {
+                    bg = "#D1D5DB"; // 中性灰实心
+                    tooltipText = `${dayLabel} ${hourLabel} · 挂机（无输入）`;
+                  } else {
+                    bg = "#F3F4F6"; // 极浅底色
+                    tooltipText = `${dayLabel} ${hourLabel} · 未采集`;
+                  }
+
+                  return (
+                    <div
+                      key={`${ri}-${ci}`}
+                      className={`ins-rhythm-cell ${cell.state === "no_data" ? "ins-rhythm-cell--no-data" : ""}`}
+                      style={{ background: bg }}
+                      title={tooltipText}
+                    />
+                  );
+                })
               )}
             </div>
             <div className="ins-rhythm-scale">
@@ -414,6 +444,27 @@ export default function Insights() {
                 24
               </span>
             </div>
+          </div>
+        </div>
+
+        {/* 图例 */}
+        <div className="ins-rhythm-legend">
+          <div className="ins-legend-item">
+            <div className="ins-legend-gradient">
+              <span style={{ background: intensityVar(1) }}></span>
+              <span style={{ background: intensityVar(2) }}></span>
+              <span style={{ background: intensityVar(3) }}></span>
+              <span style={{ background: intensityVar(4) }}></span>
+            </div>
+            <span className="ins-legend-label">活跃</span>
+          </div>
+          <div className="ins-legend-item">
+            <span className="ins-legend-sample" style={{ background: "#D1D5DB" }}></span>
+            <span className="ins-legend-label">挂机</span>
+          </div>
+          <div className="ins-legend-item">
+            <span className="ins-legend-sample ins-legend-sample--no-data" style={{ background: "#F3F4F6", border: "1px solid #E5E7EB" }}></span>
+            <span className="ins-legend-label">未采集</span>
           </div>
         </div>
       </section>

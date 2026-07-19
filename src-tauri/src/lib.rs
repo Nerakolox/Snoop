@@ -63,6 +63,8 @@ pub fn run() {
             commands::get_key_details_in_range,
             commands::get_app_ranking_in_range,
             commands::get_hourly_activity,
+            commands::get_hourly_heartbeats,
+            commands::has_heartbeat_in_range,
             commands::get_settings,
             commands::save_settings,
             commands::get_db_info,

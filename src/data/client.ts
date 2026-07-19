@@ -63,3 +63,17 @@ export function fetchHourlyActivity(range: TimeRange): Promise<RawHourBucket[]> 
     endMs: range.end_ms,
   });
 }
+
+export function fetchHourlyHeartbeats(range: TimeRange): Promise<Array<{ hour_start: number; has_heartbeat: boolean }>> {
+  return invoke<Array<{ hour_start: number; has_heartbeat: boolean }>>("get_hourly_heartbeats", {
+    startMs: range.start_ms,
+    endMs: range.end_ms,
+  });
+}
+
+export function hasHeartbeatInRange(range: TimeRange): Promise<boolean> {
+  return invoke<boolean>("has_heartbeat_in_range", {
+    startMs: range.start_ms,
+    endMs: range.end_ms,
+  });
+}

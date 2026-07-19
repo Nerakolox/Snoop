@@ -4,7 +4,7 @@
 
 import type { RawBucket, RawHourBucket } from "../data/types";
 import { computeIntensityFromTotals } from "./intensity";
-import type { AppStat, DayStat, HourStat, Intensity, WeekHourGrid } from "./types";
+import type { AppStat, DayStat, HourStat, Intensity } from "./types";
 
 /**
  * 对桶的时间区间 [bucket_start, bucket_start + duration_ms) 求并集后再求和，
@@ -129,10 +129,16 @@ export function aggregateByHour(hourBuckets: RawHourBucket[]): HourStat[] {
 }
 
 /**
- * 一周 × 24 小时的强度网格。行 0=周一 … 6=周日。
- * 没有覆盖到的格子返回 0。
+ * 一周 × 24 小时的三态网格。行 0=周一 … 6=周日。
+ * 每格包含：活跃强度 (0-4) + 状态标记（活跃/挂机/未采集）。
+ * weekStartMs: 本周一 0 点的 UTC ms 时间戳（本地时区）
+ * heartbeats: Map<hour_start_ms, true>，key 为整点的 UTC ms
  */
-export function aggregateWeekHourGrid(hourBuckets: RawHourBucket[]): WeekHourGrid {
+export function aggregateWeekHourGrid(
+  hourBuckets: RawHourBucket[],
+  heartbeats: Map<number, boolean>,
+  weekStartMs: number
+): { intensity: Intensity; state: "active" | "idle" | "no_data" }[][] {
   // 每格独立累计，然后各自计算强度。
   type Cell = {
     key_total: number;
@@ -151,6 +157,9 @@ export function aggregateWeekHourGrid(hourBuckets: RawHourBucket[]): WeekHourGri
     }))
   );
 
+  // 记录每格是否有活动桶
+  const hasActivity: boolean[][] = Array.from({ length: 7 }, () => Array(24).fill(false));
+
   for (const hb of hourBuckets) {
     const d = new Date(hb.hour_start);
     const row = mondayIndex(d.getDay());
@@ -161,11 +170,13 @@ export function aggregateWeekHourGrid(hourBuckets: RawHourBucket[]): WeekHourGri
     cell.mouse_move_dist += hb.mouse_move_dist;
     cell.scroll_dist += hb.scroll_dist;
     cell.duration_ms += hb.duration_ms;
+    hasActivity[row][col] = true;
   }
 
-  const out: WeekHourGrid = grid.map((row) =>
-    row.map((c) =>
-      computeIntensityFromTotals({
+  const HOUR_MS = 60 * 60 * 1000;
+  const out = grid.map((row, ri) =>
+    row.map((c, ci) => {
+      const intensity = computeIntensityFromTotals({
         key_total: c.key_total,
         mouse_left: c.mouse_total,
         mouse_right: 0,
@@ -173,8 +184,28 @@ export function aggregateWeekHourGrid(hourBuckets: RawHourBucket[]): WeekHourGri
         mouse_move_dist: c.mouse_move_dist,
         scroll_dist: c.scroll_dist,
         duration_ms: c.duration_ms,
-      })
-    )
+      });
+
+      // 判定状态：活跃 > 挂机 > 未采集
+      let state: "active" | "idle" | "no_data";
+      if (hasActivity[ri][ci]) {
+        state = "active";
+      } else {
+        // 推导该格对应的 hour_start_ms（本地整点）
+        const dayOffsetMs = ri * 24 * HOUR_MS;
+        const hourOffsetMs = ci * HOUR_MS;
+        const cellHourStartMs = weekStartMs + dayOffsetMs + hourOffsetMs;
+
+        // 查心跳
+        if (heartbeats.has(cellHourStartMs)) {
+          state = "idle"; // 有心跳但无活动 = 挂机
+        } else {
+          state = "no_data"; // 无心跳也无活动 = 未采集
+        }
+      }
+
+      return { intensity, state };
+    })
   );
   return out;
 }

@@ -336,14 +336,21 @@ pub fn clear_data(state: State<'_, DbPath>, range: ClearRange) -> Result<u64, St
                 "DELETE FROM key_details WHERE bucket_id IN (SELECT id FROM activity_buckets WHERE bucket_start >= ?1 AND bucket_start < ?2)",
                 rusqlite::params![s, e],
             ).map_err(|e| e.to_string())?;
-            conn.execute(
+            let bucket_affected = conn.execute(
                 "DELETE FROM activity_buckets WHERE bucket_start >= ?1 AND bucket_start < ?2",
                 rusqlite::params![s, e],
-            ).map_err(|e| e.to_string())?
+            ).map_err(|e| e.to_string())?;
+            // 同时清理范围内心跳
+            conn.execute(
+                "DELETE FROM heartbeats WHERE timestamp >= ?1 AND timestamp < ?2",
+                rusqlite::params![s, e],
+            ).map_err(|e| e.to_string())?;
+            bucket_affected
         }
         _ => {
             conn.execute("DELETE FROM key_details", []).map_err(|e| e.to_string())?;
-            conn.execute("DELETE FROM activity_buckets", []).map_err(|e| e.to_string())?
+            conn.execute("DELETE FROM activity_buckets", []).map_err(|e| e.to_string())?;
+            conn.execute("DELETE FROM heartbeats", []).map_err(|e| e.to_string())?
         }
     };
     Ok(affected as u64)
@@ -490,5 +497,66 @@ pub fn list_all_bundle_ids(state: State<'_, DbPath>) -> Result<Vec<String>, Stri
     let rows = stmt
         .query_map([], |r| r.get::<_, String>(0))
         .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// 范围内是否存在心跳记录：任一时刻有心跳即返回 true。
+#[tauri::command]
+pub fn has_heartbeat_in_range(
+    state: State<'_, DbPath>,
+    start_ms: i64,
+    end_ms: i64,
+) -> Result<bool, String> {
+    let conn = open(&state)?;
+    let exists: bool = conn
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM heartbeats WHERE timestamp >= ?1 AND timestamp < ?2)",
+            [start_ms, end_ms],
+            |row| row.get(0),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(exists)
+}
+
+/// 按本地时区小时分桶，返回每个小时是否有心跳（用于热力图三态判定）。
+/// 返回 Vec<(hour_start_ms, has_heartbeat)>，hour_start_ms 是本地整点的 UTC 时间戳。
+#[derive(Serialize)]
+pub struct HourlyHeartbeat {
+    pub hour_start: i64,
+    pub has_heartbeat: bool,
+}
+
+#[tauri::command]
+pub fn get_hourly_heartbeats(
+    state: State<'_, DbPath>,
+    start_ms: i64,
+    end_ms: i64,
+) -> Result<Vec<HourlyHeartbeat>, String> {
+    let conn = open(&state)?;
+    // 与 get_hourly_activity 类似，按本地整点分桶，看每桶是否存在心跳
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                CAST(strftime('%s',
+                    strftime('%Y-%m-%d %H:00:00',
+                        datetime(timestamp/1000, 'unixepoch', 'localtime')),
+                    'utc') AS INTEGER) * 1000 AS hour_start,
+                1
+             FROM heartbeats
+             WHERE timestamp >= ?1 AND timestamp < ?2
+             GROUP BY hour_start
+             ORDER BY hour_start ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map([start_ms, end_ms], |row| {
+            Ok(HourlyHeartbeat {
+                hour_start: row.get(0)?,
+                has_heartbeat: true,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }

@@ -101,7 +101,7 @@ export default function Dev() {
         const regionStats = classifyKeys(keyDetails);
         const hourStats = aggregateByHour(hourly);
         const dayStats = aggregateByDay(rawBuckets);
-        const weekGrid = aggregateWeekHourGrid(hourly);
+        const weekGrid = aggregateWeekHourGrid(hourly, new Map(), Date.now());
 
         console.groupCollapsed(`analytics · ${s.scope}`);
         console.log("time range", s.range);

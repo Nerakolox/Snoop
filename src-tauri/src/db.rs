@@ -48,6 +48,14 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_bucket_id
             ON key_details(bucket_id);
+
+            CREATE TABLE IF NOT EXISTS heartbeats (
+                id        INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_heartbeat_timestamp
+            ON heartbeats(timestamp);
             ",
         )?;
 

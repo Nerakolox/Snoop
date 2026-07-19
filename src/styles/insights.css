@@ -306,8 +306,57 @@
   transition: transform var(--dur-fast) var(--ease-smooth);
 }
 
+.ins-rhythm-cell--no-data {
+  border: 1px solid #E5E7EB;
+}
+
 .ins-rhythm-cell:hover {
   transform: scale(1.15);
+}
+
+/* 图例 */
+.ins-rhythm-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.ins-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ins-legend-gradient {
+  display: flex;
+  gap: 2px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.ins-legend-gradient > span {
+  width: 12px;
+  height: 12px;
+}
+
+.ins-legend-sample {
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.ins-legend-sample--no-data {
+  box-sizing: border-box;
+}
+
+.ins-legend-label {
+  font-weight: 500;
 }
 
 .ins-rhythm-scale {

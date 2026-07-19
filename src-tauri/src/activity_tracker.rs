@@ -26,6 +26,8 @@ const POLL_INTERVAL_MS: u64 = 300;
 // writer 线程批量提交参数：攒够 N 条或超过 M 毫秒未提交，就 flush 一次。
 const WRITER_BATCH_SIZE: usize = 20;
 const WRITER_FLUSH_INTERVAL_MS: u64 = 2000;
+// 心跳间隔：60 秒
+const HEARTBEAT_INTERVAL_MS: u64 = 60_000;
 
 /// 一份待落库的桶，由采样循环 send 给 writer 线程，采样循环本身不阻塞在 IO 上。
 struct PendingBucket {
@@ -103,6 +105,13 @@ pub fn start_activity_tracking(
     let db_path_writer = db_path.clone();
     thread::spawn(move || {
         run_writer_thread(db_path_writer, write_rx);
+    });
+
+    // ============ Heartbeat：独立线程每 60 秒写心跳 ============
+    let db_path_heartbeat = db_path.clone();
+    let paused_heartbeat = paused.clone();
+    thread::spawn(move || {
+        run_heartbeat_thread(db_path_heartbeat, paused_heartbeat);
     });
 
     // ============ Settler：定时 5s 或 App 切换任一触发结算 ============
@@ -499,4 +508,45 @@ fn flush_batch(conn: &Connection, batch: &mut Vec<PendingBucket>) {
     }
 
     batch.clear();
+}
+
+/// Heartbeat 线程：每 60 秒写入一条心跳记录，证明 Snoop 在运行。
+/// 暂停状态不写心跳（暂停期间视为"未采集"）。
+fn run_heartbeat_thread(db_path: std::path::PathBuf, paused: Arc<AtomicBool>) {
+    let conn = match Connection::open(&db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ [Heartbeat] 无法打开数据库连接: {:?}", e);
+            return;
+        }
+    };
+    let _ = conn.execute("PRAGMA journal_mode=WAL", []);
+
+    println!("✅ [Heartbeat] 心跳线程启动，间隔 {}ms", HEARTBEAT_INTERVAL_MS);
+
+    loop {
+        thread::sleep(Duration::from_millis(HEARTBEAT_INTERVAL_MS));
+
+        if paused.load(Ordering::Relaxed) {
+            // 暂停期间不写心跳
+            continue;
+        }
+
+        let ts = now_ms();
+        if let Err(e) = conn.execute("INSERT INTO heartbeats (timestamp) VALUES (?1)", [ts]) {
+            eprintln!("❌ [Heartbeat] 写入失败 @ {}: {:?}", ts, e);
+        }
+    }
+}
+
+/// 清理心跳记录：仅保留最近 N 天（与活动桶清理策略一致）。
+/// 该函数由 commands.rs 中的清理命令统一调用。
+#[allow(dead_code)]
+pub fn cleanup_old_heartbeats(conn: &Connection, keep_days: i64) -> rusqlite::Result<()> {
+    let cutoff_ms = now_ms() - keep_days * 24 * 60 * 60 * 1000;
+    let deleted = conn.execute("DELETE FROM heartbeats WHERE timestamp < ?1", [cutoff_ms])?;
+    if deleted > 0 {
+        println!("✓ 清理心跳记录：删除 {} 条", deleted);
+    }
+    Ok(())
 }
