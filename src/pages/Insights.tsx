@@ -8,10 +8,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Sparkles } from "lucide-react";
 import DeltaBadge from "../components/DeltaBadge";
+import WeekSelector from "../components/insights/WeekSelector";
 import {
   fetchBucketsInRange,
   fetchHourlyActivity,
-  thisWeekRange,
   DAY_MS,
 } from "../data";
 import {
@@ -25,6 +25,7 @@ import {
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
 import { fmtHours } from "../utils/format";
+import { startOfWeek, isSameWeek, formatWeekLabel } from "../utils/date";
 
 type WeekDay = {
   short: string; // 一二三四五六日
@@ -48,40 +49,38 @@ const DAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 // ---- 工具 -------------------------------------------------------------------
 
 
-/** 根据本周真实数据生成猫周报文案 */
+/** 根据选中周的真实数据生成猫周报文案 */
 function generateCatReport(
   weekTotalHours: number,
   topApp: { name: string; hours: number } | null,
   busiestDay: { name: string; hours: number; app: string } | null,
-  weekChange: number | null
+  weekChange: number | null,
+  isCurrentWeek: boolean
 ): string {
   const parts: string[] = [];
+  const weekPrefix = isCurrentWeek ? "这周" : "那周";
 
-  // 开头：本周总览
-  parts.push(`这周你一共活跃了 ${fmtHours(weekTotalHours)} 小时`);
+  parts.push(`${weekPrefix}你一共活跃了 ${fmtHours(weekTotalHours)} 小时`);
 
-  // Top App
   if (topApp && topApp.hours > 0) {
     parts.push(`，其中 ${topApp.name} 占了 ${fmtHours(topApp.hours)} 小时`);
-    // 环比变化
     if (weekChange !== null) {
       if (weekChange > 15) {
-        parts.push(`——比上周还多，我们真的需要谈谈`);
+        parts.push(`——比前一周还多，我们真的需要谈谈`);
       } else if (weekChange < -15) {
-        parts.push(`，比上周少多了喵～`);
+        parts.push(`，比前一周少多了喵～`);
       }
     }
   }
 
   parts.push(`。`);
 
-  // 最爆肝的一天
   if (busiestDay && busiestDay.hours >= 6) {
     parts.push(
       `不过${busiestDay.name}那天你在 ${busiestDay.app} 上爆肝了 ${fmtHours(busiestDay.hours)} 小时，算你厉害。`
     );
   } else if (weekTotalHours < 10) {
-    parts.push(`这周摸鱼有点狠喵～`);
+    parts.push(`${isCurrentWeek ? "这周" : "那周"}摸鱼有点狠喵～`);
   }
 
   return parts.join("");
@@ -123,6 +122,8 @@ function buildWeekDays(dayStats: DayStat[], weekStartMs: number): WeekDay[] {
 // ---- 渲染 -------------------------------------------------------------------
 
 export default function Insights() {
+  const today = useMemo(() => new Date(), []);
+  const [selectedWeekStart, setSelectedWeekStart] = useState<Date>(() => startOfWeek(today));
   const [, setLoading] = useState(false);
   const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
   const [weekApps, setWeekApps] = useState<WeekApp[]>([]);
@@ -133,38 +134,55 @@ export default function Insights() {
   const [weekTotalHours, setWeekTotalHours] = useState(0);
   const [weekDailyAvg, setWeekDailyAvg] = useState(0);
 
+  const isCurrentWeek = useMemo(
+    () => isSameWeek(selectedWeekStart, today),
+    [selectedWeekStart, today]
+  );
+
+  const weekLabel = useMemo(
+    () => formatWeekLabel(selectedWeekStart, today),
+    [selectedWeekStart, today]
+  );
+
+  function goPrevWeek() {
+    setSelectedWeekStart((prev) => new Date(prev.getTime() - 7 * DAY_MS));
+  }
+
+  function goNextWeek() {
+    if (!isCurrentWeek) {
+      setSelectedWeekStart((prev) => new Date(prev.getTime() + 7 * DAY_MS));
+    }
+  }
+
   async function refresh() {
     setLoading(true);
     try {
-      const range = thisWeekRange();
+      const weekStartMs = selectedWeekStart.getTime();
+      const weekEndMs = weekStartMs + 7 * DAY_MS;
+      const range = { start_ms: weekStartMs, end_ms: weekEndMs };
       const lastWeekRange = {
-        start_ms: range.start_ms - 7 * DAY_MS,
-        end_ms: range.start_ms,
+        start_ms: weekStartMs - 7 * DAY_MS,
+        end_ms: weekStartMs,
       };
 
-      // 并行获取本周和上周数据
       const [thisWeekBuckets, lastWeekBuckets, thisWeekHourly] = await Promise.all([
         fetchBucketsInRange(range),
         fetchBucketsInRange(lastWeekRange),
         fetchHourlyActivity(range),
       ]);
 
-      // ① 按天聚合
       const dayStats = aggregateByDay(thisWeekBuckets);
-      const days = buildWeekDays(dayStats, range.start_ms);
+      const days = buildWeekDays(dayStats, weekStartMs);
       setWeekDays(days);
 
-      // ② 本周总活跃时长
       const totalMs = dayStats.reduce((sum, d) => sum + d.active_ms, 0);
       const totalHours = totalMs / (60 * 60 * 1000);
       setWeekTotalHours(totalHours);
 
-      // 日均（只算已过的天数）
       const passedDays = days.filter((d) => !d.isFuture).length;
       const dailyAvg = passedDays > 0 ? totalHours / passedDays : 0;
       setWeekDailyAvg(dailyAvg);
 
-      // ③ 本周 App 排行 + 环比
       const thisWeekAppStats = aggregateByApp(thisWeekBuckets);
       const lastWeekAppStats = aggregateByApp(lastWeekBuckets);
 
@@ -188,21 +206,17 @@ export default function Insights() {
       });
       setWeekApps(apps);
 
-      // ④ 作息热力网格
       const grid = aggregateWeekHourGrid(thisWeekHourly);
       setHourlyGrid(grid);
 
-      // ⑤ 生成猫周报
       const topApp = apps[0] || null;
 
-      // 找最爆肝的一天（该天主要 App 的时长，而非全天总时长）
       let busiestDay: { name: string; hours: number; app: string } | null = null;
       if (dayStats.length > 0) {
         const maxDayStat = dayStats.reduce((max, d) =>
           d.active_ms > max.active_ms ? d : max
         );
 
-        // 找出该天的主要 App 及其时长
         const maxDayStart = maxDayStat.day_ms;
         const maxDayEnd = maxDayStart + DAY_MS;
         const maxDayBuckets = thisWeekBuckets.filter(
@@ -214,13 +228,12 @@ export default function Insights() {
           const dayIndex = maxDayStat.day_of_week;
           busiestDay = {
             name: `周${DAY_LABELS[dayIndex]}`,
-            hours: topAppOnDay.duration_ms / (60 * 60 * 1000), // 该 App 在该天的时长
+            hours: topAppOnDay.duration_ms / (60 * 60 * 1000),
             app: topAppOnDay.app_name || topAppOnDay.app_bundle_id,
           };
         }
       }
 
-      // 计算 top App 的环比（匹配 bundle_id 而非排名位置）
       const weekChange = topApp && topApp.hours > 0
         ? (() => {
             const lastWeekSameApp = lastWeekAppStats.find(
@@ -233,7 +246,7 @@ export default function Insights() {
           })()
         : null;
 
-      const report = generateCatReport(totalHours, topApp, busiestDay, weekChange);
+      const report = generateCatReport(totalHours, topApp, busiestDay, weekChange, isCurrentWeek);
       setCatReport(report);
     } catch (e) {
       console.error("Insights refresh failed:", e);
@@ -244,7 +257,7 @@ export default function Insights() {
 
   useEffect(() => {
     refresh();
-  }, []);
+  }, [selectedWeekStart, isCurrentWeek]);
 
   const maxDay = useMemo(
     () => Math.max(...weekDays.map((d) => d.hours), 1),
@@ -253,6 +266,14 @@ export default function Insights() {
 
   return (
     <div className="ins-page">
+      {/* 周选择器 */}
+      <WeekSelector
+        weekLabel={weekLabel}
+        isCurrentWeek={isCurrentWeek}
+        onPrevWeek={goPrevWeek}
+        onNextWeek={goNextWeek}
+      />
+
       {/* ① 猫的周报吐槽 —— 顶部通栏 */}
       <section className="ins-report">
         <div className="ins-report-avatar" aria-hidden>
@@ -266,7 +287,7 @@ export default function Insights() {
           <div className="ins-report-chips">
             <span className="ins-chip">
               <span className="ins-chip-num">{fmtHours(weekTotalHours)}</span>
-              <span className="ins-chip-unit">小时 · 本周活跃</span>
+              <span className="ins-chip-unit">小时 · {isCurrentWeek ? "本周" : "该周"}活跃</span>
             </span>
             <span className="ins-chip">
               <span className="ins-chip-num">{fmtHours(weekDailyAvg)}</span>
@@ -280,7 +301,7 @@ export default function Insights() {
       <div className="ins-split">
         {/* ② 本周活跃趋势 */}
         <section className="panel ins-trend-panel">
-          <h3 className="panel-title">本周活跃趋势</h3>
+          <h3 className="panel-title">{isCurrentWeek ? "本周" : "该周"}活跃趋势</h3>
           <div className="ins-trend">
             {weekDays.map((d) => {
               const pct = d.hours > 0 ? (d.hours / maxDay) * 100 : 0;
@@ -313,11 +334,11 @@ export default function Insights() {
 
         {/* ③ 本周 App 排行 + 环比 */}
         <section className="panel ins-apps-panel">
-          <h3 className="panel-title">本周 App 排行</h3>
+          <h3 className="panel-title">{isCurrentWeek ? "本周" : "该周"} App 排行</h3>
           <div className="ins-apps">
             {weekApps.length === 0 && (
               <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>
-                本周还没有足够的数据
+                {isCurrentWeek ? "本周" : "这一周"}还没有足够的数据
               </div>
             )}
             {weekApps.map((a) => {
