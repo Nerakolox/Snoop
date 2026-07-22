@@ -27,21 +27,23 @@ const UPDATE_EVENT: &str = "updater://state";
 
 /// 远端 `latest.json` 的 schema。
 ///
-/// 结构与 Tauri 官方 updater 对齐,按 `target_os-target_arch` 三元组分平台:
+/// 结构与 Tauri 官方 updater 对齐,按 `target_os-target_arch` 三元组分平台。
+/// 支持平台级独立版本号（三平台发版进度不同步时用）,platforms.*.version 优先,
+/// 缺失则 fallback 到顶层 version:
 /// ```json
 /// {
-///   "version": "0.1.1",
+///   "version": "0.1.6",
 ///   "notes": "...",
 ///   "platforms": {
-///     "windows-x86_64":  { "url": "...", "sha256": "..." },
-///     "darwin-x86_64":   { "url": "...", "sha256": "..." },
-///     "darwin-aarch64":  { "url": "...", "sha256": "..." }
+///     "windows-x86_64":  { "version": "0.1.6", "url": "...", "sha256": "..." },
+///     "darwin-x86_64":   { "version": "0.1.5", "url": "...", "sha256": "..." },
+///     "darwin-aarch64":  { "version": "0.1.6", "url": "...", "sha256": "..." }
 ///   }
 /// }
 /// ```
 #[derive(Debug, Deserialize)]
 struct RemoteManifest {
-    /// 语义化版本号,纯数字段,如 `"0.1.1"`。
+    /// 顶层默认版本号,平台条目缺 version 时用作 fallback。
     version: String,
     #[serde(default)]
     #[allow(dead_code)]
@@ -57,6 +59,9 @@ struct PlatformAsset {
     /// installer 的 SHA256(hex,小写);Mac 手动下载分支可选。
     #[serde(default)]
     sha256: Option<String>,
+    /// 平台级版本号,优先于顶层 version 使用,缺失时 fallback 到顶层。
+    #[serde(default)]
+    version: Option<String>,
 }
 
 /// 返回当前平台在 manifest.platforms 里的 key。
@@ -303,16 +308,20 @@ pub async fn check_and_download(app: AppHandle) {
     let result: Result<(), String> = async {
         let manifest = fetch_manifest().await?;
 
-        if !version_gt(&manifest.version, &current) {
-            set_state(&app, UpdateState::UpToDate { current: current.clone() }).await;
-            return Ok(());
-        }
-
         let key = current_platform_key();
         let asset = manifest
             .platforms
             .get(key)
             .ok_or_else(|| format!("latest.json 缺少当前平台 {key} 的更新条目"))?;
+
+        // 优先使用平台级 version,没有则 fallback 到顶层 version
+        let remote_version = asset.version.as_deref().unwrap_or(&manifest.version);
+
+        if !version_gt(remote_version, &current) {
+            set_state(&app, UpdateState::UpToDate { current: current.clone() }).await;
+            return Ok(());
+        }
+
         let url = build_installer_url(&asset.url);
 
         // macOS 分支：dmg 无法真静默,只把下载链接送到前端,让用户点按钮跳浏览器
@@ -322,12 +331,12 @@ pub async fn check_and_download(app: AppHandle) {
             set_state(
                 &app,
                 UpdateState::ManualDownload {
-                    version: manifest.version.clone(),
+                    version: remote_version.to_string(),
                     url: url.clone(),
                 },
             )
             .await;
-            let _ = app.emit("updater://ready", &manifest.version);
+            let _ = app.emit("updater://ready", remote_version);
             return Ok(());
         }
 
@@ -340,11 +349,11 @@ pub async fn check_and_download(app: AppHandle) {
 
             // 已经下载过同版本 pending? 直接跳到 Ready
             if let Some(existing) = read_pending_blocking(&app) {
-                if existing.version == manifest.version
+                if existing.version == remote_version
                     && Path::new(&existing.installer_path).exists()
                 {
-                    set_state(&app, UpdateState::Ready { version: manifest.version.clone() }).await;
-                    let _ = app.emit("updater://ready", &manifest.version);
+                    set_state(&app, UpdateState::Ready { version: remote_version.to_string() }).await;
+                    let _ = app.emit("updater://ready", remote_version);
                     return Ok(());
                 }
             }
@@ -356,7 +365,7 @@ pub async fn check_and_download(app: AppHandle) {
             set_state(
                 &app,
                 UpdateState::Downloading {
-                    version: manifest.version.clone(),
+                    version: remote_version.to_string(),
                     done: 0,
                     total: 0,
                 },
@@ -365,7 +374,7 @@ pub async fn check_and_download(app: AppHandle) {
 
             download_with_rate_limit(
                 &app,
-                &manifest.version,
+                remote_version,
                 &url,
                 &installer,
                 sha,
@@ -374,14 +383,14 @@ pub async fn check_and_download(app: AppHandle) {
             .await?;
 
             let rec = PendingRecord {
-                version: manifest.version.clone(),
+                version: remote_version.to_string(),
                 installer_path: installer.to_string_lossy().to_string(),
                 sha256: sha.to_string(),
             };
             write_pending(&app, &rec).await?;
 
-            set_state(&app, UpdateState::Ready { version: manifest.version.clone() }).await;
-            let _ = app.emit("updater://ready", &manifest.version);
+            set_state(&app, UpdateState::Ready { version: remote_version.to_string() }).await;
+            let _ = app.emit("updater://ready", remote_version);
         }
 
         Ok(())
