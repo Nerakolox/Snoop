@@ -129,10 +129,8 @@ pub fn run() {
                 }
             }
 
-            // 配置红绿灯位置：嵌入侧边栏顶部左侧
-            // 注意：仅在 setup 时摆一次不够——系统在全屏进出、resize、becomeMain、appearance
-            // 切换等 layout pass 后会把按钮拨回默认位置。install_traffic_light_pinner
-            // 会注册 NSWindow 通知观察者，每次状态变化自动重放坐标。
+            // titlebar 保持系统默认高度（~28pt）并透明化，红绿灯回到系统标准位置，
+            // 跨 Mac / 跨 macOS 版本一致，不再手动 setFrameOrigin。
             #[cfg(target_os = "macos")]
             {
                 if let Some(window) = app.get_webview_window("main") {
@@ -154,8 +152,8 @@ pub fn run() {
                         // 标题栏透明，让内容延伸到标题栏区域
                         let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
 
-                        // 摆红绿灯 + 装观察者钉死位置
-                        platform::install_traffic_light_pinner(ns_window);
+                        // 去掉 titlebar 分隔线，红绿灯位置由系统决定
+                        platform::configure_titlebar(ns_window);
                     }
                 }
             }

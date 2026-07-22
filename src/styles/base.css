@@ -215,13 +215,12 @@ body[data-platform="windows"] {
   -webkit-app-region: drag;
 }
 
-/* macOS：红绿灯与 Snoop 品牌名同一行 —— 让出左侧红绿灯宽度，两者垂直居中对齐。
-   与 lib.rs 中 setFrameOrigin(_, 14.0) 的按钮位置（圆心距窗口顶 ~25px）配合，
-   header 高度 ~50px（padding 17 + brand 16 + padding 17），brand 中心即 y≈25，
-   使 h1 文字与红绿灯圆点落在同一水平视线上。
+/* macOS：红绿灯回到系统默认位置（close 左边缘 ~x=13，titlebar 高 28pt）。
+   header 高度与系统 titlebar 对齐，品牌名在紧挨红绿灯右侧同一行；
    顶部整行作为拖拽区，不应显示文本光标或允许选中。 */
 body[data-platform="macos"] .sidebar-header {
-  padding: 17px var(--space-4) 17px var(--traffic-light-inset);
+  height: 28px;
+  padding: 0 var(--space-4) 0 var(--traffic-light-inset);
   cursor: default;
   user-select: none;
   -webkit-user-select: none;
@@ -242,9 +241,9 @@ body[data-platform="macos"] .sidebar-header {
   -webkit-user-select: none;
 }
 
-/* 视觉微调仅 macOS 需要：上移 5px、右移 4px，与红绿灯圆心贴齐（不占布局） */
+/* macOS：header 是 flex 居中容器；brand 下移 3px 让文字基线与红绿灯圆心对齐 */
 body[data-platform="macos"] .sidebar-brand {
-  transform: translate(4px, -5px);
+  transform: translate(4px, 3px);
 }
 
 .sidebar-nav {
@@ -252,6 +251,20 @@ body[data-platform="macos"] .sidebar-brand {
   flex-direction: column;
   gap: var(--space-1);
   padding: 0 var(--space-3);
+}
+
+/* macOS：让 nav / section 左内边距与红绿灯 close 左边缘（系统默认 x≈13pt）对齐，
+   sidebar-item 的 padding 会在此基础上再撑出选中态背景 */
+body[data-platform="macos"] .sidebar-nav,
+body[data-platform="macos"] .sidebar-section,
+body[data-platform="macos"] .sidebar-bottom {
+  padding-left: 13px;
+  padding-right: 13px;
+}
+
+/* macOS：nav 整体下移 11px，与红绿灯下移 2px 后的视觉基线再拉开一点节奏 */
+body[data-platform="macos"] .sidebar-nav {
+  margin-top: 11px;
 }
 
 .sidebar-section {

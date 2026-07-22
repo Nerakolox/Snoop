@@ -1,28 +1,82 @@
-use super::{send_switch, FrontmostApp};
-
 use cocoa::appkit::{NSView, NSWindow, NSWindowButton};
 use cocoa::base::{id, nil};
-use cocoa::foundation::{NSAutoreleasePool, NSPoint, NSString};
+use cocoa::foundation::{NSAutoreleasePool, NSPoint, NSRect, NSString};
 use objc::runtime::{Object, Sel};
 use objc::{class, msg_send, sel, sel_impl};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::thread;
 
-/// 红绿灯目标坐标（AppKit 坐标：以 titlebar superview 为参考，y 越大越靠上）。
-/// close@x=16、min@x=36、zoom@x=56，三颗共用同一 y。
-const TRAFFIC_LIGHT_X: [f64; 3] = [16.0, 36.0, 56.0];
-const TRAFFIC_LIGHT_Y: f64 = 5.0;
+use super::{send_switch, FrontmostApp};
 
-/// 保存主窗口指针（usize 化以便放进 static；只在主线程使用）。
-/// 系统在 fullscreen/resize/main 等状态切换后会把红绿灯位置重置为默认，
-/// 观察者回调里读它拿到 window，再调一次 reposition。
+/// 相对系统默认位置的偏移：向右 2pt、向下 2pt。
+/// AppKit 里按钮 superview 不是 flipped 的（y 向上），所以"向下"= y 减小。
+const TRAFFIC_LIGHT_DX: f64 = 3.0;
+const TRAFFIC_LIGHT_DY: f64 = -2.0;
+
+/// 缓存系统首次给出的三颗按钮默认原点。i64::MIN 表示"尚未采样"。
+/// 每次 titlebar 触发 layout，系统会把按钮位置重置到这三个默认值，
+/// 我们在观察者里把它们再挪回 default + 偏移。
+static DEFAULT_ORIGINS_X: [std::sync::atomic::AtomicI64; 3] = [
+    std::sync::atomic::AtomicI64::new(i64::MIN),
+    std::sync::atomic::AtomicI64::new(i64::MIN),
+    std::sync::atomic::AtomicI64::new(i64::MIN),
+];
+static DEFAULT_ORIGINS_Y: [std::sync::atomic::AtomicI64; 3] = [
+    std::sync::atomic::AtomicI64::new(i64::MIN),
+    std::sync::atomic::AtomicI64::new(i64::MIN),
+    std::sync::atomic::AtomicI64::new(i64::MIN),
+];
+
 static PINNED_WINDOW: AtomicUsize = AtomicUsize::new(0);
 
+fn encode_pt(v: f64) -> i64 {
+    // 用 f64 位模式塞进 i64，避开浮点原子和额外锁
+    v.to_bits() as i64
+}
+
+fn decode_pt(v: i64) -> f64 {
+    f64::from_bits(v as u64)
+}
+
+unsafe fn read_default_origins(ns_window: id) -> Option<[NSPoint; 3]> {
+    let buttons = [
+        NSWindowButton::NSWindowCloseButton,
+        NSWindowButton::NSWindowMiniaturizeButton,
+        NSWindowButton::NSWindowZoomButton,
+    ];
+    let mut out = [NSPoint::new(0.0, 0.0); 3];
+    for (i, btn) in buttons.iter().enumerate() {
+        let b = ns_window.standardWindowButton_(*btn);
+        if b == nil {
+            return None;
+        }
+        let frame: NSRect = msg_send![b, frame];
+        out[i] = frame.origin;
+    }
+    Some(out)
+}
+
+/// 把三颗按钮挪到 系统默认位置 + (DX, DY)。
+/// 首次调用时把系统默认位置采样进 static 缓存；后续调用直接用缓存值，
+/// 避免读到我们已经挪过的位置再叠加偏移。
 pub unsafe fn reposition_traffic_lights(ns_window: id) {
     if ns_window == nil {
         return;
     }
+
+    // 首次采样：如果缓存为空，先读一次当前（= 系统默认）位置
+    if DEFAULT_ORIGINS_X[0].load(Ordering::SeqCst) == i64::MIN {
+        if let Some(defaults) = read_default_origins(ns_window) {
+            for i in 0..3 {
+                DEFAULT_ORIGINS_X[i].store(encode_pt(defaults[i].x), Ordering::SeqCst);
+                DEFAULT_ORIGINS_Y[i].store(encode_pt(defaults[i].y), Ordering::SeqCst);
+            }
+        } else {
+            return;
+        }
+    }
+
     let buttons = [
         NSWindowButton::NSWindowCloseButton,
         NSWindowButton::NSWindowMiniaturizeButton,
@@ -30,9 +84,12 @@ pub unsafe fn reposition_traffic_lights(ns_window: id) {
     ];
     for (i, btn) in buttons.iter().enumerate() {
         let b = ns_window.standardWindowButton_(*btn);
-        if b != nil {
-            b.setFrameOrigin(NSPoint::new(TRAFFIC_LIGHT_X[i], TRAFFIC_LIGHT_Y));
+        if b == nil {
+            continue;
         }
+        let dx = decode_pt(DEFAULT_ORIGINS_X[i].load(Ordering::SeqCst));
+        let dy = decode_pt(DEFAULT_ORIGINS_Y[i].load(Ordering::SeqCst));
+        b.setFrameOrigin(NSPoint::new(dx + TRAFFIC_LIGHT_DX, dy + TRAFFIC_LIGHT_DY));
     }
 }
 
@@ -42,11 +99,8 @@ extern "C" fn traffic_light_repin_callback(_this: &Object, _cmd: Sel, _notificat
         return;
     }
     unsafe {
-        // 通知在 layout 之前触发的场景下，先立刻放一次；再在下一轮 runloop 兜底一次，
-        // 覆盖系统自己在通知后又做一次 layout 把按钮拨回默认位置的情况。
         reposition_traffic_lights(w as id);
-
-        // performSelector:withObject:afterDelay: 让系统当前 layout pass 结束后再跑一次
+        // 系统在通知后可能还会跑一次 layout 把位置拨回默认，performSelector 兜底
         let sel_name = sel!(snoopRepinNow:);
         let _: () = msg_send![_this, performSelector: sel_name withObject: nil afterDelay: 0.0f64];
     }
@@ -62,19 +116,31 @@ extern "C" fn traffic_light_repin_now(_this: &Object, _cmd: Sel, _obj: id) {
     }
 }
 
-/// 把红绿灯位置钉死：立刻摆一次，并注册 NSWindow 通知观察者，之后每次
-/// 主态切换/尺寸变化/全屏进出/最小化恢复，都自动重放坐标。
+/// 配置 titlebar 并把红绿灯挪到 系统默认 + (右2, 下2)：
+/// - 关掉 titlebar 与内容之间的分隔线（macOS 11+）
+/// - 首次采样系统默认按钮位置并缓存
+/// - 注册 NSWindow 通知观察者，layout pass 后自动重放偏移
+///
+/// 相对偏移的好处：基准是系统给的位置，跨 Mac / 跨 macOS 版本一致，
+/// 不会因为 titlebar 高度差异而漂移。
 ///
 /// 必须在主线程调用（Tauri setup 是主线程）。
-pub unsafe fn install_traffic_light_pinner(ns_window: id) {
+pub unsafe fn configure_titlebar(ns_window: id) {
     if ns_window == nil {
         return;
+    }
+
+    // NSTitlebarSeparatorStyleNone = 1，去掉 titlebar 与内容的那根分割线
+    let sel_set_sep = sel!(setTitlebarSeparatorStyle:);
+    let responds_sep: bool = msg_send![ns_window, respondsToSelector: sel_set_sep];
+    if responds_sep {
+        let sep_none: i64 = 1;
+        let _: () = msg_send![ns_window, setTitlebarSeparatorStyle: sep_none];
     }
 
     PINNED_WINDOW.store(ns_window as usize, Ordering::SeqCst);
     reposition_traffic_lights(ns_window);
 
-    // 观察者类：只注册一次，热重载/重复调用时直接复用已有类
     let observer_class = {
         let superclass = class!(NSObject);
         match objc::declare::ClassDecl::new("SnoopTrafficLightPinner", superclass) {
@@ -89,10 +155,7 @@ pub unsafe fn install_traffic_light_pinner(ns_window: id) {
                 );
                 decl.register()
             }
-            None => {
-                // 已存在——沿用现有类，避免重复注册崩溃
-                class!(SnoopTrafficLightPinner)
-            }
+            None => class!(SnoopTrafficLightPinner),
         }
     };
 
@@ -123,18 +186,10 @@ pub unsafe fn install_traffic_light_pinner(ns_window: id) {
         ];
     }
 
-    // NSApplication 级别的 appearance 变化也可能触发系统重排 titlebar
-    let app_notif: id = NSString::alloc(nil)
-        .init_str("NSApplicationDidChangeScreenParametersNotification");
-    let _: () = msg_send![
-        notification_center,
-        addObserver: observer
-        selector: sel!(windowStateChanged:)
-        name: app_notif
-        object: nil
-    ];
-
-    println!("✅ 红绿灯位置观察者已注册（y={})", TRAFFIC_LIGHT_Y);
+    println!(
+        "✅ 红绿灯偏移已应用（默认 +({}, {})）",
+        TRAFFIC_LIGHT_DX, TRAFFIC_LIGHT_DY
+    );
 }
 
 pub fn get_frontmost_app() -> FrontmostApp {
