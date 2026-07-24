@@ -5,9 +5,8 @@
 */
 
 .kb-page {
-  padding: var(--space-6) var(--space-8) var(--space-8);
-  display: flex;
-  flex-direction: column;
+  /* 内容区块的纵向间距；布局由 .page-shell__body（flex 列）承担，
+     此 gap 经 gap:inherit 下传到 body。见 page-shell.css。 */
   gap: var(--space-6);
   max-width: 100%;
 }
@@ -18,18 +17,6 @@
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-3);
-}
-
-/* 吸顶固定 */
-.kb-filters--sticky {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  background: var(--color-bg);
-  padding: var(--space-4) 0;
-  margin: calc(var(--space-6) * -1) 0 var(--space-6);
-  padding-left: 0;
-  padding-right: 0;
 }
 
 /* 单行容器：左对齐，行内元素之间留出合理间距，允许应用行按需换行 */

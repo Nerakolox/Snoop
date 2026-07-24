@@ -19,6 +19,7 @@ import {
   debugEpm,
   mergeSessions,
 } from "../analytics";
+import PageShell from "../components/PageShell";
 
 type Bucket = {
   id: number;
@@ -209,14 +210,17 @@ export default function Dev() {
   }
 
   return (
-    <div className="dev-page">
-      <div className="dev-header">
-        <h2>Dev · 原始数据</h2>
-        <button onClick={refresh} disabled={loading}>
-          {loading ? "刷新中..." : "刷新"}
-        </button>
-      </div>
-
+    <PageShell
+      className="dev-page"
+      header={
+        <div className="dev-header">
+          <h2>Dev · 原始数据</h2>
+          <button onClick={refresh} disabled={loading}>
+            {loading ? "刷新中..." : "刷新"}
+          </button>
+        </div>
+      }
+    >
       {err && <p className="dev-error">错误: {err}</p>}
 
       <section className="dev-section">
@@ -410,6 +414,6 @@ export default function Dev() {
           </tbody>
         </table>
       </section>
-    </div>
+    </PageShell>
   );
 }

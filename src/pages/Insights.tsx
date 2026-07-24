@@ -25,6 +25,7 @@ import {
   type Intensity,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
+import PageShell from "../components/PageShell";
 import { fmtHours } from "../utils/format";
 import { startOfWeek, isSameWeek, formatWeekLabel } from "../utils/date";
 
@@ -277,15 +278,17 @@ export default function Insights() {
   );
 
   return (
-    <div className="ins-page">
-      {/* 周选择器 */}
-      <WeekSelector
-        weekLabel={weekLabel}
-        isCurrentWeek={isCurrentWeek}
-        onPrevWeek={goPrevWeek}
-        onNextWeek={goNextWeek}
-      />
-
+    <PageShell
+      className="ins-page"
+      header={
+        <WeekSelector
+          weekLabel={weekLabel}
+          isCurrentWeek={isCurrentWeek}
+          onPrevWeek={goPrevWeek}
+          onNextWeek={goNextWeek}
+        />
+      }
+    >
       {/* ① 猫的周报吐槽 —— 顶部通栏 */}
       <section className="ins-report">
         <div className="ins-report-avatar" aria-hidden>
@@ -468,7 +471,7 @@ export default function Insights() {
           </div>
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }
 

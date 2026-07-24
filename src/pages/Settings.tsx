@@ -11,6 +11,7 @@ import {
   Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code, Hammer,
 } from "lucide-react";
 import { resetAppIconCache } from "../components/AppIcon";
+import PageShell from "../components/PageShell";
 
 type UpdateState =
   | { status: "idle" }
@@ -347,7 +348,7 @@ export default function Settings() {
   }
 
   return (
-    <div className="settings-page">
+    <PageShell className="settings-page">
 
       <div className="settings-group">
         <div className="settings-group-title">通用</div>
@@ -624,6 +625,6 @@ export default function Settings() {
         </div>,
         document.body
       )}
-    </div>
+    </PageShell>
   );
 }

@@ -22,6 +22,7 @@ import {
   pickCatQuip,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
+import PageShell from "../components/PageShell";
 
 type NowStatus = {
   appName: string;
@@ -214,7 +215,7 @@ export default function Overview() {
   const maxMinutes = Math.max(...apps.map((a) => a.minutes), 1);
 
   return (
-    <div className="overview">
+    <PageShell className="overview">
       {/* ① 此刻状态 —— 猫的舞台 */}
       <section className="now-card">
         <div className="now-mascot" aria-hidden>
@@ -329,6 +330,6 @@ export default function Overview() {
           </span>
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }

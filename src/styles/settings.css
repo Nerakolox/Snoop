@@ -1,9 +1,8 @@
 /* ---------- Settings page ---------- */
 
 .settings-page {
-  padding: var(--space-6) var(--space-8) var(--space-8);
-  display: flex;
-  flex-direction: column;
+  /* 内容区块的纵向间距；布局由 .page-shell__body（flex 列）承担，
+     此 gap 经 gap:inherit 下传到 body。见 page-shell.css。 */
   gap: var(--space-6);
   width: 100%;
 }

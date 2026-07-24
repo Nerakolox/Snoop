@@ -27,6 +27,7 @@ import AppIcon from "../components/AppIcon";
 import TopKeysPanel from "../components/keyboard/TopKeysPanel";
 import MousePanel from "../components/keyboard/MousePanel";
 import KeyboardPanel from "../components/keyboard/KeyboardPanel";
+import PageShell from "../components/PageShell";
 
 type AppFilter = "all" | string;
 type TimeFilter = "day" | "week";
@@ -282,11 +283,14 @@ export default function Keyboard() {
   }, [appList, allBuckets]);
 
   return (
-    <div className="kb-page">
-      {/* ① 顶部筛选栏（吸顶，三行：App / 日期 / 配列） */}
-      <div className="kb-filters kb-filters--sticky">
-        {/* 第 1 行：App 筛选 */}
-        <div className="kb-filter-row kb-filter-row--apps">
+    <PageShell
+      className="kb-page"
+      stickyHeader
+      header={
+        /* 顶部筛选栏（吸顶，三行：App / 日期 / 配列） */
+        <div className="kb-filters">
+          {/* 第 1 行：App 筛选 */}
+          <div className="kb-filter-row kb-filter-row--apps">
           <div className="kb-filter-group">
             {appFilterButtons.map((a) => (
               <button
@@ -366,12 +370,13 @@ export default function Keyboard() {
           </div>
         </div>
 
-        {/* 第 3 行：KLE 配列选择 */}
-        <div className="kb-filter-row kb-filter-row--layout">
-          <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
+          {/* 第 3 行：KLE 配列选择 */}
+          <div className="kb-filter-row kb-filter-row--layout">
+            <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
+          </div>
         </div>
-      </div>
-
+      }
+    >
       {/* ② 统一活动面板：键盘热力图 + 鼠标 + Top 按键 */}
       <section className="panel kb-unified-panel" style={{ position: "relative" }}>
         {showLoading && (
@@ -409,6 +414,6 @@ export default function Keyboard() {
           </>
         )}
       </section>
-    </div>
+    </PageShell>
   );
 }

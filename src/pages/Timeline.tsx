@@ -19,6 +19,7 @@ import {
   COMPRESS_THRESHOLD_MS,
   type AppLane, type TimeBlock,
 } from "../analytics";
+import PageShell from "../components/PageShell";
 import TimelineHeader from "../components/timeline/TimelineHeader";
 import TimelineTooltip from "../components/timeline/TimelineTooltip";
 import SwimLane from "../components/timeline/SwimLane";
@@ -92,7 +93,6 @@ export default function Timeline() {
   const chartRef = useRef<HTMLDivElement>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
-  const pageRef = useRef<HTMLDivElement>(null);
 
   const [fadeMasks, setFadeMasks] = useState({
     top: false,
@@ -463,19 +463,23 @@ export default function Timeline() {
   }, [segmentsData, viewRange.start, viewRange.end]);
 
   return (
-    <div ref={pageRef} className="swimlane-page">
-      <TimelineHeader
-        dateLabel={dateLabel}
-        isToday={isToday}
-        hasCustomViewport={viewport !== null}
-        compressed={compressed}
-        onPrevDay={goPrevDay}
-        onNextDay={goNextDay}
-        onToday={goToday}
-        onResetView={resetView}
-        onToggleCompressed={toggleCompressed}
-      />
-
+    <PageShell
+      className="swimlane-page"
+      fill
+      header={
+        <TimelineHeader
+          dateLabel={dateLabel}
+          isToday={isToday}
+          hasCustomViewport={viewport !== null}
+          compressed={compressed}
+          onPrevDay={goPrevDay}
+          onNextDay={goNextDay}
+          onToday={goToday}
+          onResetView={resetView}
+          onToggleCompressed={toggleCompressed}
+        />
+      }
+    >
       {lanes.length === 0 && !loading && (
         <div className="swimlane-empty">
           <Calendar size={48} strokeWidth={1.5} />
@@ -555,6 +559,6 @@ export default function Timeline() {
       {hoveredBlock && (
         <TimelineTooltip hoveredBlock={hoveredBlock} onClose={() => setHoveredBlock(null)} />
       )}
-    </div>
+    </PageShell>
   );
 }

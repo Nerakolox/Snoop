@@ -9,6 +9,7 @@ import {
 } from "../components/KLELayoutPicker";
 import { getAllLayouts } from "../layouts";
 import KLEKeyboard from "../components/KLEKeyboard";
+import PageShell from "../components/PageShell";
 
 const DOM_TO_RDEV: Record<string, string> = {
   Backquote: "BackQuote", Minus: "Minus", Equal: "Equal",
@@ -200,14 +201,18 @@ export default function KeymapTest() {
   }
 
   return (
-    <div className="dev-page" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div className="dev-header">
-        <h2>键盘映射测试</h2>
-        <span style={{ color: "var(--color-text-3)", fontSize: "var(--text-xs)" }}>
-          前台用 DOM 捕获，后台用 rdev 捕获
-        </span>
-      </div>
-
+    <PageShell
+      className="dev-page"
+      header={
+        <div className="dev-header">
+          <h2>键盘映射测试</h2>
+          <span style={{ color: "var(--color-text-3)", fontSize: "var(--text-xs)" }}>
+            前台用 DOM 捕获，后台用 rdev 捕获
+          </span>
+        </div>
+      }
+    >
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <span style={{ color: "var(--color-text-2)", fontSize: "var(--text-xs)" }}>配列</span>
         <button className="kb-nav-btn" onClick={() => setPickerIdx(i => Math.max(0, i-1))} disabled={pickerIdx === 0}>
@@ -261,6 +266,7 @@ export default function KeymapTest() {
           <span>时间</span><span>来源</span><span>事件类型</span><span>rdev 键码</span><span>匹配键位</span>
         </div>
       </section>
-    </div>
+      </div>
+    </PageShell>
   );
 }

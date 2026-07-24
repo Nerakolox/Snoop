@@ -1,0 +1,57 @@
+/* ---------- PageShell ----------
+   右侧主视图统一外壳：顶部间距的唯一真源。
+   顶部 padding 为 0，「视口顶 → 首个可见内容」= var(--space-6)：
+     - 有 header：由 .page-shell__header 的 padding-top 提供
+     - 无 header：由 .page-shell--no-header .page-shell__body 的 padding-top 提供
+   左右 / 底部内边距沿用原各页面的 var(--space-8) / var(--space-6)。
+*/
+
+.page-shell {
+  padding: 0 var(--space-8) var(--space-6);
+  max-width: 100%;
+}
+
+.page-shell__header {
+  padding-top: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+
+/* 吸顶：沿用原 .kb-filters--sticky 的层级与背景（不透明 --color-bg），
+   顶部内容滚动到此栏下方时被不透明背景挡住，不穿透。 */
+.page-shell__header--sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-bg);
+}
+
+/* body 承载页面内容的纵向布局。
+   内容区块现在是 body 的子级（而非 className 所在 .page-shell 的直接子级），
+   故纵向排布在此层重建：body 恒为 flex 列，区块间距由各页 className 声明的
+   gap 经 `gap: inherit` 下传（.page-shell 保持 block，gap 值可计算并被继承）。
+   如此 header→body 的间距只由 .page-shell__header 的 margin-bottom 提供，
+   不会叠加 shell 层 gap。无 gap 的页（Dev/Timeline）继承 normal，
+   其区块沿用自身 margin 间距，行为不变。 */
+.page-shell__body {
+  display: flex;
+  flex-direction: column;
+  gap: inherit;
+}
+
+/* 无 header：顶距移交给 body */
+.page-shell--no-header .page-shell__body {
+  padding-top: var(--space-6);
+}
+
+/* 页面自管滚动（Timeline）：外壳不滚动，内部 body 撑满剩余空间自行滚动 */
+.page-shell--fill {
+  height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.page-shell--fill .page-shell__body {
+  flex: 1;
+  min-height: 0;
+}
