@@ -443,16 +443,22 @@
   overflow: visible;
 }
 
-/* 缩放视口：正常缩放区间 overflow-x: hidden，不存在滚动条参与反馈；
-   仅当缩到 MIN_SCALE 仍放不下时由 React 加 --scrollable 切换为 auto。
-   scrollbar-gutter: stable 恒定预留滚动条空间，避免出现/消失改变内部可用宽。 */
+/* 缩放视口：overflow-x 恒为 auto，绝不用 hidden/clip —— 即使 needsScroll 判据
+   因任何原因失效，宁可出现滚动条也不裁切内容。正常缩放区间内容不溢出，auto 下
+   本就不显示滚动条。
+   scrollbar-gutter: stable 恒定预留滚动条空间：clientWidth 不随滚动条出现/消失
+   变化，断开 ResizeObserver↔滚动条 的反馈震荡。此处不用 scrollbar-width: none
+   隐藏 thumb —— 那会使 gutter 失效（规范：scrollbar-width:none 时 gutter 无效），
+   令 clientWidth 在 --scrollable 切换时跳变 17px，重新引入震荡。 */
 .kle-viewport {
   width: 100%;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: visible;
   scrollbar-gutter: stable;
 }
 
+/* needsScroll 为真时的语义标记（内容确已溢出、滚动条自然出现）。
+   overflow 行为始终由上面的 auto 决定，此类不改 overflow 值。 */
 .kle-viewport--scrollable {
   overflow-x: auto;
 }

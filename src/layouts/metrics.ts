@@ -11,3 +11,7 @@ export const KEY_GAP = 5;
 
 /** 缩放下限：低于此值不再缩，改为横向滚动。 */
 export const MIN_SCALE = 0.55;
+
+/** .kle-scaler 左右各留的水平内边距（px），用于容纳键 hover 时向外扩散的
+ *  box-shadow，避免被 .kle-viewport 裁掉右侧一圈。可用宽计算需扣除左右共 2 倍。 */
+export const SCALER_PAD_X = 8;

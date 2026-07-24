@@ -8,13 +8,13 @@
  * - .kle-keyboard：原始尺寸绘制，transform: scale 缩放
  */
 
-import type { CSSProperties } from "react";
+import type { CSSProperties, RefObject } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import * as solidIcons from "@fortawesome/free-solid-svg-icons";
 import type { KLEKey } from "../kleParser";
 import { parseLabelParts, extractFAIcon, FA_CLASS_TO_ICON_NAME } from "../kleParser";
 import { bucketByPercentile, intensityVar } from "../analytics";
-import { KEY_UNIT, KEY_GAP } from "../layouts/metrics";
+import { KEY_UNIT, KEY_GAP, SCALER_PAD_X } from "../layouts/metrics";
 
 type KLEKeyboardProps = {
   keys: KLEKey[];
@@ -30,6 +30,8 @@ type KLEKeyboardProps = {
   scrollable?: boolean;
   /** When provided, highlight these key indices at max intensity (overrides keyCounts for those keys) */
   pressedIndices?: Set<number>;
+  /** 外层用于 ResizeObserver 观测的 .kle-viewport 引用 */
+  viewportRef?: RefObject<HTMLDivElement | null>;
 };
 
 export default function KLEKeyboard({
@@ -41,18 +43,27 @@ export default function KLEKeyboard({
   scale = 1,
   scrollable = false,
   pressedIndices,
+  viewportRef,
 }: KLEKeyboardProps) {
   const layoutWidth = maxX * KEY_UNIT;
   const layoutHeight = maxY * KEY_UNIT;
 
   return (
-    <div className={`kle-viewport${scrollable ? " kle-viewport--scrollable" : ""}`}>
+    <div
+      ref={viewportRef}
+      className={`kle-viewport${scrollable ? " kle-viewport--scrollable" : ""}`}
+    >
       <div
         className="kle-scaler"
         style={{
-          // 用 Math.round 写入整数尺寸，避免非整数宽高引入亚像素抖动
-          width: Math.round(layoutWidth * scale),
+          // 用 Math.round 写入整数尺寸，避免非整数宽高引入亚像素抖动。
+          // box-sizing 全局为 border-box：显式 width 含 padding，故 +2*SCALER_PAD_X，
+          // 使内容区（承载缩放后键盘）仍恰为 Math.round(layoutWidth * scale)。
+          width: Math.round(layoutWidth * scale) + SCALER_PAD_X * 2,
           height: Math.round(layoutHeight * scale),
+          // 左右留白容纳 hover box-shadow 外扩，避免被 viewport 裁切
+          paddingLeft: SCALER_PAD_X,
+          paddingRight: SCALER_PAD_X,
           margin: "0 auto",
         }}
       >
