@@ -18,6 +18,21 @@ export type KLEKey = {
   row: number;
   /** 列索引（在当前行内的顺序） */
   col: number;
+  /** 装饰键（KLE `d:true`）：标记但不丢弃，渲染层不画键帽、不参与热力 */
+  decal: boolean;
+};
+
+/**
+ * 解析结果：键位数组 + 一次性算好的边界 + 未支持特性记录。
+ */
+export type ParsedLayout = {
+  keys: KLEKey[];
+  /** max(k.x + k.w)，配列总 U 宽 */
+  maxX: number;
+  /** max(k.y + k.h)，配列总 U 高 */
+  maxY: number;
+  /** 检测到但不支持的 KLE 特性（x2/y2/w2/h2/r/rx/ry），供导入时提示 */
+  unsupportedFeatures: string[];
 };
 
 type KLEProperties = {
@@ -25,17 +40,21 @@ type KLEProperties = {
   y?: number; // 垂直偏移（换行用）
   w?: number; // 键宽
   h?: number; // 键高
-  a?: number; // 对齐方式（暂不使用）
+  a?: number; // 对齐方式（刻意忽略：对齐由渲染层独占）
   [key: string]: any; // 其他属性暂忽略
 };
 
+/** 一次性（放置一个键后重置）之外，需检测并上报的不支持特性键。 */
+const UNSUPPORTED_KEYS = ["x2", "y2", "w2", "h2", "r", "rx", "ry"] as const;
+
 /**
- * 解析 KLE JSON 为键位数组
+ * 解析 KLE JSON 为结构化配列（键位 + 边界 + 未支持特性）
  * @param kleJson KLE 格式的 JSON 数组
- * @returns 键位数组
+ * @returns ParsedLayout
  */
-export function parseKLE(kleJson: any[]): KLEKey[] {
+export function parseKLE(kleJson: any[]): ParsedLayout {
   const keys: KLEKey[] = [];
+  const unsupported = new Set<string>();
 
   let currentY = 0; // 全局 Y 坐标
   let currentX = 0; // 当前行 X 坐标
@@ -47,6 +66,8 @@ export function parseKLE(kleJson: any[]): KLEKey[] {
     w: 1,
     h: 1,
   };
+  // decal 是一次性属性，随 w/h 一起重置
+  let currentDecal = false;
 
   for (const row of kleJson) {
     if (!Array.isArray(row)) continue;
@@ -68,6 +89,7 @@ export function parseKLE(kleJson: any[]): KLEKey[] {
           y: currentY,
           row: rowIndex,
           col: colIndex,
+          decal: currentDecal,
         });
 
         // 推进 X 坐标（键宽）
@@ -76,6 +98,7 @@ export function parseKLE(kleJson: any[]): KLEKey[] {
 
         // 重置键属性为默认值（每个键后重置）
         currentProps = { w: 1, h: 1 };
+        currentDecal = false;
       } else if (typeof item === "object" && item !== null) {
         // 对象 = 属性修改
         if (item.y !== undefined) {
@@ -92,7 +115,14 @@ export function parseKLE(kleJson: any[]): KLEKey[] {
         if (item.h !== undefined) {
           currentProps.h = item.h;
         }
-        // a（对齐）等其他属性暂忽略
+        if (item.d === true) {
+          currentDecal = true;
+        }
+        // 记录检测到的不支持特性（不使用，仅上报）
+        for (const k of UNSUPPORTED_KEYS) {
+          if (item[k] !== undefined) unsupported.add(k);
+        }
+        // n/c/t/a/f 维持忽略：键色由热力档独占、字号由分级系统独占
       }
     }
 
@@ -101,7 +131,14 @@ export function parseKLE(kleJson: any[]): KLEKey[] {
     rowIndex++;
   }
 
-  return keys;
+  let maxX = 0;
+  let maxY = 0;
+  for (const k of keys) {
+    if (k.x + k.w > maxX) maxX = k.x + k.w;
+    if (k.y + k.h > maxY) maxY = k.y + k.h;
+  }
+
+  return { keys, maxX, maxY, unsupportedFeatures: [...unsupported] };
 }
 
 /**

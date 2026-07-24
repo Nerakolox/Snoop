@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { parseKLE, getLabelRdevCode, getDisplayLabel, type KLEKey } from "../kleParser";
+import { parseKLE, getLabelRdevCode, getDisplayLabel, type KLEKey, type ParsedLayout } from "../kleParser";
 import {
   getSavedLayout,
   saveLayout,
@@ -105,7 +105,13 @@ export default function KeymapTest() {
     return m;
   }, [layouts]);
   const [layoutId, setLayoutId] = useState(() => getSavedLayout());
-  const [kleKeys, setKleKeys] = useState<KLEKey[]>([]);
+  const [layout, setLayout] = useState<ParsedLayout>({
+    keys: [],
+    maxX: 0,
+    maxY: 0,
+    unsupportedFeatures: [],
+  });
+  const kleKeys = layout.keys;
   const [pressedCodes, setPressedCodes] = useState<Set<string>>(new Set());
   const [log, setLog] = useState<LogEntry[]>([]);
   const [pickerIdx, setPickerIdx] = useState(() => Math.max(0, KNOWN.indexOf(getSavedLayout())));
@@ -127,7 +133,7 @@ export default function KeymapTest() {
   async function loadLayout(id: string) {
     try {
       const json = await loadLayoutJSON(id);
-      setKleKeys(parseKLE(json));
+      setLayout(parseKLE(json));
     } catch (e) {
       console.error(e);
     }
@@ -232,7 +238,7 @@ export default function KeymapTest() {
 
       <section className="panel" style={{ padding: "var(--space-4)", overflowX: "auto" }}>
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <KLEKeyboard keys={kleKeys} keyCounts={{}} allCounts={[]} pressedIndices={pressedIndices} unitSize={46} />
+          <KLEKeyboard keys={kleKeys} keyCounts={{}} allCounts={[]} pressedIndices={pressedIndices} maxX={layout.maxX} maxY={layout.maxY} />
         </div>
       </section>
 

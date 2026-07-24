@@ -434,12 +434,19 @@
   gap: var(--space-8);
 }
 
-/* 键盘区域 */
+/* 键盘区域 —— 触到 MIN_SCALE 的宽配列由内部 .kle-viewport 横向滚动 */
 .kb-keyboard-section {
-  display: flex;
-  justify-content: center;
+  display: block;
   width: 100%;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: visible;
+}
+
+/* 缩放视口：宽配列缩到下限后横向滚动，不裁切 */
+.kle-viewport {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 /* 下方分栏区域 */
@@ -555,108 +562,6 @@
 }
 
 .kle-key:hover .kle-key-count {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
-.kb-keyboard {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  width: 100%;
-}
-
-.kb-row {
-  display: flex;
-  gap: 6px;
-  width: 100%;
-}
-
-/* 每个键：flex-grow 由 key.w 决定，flex-basis 0 让宽度纯粹按比例。
-   min-height 定死一个视觉舒适的高度；label 居中、hover 提示上浮。 */
-.kb-key {
-  flex-grow: 1;
-  flex-shrink: 1;
-  flex-basis: 0;
-  min-width: 0;
-  min-height: 46px;
-  border-radius: var(--radius-sm);
-  padding: 4px 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  position: relative;
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  cursor: default;
-  overflow: visible;
-  transition:
-    transform var(--dur-fast) var(--ease-smooth),
-    box-shadow var(--dur-fast) var(--ease-smooth);
-}
-
-.kb-key--mod,
-.kb-key--space {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.kb-key--fn {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-/* 间隙占位键：透明、无交互、无样式 */
-.kb-key--gap {
-  background: transparent !important;
-  pointer-events: none;
-  min-height: 0;
-}
-
-.kb-key:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-  z-index: 2;
-}
-
-.kb-key--gap:hover {
-  transform: none;
-  box-shadow: none;
-}
-
-.kb-key-label {
-  pointer-events: none;
-  line-height: 1;
-}
-
-/* 次数悬浮提示 —— 绝对定位在键上方，默认隐藏 */
-.kb-key-count {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translate(-50%, 4px);
-  padding: 3px var(--space-2);
-  background: var(--color-text);
-  color: var(--color-bg);
-  border-radius: var(--radius-sm);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  pointer-events: none;
-  opacity: 0;
-  transition:
-    opacity var(--dur-fast) var(--ease-smooth),
-    transform var(--dur-fast) var(--ease-smooth);
-  z-index: 3;
-  box-shadow: var(--shadow-md);
-}
-
-.kb-key:hover .kb-key-count {
   opacity: 1;
   transform: translate(-50%, 0);
 }

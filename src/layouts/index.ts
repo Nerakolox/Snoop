@@ -116,7 +116,9 @@ export function getLayoutById(id: string): LayoutEntry | undefined {
 /**
  * 校验一段任意 JSON 是否可作为 KLE 配列：必须能解析出至少一个键。
  */
-export function validateKleJson(json: unknown): { ok: true; keys: KLEKey[] } | { ok: false; reason: string } {
+export function validateKleJson(
+  json: unknown
+): { ok: true; keys: KLEKey[]; unsupportedFeatures: string[] } | { ok: false; reason: string } {
   if (!Array.isArray(json)) {
     return { ok: false, reason: "KLE 文件顶层必须是数组" };
   }
@@ -126,11 +128,11 @@ export function validateKleJson(json: unknown): { ok: true; keys: KLEKey[] } | {
     if (rows.length === 0) {
       return { ok: false, reason: "未找到任何键行" };
     }
-    const keys = parseKLE(json as any[]);
-    if (keys.length === 0) {
+    const parsed = parseKLE(json as any[]);
+    if (parsed.keys.length === 0) {
       return { ok: false, reason: "解析后没有可显示的键位" };
     }
-    return { ok: true, keys };
+    return { ok: true, keys: parsed.keys, unsupportedFeatures: parsed.unsupportedFeatures };
   } catch (e) {
     return { ok: false, reason: `解析失败：${(e as Error).message ?? e}` };
   }

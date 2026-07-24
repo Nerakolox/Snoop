@@ -1,50 +1,56 @@
 /**
- * 键盘热力图面板 —— KLE 键盘渲染 + 自适应 unitSize。
- * 内部通过 ResizeObserver 根据容器宽度和键盘 x 轴总跨度动态调整 unitSize。
+ * 键盘热力图面板 —— KLE 键盘渲染 + 光学缩放。
+ * 1U 固定为 KEY_UNIT，容器放不下时才等比缩放（缩到 MIN_SCALE 为止，
+ * 再窄则由 .kle-viewport 横向滚动）。
  */
 
 import { useEffect, useRef, useState } from "react";
 import KLEKeyboard from "../KLEKeyboard";
 import type { KLEKey } from "../../kleParser";
+import { KEY_UNIT, MIN_SCALE } from "../../layouts/metrics";
 
 type KeyboardPanelProps = {
   kleKeys: KLEKey[];
   kleKeyCounts: Record<string, number>;
   allKeyCounts: number[];
+  maxX: number;
+  maxY: number;
 };
 
 export default function KeyboardPanel({
   kleKeys,
   kleKeyCounts,
   allKeyCounts,
+  maxX,
+  maxY,
 }: KeyboardPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [unitSize, setUnitSize] = useState(48);
+  const [scale, setScale] = useState(1);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const ro = new ResizeObserver(([entry]) => {
-      const w = entry.contentRect.width;
-      if (kleKeys.length === 0) return;
-      const maxX = Math.max(...kleKeys.map((k) => k.x + k.w));
-      const computed = Math.floor(w / maxX);
-      setUnitSize(Math.min(Math.max(computed, 28), 56));
+      if (maxX <= 0) return;
+      const containerWidth = entry.contentRect.width;
+      const layoutWidth = maxX * KEY_UNIT;
+      const rawScale = containerWidth / layoutWidth;
+      setScale(Math.min(Math.max(rawScale, MIN_SCALE), 1));
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [kleKeys]);
+  }, [maxX]);
 
   return (
     <div className="kb-keyboard-section" ref={containerRef}>
-      <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
-        <KLEKeyboard
-          keys={kleKeys}
-          keyCounts={kleKeyCounts}
-          allCounts={allKeyCounts}
-          unitSize={unitSize}
-        />
-      </div>
+      <KLEKeyboard
+        keys={kleKeys}
+        keyCounts={kleKeyCounts}
+        allCounts={allKeyCounts}
+        maxX={maxX}
+        maxY={maxY}
+        scale={scale}
+      />
     </div>
   );
 }

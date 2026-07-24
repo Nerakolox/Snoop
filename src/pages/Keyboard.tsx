@@ -16,7 +16,7 @@ import {
   type RawKeyDetail,
 } from "../data";
 import { aggregateByApp } from "../analytics";
-import { parseKLE, getLabelRdevCode, type KLEKey } from "../kleParser";
+import { parseKLE, getLabelRdevCode, type ParsedLayout } from "../kleParser";
 import { startOfDay, startOfWeek, isSameDay, isSameWeek, formatPeriodLabel } from "../utils/date";
 import KLELayoutPicker, {
   getSavedLayout,
@@ -66,7 +66,13 @@ export default function Keyboard() {
 
   // KLE 配列状态（从 localStorage 读取，默认 104 全尺寸）
   const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
-  const [kleKeys, setKleKeys] = useState<KLEKey[]>([]);
+  const [layout, setLayout] = useState<ParsedLayout>({
+    keys: [],
+    maxX: 0,
+    maxY: 0,
+    unsupportedFeatures: [],
+  });
+  const kleKeys = layout.keys;
   const [kleLoading, setKleLoading] = useState(false);
 
   // 当前日期/周标签
@@ -95,8 +101,8 @@ export default function Keyboard() {
     setKleLoading(true);
     try {
       const kleJson = await loadLayoutJSON(id);
-      const parsedKeys = parseKLE(kleJson);
-      setKleKeys(parsedKeys);
+      const parsed = parseKLE(kleJson);
+      setLayout(parsed);
     } catch (e) {
       console.error("Failed to load KLE layout:", e);
     } finally {
@@ -399,6 +405,8 @@ export default function Keyboard() {
               kleKeys={kleKeys}
               kleKeyCounts={kleKeyCounts}
               allKeyCounts={allKeyCounts}
+              maxX={layout.maxX}
+              maxY={layout.maxY}
             />
 
             {/* 下方分栏：鼠标 + Top 按键 */}

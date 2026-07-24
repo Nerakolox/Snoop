@@ -53,7 +53,7 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
     const map = new Map<string, KLEKey[]>();
     for (const l of layouts) {
       try {
-        map.set(l.id, parseKLE(l.data));
+        map.set(l.id, parseKLE(l.data).keys);
       } catch {
         map.set(l.id, []);
       }
