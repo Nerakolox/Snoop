@@ -26,6 +26,8 @@ type KLEKeyboardProps = {
   maxY: number;
   /** 缩放系数（由容器宽度换算，默认 1 = 原始尺寸） */
   scale?: number;
+  /** 是否允许横向滚动（仅在缩到 MIN_SCALE 仍放不下时由上层置 true） */
+  scrollable?: boolean;
   /** When provided, highlight these key indices at max intensity (overrides keyCounts for those keys) */
   pressedIndices?: Set<number>;
 };
@@ -37,18 +39,20 @@ export default function KLEKeyboard({
   maxX,
   maxY,
   scale = 1,
+  scrollable = false,
   pressedIndices,
 }: KLEKeyboardProps) {
   const layoutWidth = maxX * KEY_UNIT;
   const layoutHeight = maxY * KEY_UNIT;
 
   return (
-    <div className="kle-viewport">
+    <div className={`kle-viewport${scrollable ? " kle-viewport--scrollable" : ""}`}>
       <div
         className="kle-scaler"
         style={{
-          width: layoutWidth * scale,
-          height: layoutHeight * scale,
+          // 用 Math.round 写入整数尺寸，避免非整数宽高引入亚像素抖动
+          width: Math.round(layoutWidth * scale),
+          height: Math.round(layoutHeight * scale),
           margin: "0 auto",
         }}
       >
@@ -60,6 +64,7 @@ export default function KLEKeyboard({
             position: "relative",
             transform: `scale(${scale})`,
             transformOrigin: "top left",
+            willChange: "transform",
           }}
         >
           {keys.map((key, index) => {
@@ -100,8 +105,11 @@ export default function KLEKeyboard({
               cursor: "default",
               overflow: "visible",
               padding: hasDualLabel ? "4px 6px" : "0",
+              // hover 反馈用 box-shadow + background（无 transform），避免子层再叠加
+              // transform 强制重新栅格化文字
+              backfaceVisibility: "hidden",
               transition:
-                "transform var(--dur-fast) var(--ease-smooth), box-shadow var(--dur-fast) var(--ease-smooth)",
+                "box-shadow var(--dur-fast) var(--ease-smooth), background var(--dur-fast) var(--ease-smooth)",
             };
 
             // 修饰键样式调整

@@ -434,19 +434,27 @@
   gap: var(--space-8);
 }
 
-/* 键盘区域 —— 触到 MIN_SCALE 的宽配列由内部 .kle-viewport 横向滚动 */
+/* 键盘区域 —— ResizeObserver 观测对象。
+   它自身绝不滚动（滚动交给内部 .kle-viewport），宽度不受滚动条影响，
+   从而断开 观测宽↔滚动条 的反馈震荡。 */
 .kb-keyboard-section {
   display: block;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: visible;
+  overflow: visible;
 }
 
-/* 缩放视口：宽配列缩到下限后横向滚动，不裁切 */
+/* 缩放视口：正常缩放区间 overflow-x: hidden，不存在滚动条参与反馈；
+   仅当缩到 MIN_SCALE 仍放不下时由 React 加 --scrollable 切换为 auto。
+   scrollbar-gutter: stable 恒定预留滚动条空间，避免出现/消失改变内部可用宽。 */
 .kle-viewport {
   width: 100%;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: visible;
+  scrollbar-gutter: stable;
+}
+
+.kle-viewport--scrollable {
+  overflow-x: auto;
 }
 
 /* 下方分栏区域 */
@@ -480,10 +488,12 @@
   letter-spacing: -0.01em;
 }
 
-/* KLE 键盘容器 */
+/* KLE 键盘容器 —— 提升为独立合成层，缩放时避免每帧重新栅格化 */
 .kle-keyboard {
   position: relative;
   margin: 0 auto;
+  will-change: transform;
+  backface-visibility: hidden;
 }
 
 /* KLE 键位 */
@@ -498,20 +508,24 @@
   letter-spacing: 0.01em;
   cursor: default;
   overflow: visible;
+  /* 键帽文字容器提升合成层，父层 transform: scale 下不重新栅格化文字 */
+  backface-visibility: hidden;
+  /* hover 反馈只动 box-shadow + background，绝不用 transform —— 父层已有
+     transform: scale，子层再叠加会强制该键重新栅格化文字，造成抖动/模糊 */
   transition:
-    transform var(--dur-fast) var(--ease-smooth),
-    box-shadow var(--dur-fast) var(--ease-smooth);
+    box-shadow var(--dur-fast) var(--ease-smooth),
+    background var(--dur-fast) var(--ease-smooth);
 }
 
 .kle-key:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-md);
   z-index: 2;
 }
 
 .kle-key-label {
   pointer-events: none;
   line-height: 1;
+  backface-visibility: hidden;
 }
 
 /* 双字符布局（主+副）*/
@@ -523,6 +537,7 @@
   width: 100%;
   pointer-events: none;
   line-height: 1;
+  backface-visibility: hidden;
 }
 
 .kle-key-main {
