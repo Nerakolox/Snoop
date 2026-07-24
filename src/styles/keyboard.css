@@ -513,7 +513,9 @@
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: default;
-  overflow: visible;
+  /* 硬兜底：降级算法应保证极少触发，但万一文字仍超宽，clip 到键帽内不外溢。
+     hover box-shadow 挂在键上、不受此 overflow 影响（shadow 不是内容盒的一部分）。 */
+  overflow: hidden;
   /* 键帽文字容器提升合成层，父层 transform: scale 下不重新栅格化文字 */
   backface-visibility: hidden;
   /* hover 反馈只动 box-shadow + background，绝不用 transform —— 父层已有
@@ -531,7 +533,15 @@
 .kle-key-label {
   pointer-events: none;
   line-height: 1;
+  max-width: 100%;
+  white-space: nowrap;
   backface-visibility: hidden;
+}
+
+/* 兜底截断：仅当降级全不通过（truncated）时才走 ellipsis */
+.kle-key-label--truncated {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 双字符布局（主+副）*/
@@ -547,44 +557,52 @@
 }
 
 .kle-key-main {
-  font-size: var(--text-sm);
   font-weight: 700;
   line-height: 1;
+  max-width: 100%;
+  white-space: nowrap;
 }
 
 .kle-key-sub {
-  font-size: 9px;
   font-weight: 500;
   opacity: 0.7;
   line-height: 1;
+  max-width: 100%;
+  white-space: nowrap;
 }
 
-/* 次数悬浮提示 */
-.kle-key-count {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 50%;
-  transform: translate(-50%, 4px);
-  padding: 3px var(--space-2);
+/* 装饰键（KLE d:true）：仅文字，无键帽背景/边框，不响应 hover */
+.kle-key--decal {
+  background: transparent !important;
+  box-shadow: none !important;
+  cursor: default;
+}
+.kle-key--decal:hover {
+  box-shadow: none;
+}
+
+/* 击键数 tooltip —— Portal 挂 body，position: fixed，脱离键盘缩放层。
+   由 KeyCountTooltip.tsx 用光标坐标定位，故这里不写 left/top/transform。 */
+.kle-key-count-tip {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-2);
   background: var(--color-text);
   color: var(--color-bg);
   border-radius: var(--radius-sm);
   font-size: var(--text-xs);
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   pointer-events: none;
-  opacity: 0;
-  transition:
-    opacity var(--dur-fast) var(--ease-smooth),
-    transform var(--dur-fast) var(--ease-smooth);
-  z-index: 3;
+  z-index: 1000;
   box-shadow: var(--shadow-md);
 }
 
-.kle-key:hover .kle-key-count {
-  opacity: 1;
-  transform: translate(-50%, 0);
+.kle-key-count-tip-num {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
 }
 
 /* 下方两个卡片并排 */

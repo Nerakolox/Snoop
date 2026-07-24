@@ -3,6 +3,8 @@
  * 将 KLE JSON 转换为可渲染的键位数据
  */
 
+import { lookupTiers } from "./layouts/labels";
+
 export type KLEKey = {
   /** 键位标签（显示在键帽上的文字） */
   label: string;
@@ -422,43 +424,9 @@ export function getDisplayLabel(label: string): string {
   // 3. 清理多余空白
   mainLabel = mainLabel.trim();
 
-  // 特殊键的友好显示名
-  const friendlyNames: Record<string, string> = {
-    "Caps Lock": "Caps",
-    "caps lock": "Caps",
-    "Num Lock": "Num",
-    "Scroll Lock": "Scr",
-    "Page Up": "PgUp",
-    "Page Down": "PgDn",
-    "Pause Break": "Pause",
-    "Back Space": "Bksp",
-    delete: "Del",
-    esc: "Esc",
-    tab: "Tab",
-    enter: "Enter",
-    return: "Enter",
-    shift: "Shift",
-    control: "Ctrl",
-    option: "Alt",
-    alt: "Alt",
-    command: "Cmd",
-    "⌘": "Cmd",
-    fn: "Fn",
-    // 特殊修饰键（40% 配列）
-    Hyper: "Hypr",
-    Super: "Sup",
-    Meta: "Meta",
-  };
-
-  // 检查完整标签的友好名（处理前）
-  if (friendlyNames[label]) {
-    return friendlyNames[label];
-  }
-
-  // 检查清理后的友好名
-  if (friendlyNames[mainLabel]) {
-    return friendlyNames[mainLabel];
-  }
+  // 命名键走三级表的 abbr 档（排行榜/日志等纯文本场景用简称）。
+  const tiers = lookupTiers(mainLabel);
+  if (tiers) return tiers.abbr;
 
   return mainLabel || label;
 }

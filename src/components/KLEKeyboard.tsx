@@ -8,13 +8,21 @@
  * - .kle-keyboard：原始尺寸绘制，transform: scale 缩放
  */
 
-import type { CSSProperties, RefObject } from "react";
+import { useState, type CSSProperties, type RefObject } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import * as solidIcons from "@fortawesome/free-solid-svg-icons";
 import type { KLEKey } from "../kleParser";
 import { parseLabelParts, extractFAIcon, FA_CLASS_TO_ICON_NAME } from "../kleParser";
 import { bucketByPercentile, intensityVar } from "../analytics";
 import { KEY_UNIT, KEY_GAP, SCALER_PAD_X } from "../layouts/metrics";
+import {
+  lookupTiers,
+  fitLabel,
+  fitSubLabel,
+  usableLabelWidth,
+  type FittedLabel,
+} from "../layouts/labels";
+import KeyCountTooltip, { type KeyCountAnchor } from "./keyboard/KeyCountTooltip";
 
 type KLEKeyboardProps = {
   keys: KLEKey[];
@@ -47,8 +55,11 @@ export default function KLEKeyboard({
 }: KLEKeyboardProps) {
   const layoutWidth = maxX * KEY_UNIT;
   const layoutHeight = maxY * KEY_UNIT;
+  // 击键数 tooltip：hover 键时记录标签/次数 + 光标坐标，Portal 挂 body（脱离缩放层）
+  const [hovered, setHovered] = useState<KeyCountAnchor | null>(null);
 
   return (
+    <>
     <div
       ref={viewportRef}
       className={`kle-viewport${scrollable ? " kle-viewport--scrollable" : ""}`}
@@ -79,10 +90,12 @@ export default function KLEKeyboard({
           }}
         >
           {keys.map((key, index) => {
-            const pressed = pressedIndices?.has(index);
-            const count = pressed ? 1 : (keyCounts[key.label] ?? 0);
-            const level = pressed ? 4 : bucketByPercentile(count, allCounts);
             const { main, sub } = parseLabelParts(key.label);
+
+            // decal 键：不画键帽背景/边框、不参与热力、不 hover、不显示 tooltip，仅渲染文字
+            const pressed = !key.decal && pressedIndices?.has(index);
+            const count = key.decal ? 0 : pressed ? 1 : (keyCounts[key.label] ?? 0);
+            const level = key.decal ? 0 : pressed ? 4 : bucketByPercentile(count, allCounts);
 
             // 计算键位的像素位置和尺寸（扣除间隙）
             const left = key.x * KEY_UNIT;
@@ -90,62 +103,65 @@ export default function KLEKeyboard({
             const width = key.w * KEY_UNIT - KEY_GAP;
             const height = key.h * KEY_UNIT - KEY_GAP;
 
-            // 检查是否有 FA 图标
+            // 检查是否有 FA 图标（图标键维持现状，不参与标签降级）
             const faIconClass = extractFAIcon(key.label);
             const hasIcon = faIconClass && FA_CLASS_TO_ICON_NAME[faIconClass];
-
-            // 检查是否有双字符（主+副）
             const hasDualLabel = !hasIcon && sub && sub.length > 0;
 
-            // 键位样式
+            const usable = usableLabelWidth(key.w);
+            // 命名键取三级表，裸标签退化为单档（full=abbr=原文）
+            const tiersFor = (raw: string) =>
+              lookupTiers(raw) ?? { full: raw, abbr: raw };
+
+            // 主标签（单行=main；双行的主标签是 sub，即 parts[1]，渲染在下方）
+            let primaryFit: FittedLabel | null = null;
+            let secondaryFit: FittedLabel | null = null;
+            if (!hasIcon) {
+              if (hasDualLabel) {
+                primaryFit = fitLabel(tiersFor(sub!), usable);
+                secondaryFit = fitSubLabel(tiersFor(main), usable);
+              } else {
+                primaryFit = fitLabel(tiersFor(main), usable);
+              }
+            }
+            const readableLabel = hasDualLabel ? sub! : main;
+
             const keyStyle: CSSProperties = {
               position: "absolute",
               left: `${left}px`,
               top: `${top}px`,
               width: `${width}px`,
               height: `${height}px`,
-              background: intensityVar(level),
+              background: key.decal ? "transparent" : intensityVar(level),
               color: level >= 3 ? "#fff" : "var(--color-text-2)",
               borderRadius: "var(--radius-sm)",
               display: "flex",
               alignItems: hasDualLabel ? "flex-end" : "center",
               justifyContent: hasDualLabel ? "flex-start" : "center",
-              fontSize: `${Math.round(KEY_UNIT * (key.w >= 2 ? 0.22 : 0.25))}px`,
               fontWeight: 600,
               letterSpacing: "0.01em",
               cursor: "default",
-              overflow: "visible",
               padding: hasDualLabel ? "4px 6px" : "0",
-              // hover 反馈用 box-shadow + background（无 transform），避免子层再叠加
-              // transform 强制重新栅格化文字
               backfaceVisibility: "hidden",
               transition:
                 "box-shadow var(--dur-fast) var(--ease-smooth), background var(--dur-fast) var(--ease-smooth)",
             };
 
-            // 修饰键样式调整
-            const isModifier =
-              !hasIcon &&
-              !hasDualLabel &&
-              main.length > 1 &&
-              !main.match(/^[A-Z0-9]$/) &&
-              !["PgUp", "PgDn", "Home", "End", "Ins", "Del"].includes(main);
-
-            if (isModifier) {
-              keyStyle.fontSize = "10px";
-              keyStyle.letterSpacing = "0.04em";
-              keyStyle.textTransform = "uppercase";
-            }
+            const hoverable = !key.decal && count > 0;
+            const setTip = (e: React.MouseEvent) =>
+              setHovered({ label: readableLabel, count, x: e.clientX, y: e.clientY });
 
             return (
               <div
                 key={`${key.row}-${key.col}-${index}`}
-                className="kle-key"
+                className={`kle-key${key.decal ? " kle-key--decal" : ""}`}
                 style={keyStyle}
-                aria-label={`${main}, ${count} 次`}
+                aria-label={key.decal ? readableLabel : `${readableLabel}, ${count} 次`}
+                onMouseEnter={hoverable ? setTip : undefined}
+                onMouseMove={hoverable ? setTip : undefined}
+                onMouseLeave={hoverable ? () => setHovered(null) : undefined}
               >
                 {hasIcon ? (
-                  // 渲染 FA 图标
                   <span className="kle-key-label">
                     {(() => {
                       const iconName = FA_CLASS_TO_ICON_NAME[faIconClass!];
@@ -154,18 +170,26 @@ export default function KLEKeyboard({
                     })()}
                   </span>
                 ) : hasDualLabel ? (
-                  // 渲染双字符：main 是 \n 前的顶部副标签，sub 是 \n 后的底部主标签
                   <div className="kle-key-dual">
-                    <span className="kle-key-sub">{main}</span>
-                    <span className="kle-key-main">{sub}</span>
+                    <span
+                      className={`kle-key-sub${secondaryFit!.truncated ? " kle-key-label--truncated" : ""}`}
+                      style={{ fontSize: secondaryFit!.fontSize }}
+                    >
+                      {secondaryFit!.text}
+                    </span>
+                    <span
+                      className={`kle-key-main${primaryFit!.truncated ? " kle-key-label--truncated" : ""}`}
+                      style={{ fontSize: primaryFit!.fontSize }}
+                    >
+                      {primaryFit!.text}
+                    </span>
                   </div>
                 ) : (
-                  // 渲染单字符
-                  <span className="kle-key-label">{main}</span>
-                )}
-                {count > 0 && (
-                  <span className="kle-key-count">
-                    {count.toLocaleString()} 次
+                  <span
+                    className={`kle-key-label${primaryFit!.truncated ? " kle-key-label--truncated" : ""}`}
+                    style={{ fontSize: primaryFit!.fontSize }}
+                  >
+                    {primaryFit!.text}
                   </span>
                 )}
               </div>
@@ -174,5 +198,7 @@ export default function KLEKeyboard({
         </div>
       </div>
     </div>
+    {hovered && <KeyCountTooltip anchor={hovered} />}
+    </>
   );
 }

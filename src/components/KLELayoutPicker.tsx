@@ -29,6 +29,7 @@ type ImportDraft = {
   data: any[];
   suggestedName: string;
   previewKeys: KLEKey[];
+  unsupportedFeatures: string[];
 };
 
 export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProps) {
@@ -97,7 +98,12 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
         return;
       }
       const suggested = file.name.replace(/\.json$/i, "");
-      setImportDraft({ data: json, suggestedName: suggested, previewKeys: result.keys });
+      setImportDraft({
+        data: json,
+        suggestedName: suggested,
+        previewKeys: result.keys,
+        unsupportedFeatures: result.unsupportedFeatures,
+      });
       setDraftName(suggested);
     } catch (err) {
       setImportError(`无法解析 JSON：${(err as Error).message ?? err}`);
@@ -293,6 +299,16 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
               <p className="dev-confirm-desc">
                 已识别到 {importDraft.previewKeys.length} 个键位，给这个配列起个名字：
               </p>
+              {importDraft.unsupportedFeatures.length > 0 && (
+                <p
+                  className="dev-confirm-desc"
+                  style={{ fontSize: "var(--text-xs)", color: "var(--color-text-3)" }}
+                >
+                  注意：当前不支持异形键（ISO 大回车、阶梯 CapsLock）与旋转配列
+                  （检测到 {importDraft.unsupportedFeatures.join("、")}），这些键将按矩形近似渲染。
+                  不影响导入，其余键位正常显示。
+                </p>
+              )}
               <input
                 className="setting-ignore-input"
                 autoFocus

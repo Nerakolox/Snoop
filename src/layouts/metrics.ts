@@ -15,3 +15,7 @@ export const MIN_SCALE = 0.55;
 /** .kle-scaler 左右各留的水平内边距（px），用于容纳键 hover 时向外扩散的
  *  box-shadow，避免被 .kle-viewport 裁掉右侧一圈。可用宽计算需扣除左右共 2 倍。 */
 export const SCALER_PAD_X = 8;
+
+/** 键帽内文字两侧的安全内边距（px，未缩放坐标系）。标签适配算法用它算可用宽：
+ *  可用宽 = key.w * KEY_UNIT - KEY_GAP - 2 * KEY_PADDING。 */
+export const KEY_PADDING = 4;
