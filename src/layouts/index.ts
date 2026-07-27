@@ -25,18 +25,12 @@ const BUILTIN_MODULES = import.meta.glob("../assets/keyboards/*.json", {
 }) as Record<string, any>;
 
 const BUILTIN_NAME_MAP: Record<string, string> = {
-  "40": "40%",
-  "60": "60%",
-  "68": "68%",
-  "84": "75%",
   "87": "TKL",
-  "98": "98%",
   "104": "100%",
-  "apple-wireless": "Apple",
 };
 
 /** 内置配列的稳定展示顺序 */
-const BUILTIN_ORDER = ["40", "60", "68", "84", "87", "98", "104", "apple-wireless"];
+const BUILTIN_ORDER = ["87", "104"];
 
 function fileIdFromPath(path: string): string {
   const file = path.split("/").pop() ?? path;
