@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   aggregateByApp,
   computeIntensity,
+  daysWithDataOf,
   intensityByHourFromBuckets,
   intensityVar,
   statsByDayFromBuckets,
@@ -17,7 +18,6 @@ import {
   pickCatQuip,
   unionDurationMs,
 } from "../analytics";
-import type { RawBucket } from "../data/types";
 import AppIcon from "../components/AppIcon";
 import DeltaBadge from "../components/DeltaBadge";
 import PageShell from "../components/PageShell";
@@ -109,15 +109,6 @@ function formatMouseDistance(pixels: number): KpiPart[] {
 /** 该范围没有数据时的说明文案，随是否已筛选应用而不同 */
 function noDataReason(appId: string | null, appName: string | undefined): string {
   return appId ? `${appName ?? appId} 在该范围内没有记录` : "该范围没有采集到数据";
-}
-
-function daysWithDataOf(buckets: RawBucket[]): number {
-  const days = new Set<string>();
-  for (const b of buckets) {
-    const d = new Date(b.bucket_start);
-    days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
-  }
-  return days.size;
 }
 
 const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];

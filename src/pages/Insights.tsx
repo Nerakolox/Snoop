@@ -1,16 +1,14 @@
 /**
- * 洞察 —— 跨天使用回顾
- * 以周为粒度：猫周报吐槽 + 本周活跃趋势柱状图 +
- * App 排行（带环比）+ 一周 x 24 小时作息热力网格。
+ * 规律 —— 跨天使用回顾（原「洞察」）
+ * 以周/月为粒度：猫周报吐槽 + 活跃趋势柱状图 +
+ * App 排行（带环比）+ 星期 x 24 小时作息热力网格。
  */
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import { Sparkles } from "lucide-react";
 import DeltaBadge from "../components/DeltaBadge";
-import WeekSelector from "../components/insights/WeekSelector";
 import {
-  fetchBucketsInRange,
   fetchHourlyActivity,
   fetchHourlyHeartbeats,
   DAY_MS,
@@ -20,14 +18,24 @@ import {
   aggregateByApp,
   aggregateWeekHourGrid,
   bucketSimple,
+  daysWithDataOf,
   intensityVar,
   type DayStat,
   type Intensity,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
 import PageShell from "../components/PageShell";
-import { fmtHours } from "../utils/format";
-import { startOfWeek, isSameWeek, formatWeekLabel } from "../utils/date";
+import ContextChips from "../components/shared/ContextChips";
+import { formatAnchor, toMs } from "../data/ranges";
+import { useRangeData } from "../data/useRangeData";
+import {
+  adaptKind,
+  normalizeAnchor,
+  shiftAnchor,
+  useContextState,
+  type RangeKind,
+} from "../store/context";
+import { anchorLabel, fmtHours } from "../utils/format";
 
 type WeekDay = {
   short: string; // 一二三四五六日
@@ -51,8 +59,7 @@ const DAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
 // ---- 工具 -------------------------------------------------------------------
 
-
-/** 根据选中周的真实数据生成猫周报文案 */
+/** 根据选中范围的真实数据生成猫报告文案 */
 function generateCatReport(
   weekTotalHours: number,
   topApp: { name: string; hours: number } | null,
@@ -113,14 +120,69 @@ function buildWeekDays(dayStats: DayStat[], weekStartMs: number): WeekDay[] {
   return result;
 }
 
+// ---- 页头 -------------------------------------------------------------------
+
+function PatternsHeader({
+  kind,
+  anchor,
+  note,
+  daysWithData,
+  appId,
+  appName,
+}: {
+  kind: RangeKind;
+  anchor: string;
+  note: string | null;
+  daysWithData: number;
+  appId: string | null;
+  appName?: string;
+}) {
+  const now = useMemo(() => new Date(), []);
+  return (
+    <div className="ins-header">
+      <div className="ins-header-titlerow">
+        <h1 className="ins-header-title">规律</h1>
+        {note !== null && <span className="ins-header-note">{note}</span>}
+      </div>
+      <p className="ins-header-subtitle">
+        {anchorLabel(kind, anchor, now)} · {daysWithData} 天数据
+        {appId ? ` · 已筛选 ${appName ?? appId}` : ""}
+      </p>
+      <ContextChips show={["app"]} appName={appName} />
+    </div>
+  );
+}
+
 // ---- 渲染 -------------------------------------------------------------------
 
 export default function Insights() {
-  const today = useMemo(() => new Date(), []);
-  const [selectedWeekStart, setSelectedWeekStart] = useState<Date>(() => startOfWeek(today));
-  const [, setLoading] = useState(false);
-  const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
-  const [weekApps, setWeekApps] = useState<WeekApp[]>([]);
+  const { kind, anchor, appId } = useContextState();
+
+  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("patterns", { kind, anchor });
+
+  // 全量（未按 app 过滤）——App 排行要看全站数据
+  const { buckets: allBuckets } = useRangeData(viewKind, viewAnchor, null);
+  // 按当前筛选过滤——趋势图、猫报告的数字用它
+  const buckets = useMemo(
+    () => (appId === null ? allBuckets : allBuckets.filter((b) => b.app_bundle_id === appId)),
+    [allBuckets, appId]
+  );
+
+  // 基期，供所有 DeltaBadge 环比用
+  const prevAnchor = shiftAnchor(viewKind, viewAnchor, -1);
+  const { buckets: prevAllBuckets } = useRangeData(viewKind, prevAnchor, null);
+
+  const vsLabel = viewKind === "week" ? "vs 上周" : "vs 上月";
+  const baseThreshold = viewKind === "week" ? 120 : 600;
+
+  const range = useMemo(() => toMs(viewKind, viewAnchor), [viewKind, viewAnchor]);
+
+  const daysWithData = daysWithDataOf(buckets);
+  const appName =
+    appId === null
+      ? undefined
+      : allBuckets.find((b) => b.app_bundle_id === appId)?.app_name ?? appId;
+
   const [hourlyGrid, setHourlyGrid] = useState<
     Array<Array<{ intensity: Intensity; state: "active" | "idle" | "no_data" }>>
   >(
@@ -128,174 +190,119 @@ export default function Insights() {
       Array(24).fill({ intensity: 0, state: "no_data" as const })
     )
   );
-  const [catReport, setCatReport] = useState("");
-  const [weekTotalHours, setWeekTotalHours] = useState(0);
-  const [weekDailyAvg, setWeekDailyAvg] = useState(0);
-
-  const isCurrentWeek = useMemo(
-    () => isSameWeek(selectedWeekStart, today),
-    [selectedWeekStart, today]
-  );
-
-  const weekLabel = useMemo(
-    () => formatWeekLabel(selectedWeekStart, today),
-    [selectedWeekStart, today]
-  );
-
-  function goPrevWeek() {
-    setSelectedWeekStart((prev) => new Date(prev.getTime() - 7 * DAY_MS));
-  }
-
-  function goNextWeek() {
-    if (!isCurrentWeek) {
-      setSelectedWeekStart((prev) => new Date(prev.getTime() + 7 * DAY_MS));
-    }
-  }
-
-  async function refresh() {
-    setLoading(true);
-    try {
-      const weekStartMs = selectedWeekStart.getTime();
-      const weekEndMs = weekStartMs + 7 * DAY_MS;
-      const range = { start_ms: weekStartMs, end_ms: weekEndMs };
-      const lastWeekRange = {
-        start_ms: weekStartMs - 7 * DAY_MS,
-        end_ms: weekStartMs,
-      };
-
-      const [thisWeekBuckets, lastWeekBuckets, thisWeekHourly] = await Promise.all([
-        fetchBucketsInRange(range),
-        fetchBucketsInRange(lastWeekRange),
-        fetchHourlyActivity(range),
-      ]);
-
-      // 拉取心跳数据
-      const heartbeatList = await fetchHourlyHeartbeats(range);
-      const heartbeatMap = new Map<number, boolean>();
-      for (const hb of heartbeatList) {
-        heartbeatMap.set(hb.hour_start, hb.has_heartbeat);
-      }
-
-      const dayStats = aggregateByDay(thisWeekBuckets);
-      const days = buildWeekDays(dayStats, weekStartMs);
-      setWeekDays(days);
-
-      const totalMs = dayStats.reduce((sum, d) => sum + d.active_ms, 0);
-      const totalHours = totalMs / (60 * 60 * 1000);
-      setWeekTotalHours(totalHours);
-
-      const passedDays = days.filter((d) => !d.isFuture).length;
-      const dailyAvg = passedDays > 0 ? totalHours / passedDays : 0;
-      setWeekDailyAvg(dailyAvg);
-
-      const thisWeekAppStats = aggregateByApp(thisWeekBuckets);
-      const lastWeekAppStats = aggregateByApp(lastWeekBuckets);
-
-      const apps: WeekApp[] = thisWeekAppStats.slice(0, 6).map((a) => {
-        const hours = a.duration_ms / (60 * 60 * 1000);
-        const lastWeekApp = lastWeekAppStats.find(
-          (la) => la.app_bundle_id === a.app_bundle_id
-        );
-        const currentMin = a.duration_ms / (60 * 1000);
-        const previousMin = lastWeekApp ? lastWeekApp.duration_ms / (60 * 1000) : 0;
-
-        return {
-          name: a.app_name || a.app_bundle_id,
-          bundleId: a.app_bundle_id,
-          hours,
-          intensity: a.intensity,
-          currentMin,
-          previousMin,
-        };
-      });
-      setWeekApps(apps);
-
-      const grid = aggregateWeekHourGrid(thisWeekHourly, heartbeatMap, weekStartMs);
-      setHourlyGrid(grid);
-
-      const topApp = apps[0] || null;
-
-      let busiestDay: { name: string; hours: number; app: string } | null = null;
-      if (dayStats.length > 0) {
-        const maxDayStat = dayStats.reduce((max, d) =>
-          d.active_ms > max.active_ms ? d : max
-        );
-
-        const maxDayStart = maxDayStat.day_ms;
-        const maxDayEnd = maxDayStart + DAY_MS;
-        const maxDayBuckets = thisWeekBuckets.filter(
-          (b) => b.bucket_start >= maxDayStart && b.bucket_start < maxDayEnd
-        );
-        const maxDayApps = aggregateByApp(maxDayBuckets);
-        if (maxDayApps.length > 0) {
-          const topAppOnDay = maxDayApps[0];
-          const dayIndex = maxDayStat.day_of_week;
-          busiestDay = {
-            name: `周${DAY_LABELS[dayIndex]}`,
-            hours: topAppOnDay.duration_ms / (60 * 60 * 1000),
-            app: topAppOnDay.app_name || topAppOnDay.app_bundle_id,
-          };
-        }
-      }
-
-      const weekChange = topApp && topApp.hours > 0
-        ? (() => {
-            const lastWeekSameApp = lastWeekAppStats.find(
-              (la) => la.app_bundle_id === thisWeekAppStats[0]?.app_bundle_id
-            );
-            const lastWeekHours = lastWeekSameApp
-              ? lastWeekSameApp.duration_ms / (60 * 60 * 1000)
-              : 0;
-            if (lastWeekHours === 0) return null;
-            const pct = Math.round(((topApp.hours - lastWeekHours) / lastWeekHours) * 100);
-            return Math.abs(pct) <= 5 ? 0 : pct;
-          })()
-        : null;
-
-      const report = generateCatReport(totalHours, topApp, busiestDay, weekChange, isCurrentWeek);
-      setCatReport(report);
-    } catch (e) {
-      console.error("Insights refresh failed:", e);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   useEffect(() => {
-    refresh();
-  }, [selectedWeekStart, isCurrentWeek]);
+    let cancelled = false;
+    Promise.all([fetchHourlyActivity(range), fetchHourlyHeartbeats(range)])
+      .then(([hourly, heartbeatList]) => {
+        if (cancelled) return;
+        const heartbeatMap = new Map<number, boolean>();
+        for (const hb of heartbeatList) {
+          heartbeatMap.set(hb.hour_start, hb.has_heartbeat);
+        }
+        setHourlyGrid(aggregateWeekHourGrid(hourly, heartbeatMap, range.start_ms));
+      })
+      .catch((e) => console.error("规律页作息数据获取失败:", e));
+    return () => {
+      cancelled = true;
+    };
+  }, [range]);
 
-  const maxDay = useMemo(
-    () => Math.max(...weekDays.map((d) => d.hours), 1),
-    [weekDays]
+  const dayStats = useMemo(() => aggregateByDay(buckets), [buckets]);
+  const weekDays = useMemo(() => buildWeekDays(dayStats, range.start_ms), [dayStats, range]);
+  const maxDay = useMemo(() => Math.max(...weekDays.map((d) => d.hours), 1), [weekDays]);
+
+  const apps = useMemo<WeekApp[]>(() => {
+    const cur = aggregateByApp(allBuckets);
+    const prev = aggregateByApp(prevAllBuckets);
+    return cur.slice(0, 6).map((a) => {
+      const prevApp = prev.find((p) => p.app_bundle_id === a.app_bundle_id);
+      return {
+        name: a.app_name || a.app_bundle_id,
+        bundleId: a.app_bundle_id,
+        hours: a.duration_ms / (60 * 60 * 1000),
+        intensity: a.intensity,
+        currentMin: a.duration_ms / (60 * 1000),
+        previousMin: prevApp ? prevApp.duration_ms / (60 * 1000) : 0,
+      };
+    });
+  }, [allBuckets, prevAllBuckets]);
+
+  const weekTotalHours = useMemo(
+    () => dayStats.reduce((sum, d) => sum + d.active_ms, 0) / (60 * 60 * 1000),
+    [dayStats]
+  );
+  const weekDailyAvg = useMemo(() => {
+    const passedDays = weekDays.filter((d) => !d.isFuture).length;
+    return passedDays > 0 ? weekTotalHours / passedDays : 0;
+  }, [weekDays, weekTotalHours]);
+
+  const isCurrentAnchor = viewAnchor === normalizeAnchor(viewKind, formatAnchor(new Date()));
+
+  const topApp = apps[0] ?? null;
+
+  const busiestDay = useMemo(() => {
+    if (dayStats.length === 0) return null;
+    const maxDayStat = dayStats.reduce((max, d) => (d.active_ms > max.active_ms ? d : max));
+    const maxDayStart = maxDayStat.day_ms;
+    const maxDayEnd = maxDayStart + DAY_MS;
+    const maxDayBuckets = buckets.filter(
+      (b) => b.bucket_start >= maxDayStart && b.bucket_start < maxDayEnd
+    );
+    const maxDayApps = aggregateByApp(maxDayBuckets);
+    if (maxDayApps.length === 0) return null;
+    const topAppOnDay = maxDayApps[0];
+    return {
+      name: `周${DAY_LABELS[maxDayStat.day_of_week]}`,
+      hours: topAppOnDay.duration_ms / (60 * 60 * 1000),
+      app: topAppOnDay.app_name || topAppOnDay.app_bundle_id,
+    };
+  }, [dayStats, buckets]);
+
+  const weekChange = useMemo(() => {
+    if (!topApp || topApp.hours <= 0) return null;
+    const prevSameApp = aggregateByApp(prevAllBuckets).find(
+      (p) => p.app_bundle_id === topApp.bundleId
+    );
+    const prevHours = prevSameApp ? prevSameApp.duration_ms / (60 * 60 * 1000) : 0;
+    if (prevHours === 0) return null;
+    const pct = Math.round(((topApp.hours - prevHours) / prevHours) * 100);
+    return Math.abs(pct) <= 5 ? 0 : pct;
+  }, [topApp, prevAllBuckets]);
+
+  const catReport = useMemo(
+    () => generateCatReport(weekTotalHours, topApp, busiestDay, weekChange, isCurrentAnchor),
+    [weekTotalHours, topApp, busiestDay, weekChange, isCurrentAnchor]
   );
 
   return (
     <PageShell
       className="ins-page"
       header={
-        <WeekSelector
-          weekLabel={weekLabel}
-          isCurrentWeek={isCurrentWeek}
-          onPrevWeek={goPrevWeek}
-          onNextWeek={goNextWeek}
+        <PatternsHeader
+          kind={viewKind}
+          anchor={viewAnchor}
+          note={note}
+          daysWithData={daysWithData}
+          appId={appId}
+          appName={appName}
         />
       }
     >
-      {/* ① 猫的周报吐槽 —— 顶部通栏 */}
+      {/* ① 猫的报告 —— 顶部通栏 */}
       <section className="ins-report">
         <div className="ins-report-avatar" aria-hidden>
           <Sparkles size={20} />
         </div>
         <div className="ins-report-body">
-          <div className="ins-report-title">猫的周报</div>
+          <div className="ins-report-title">猫的报告</div>
           <p className="ins-report-text">
-            {catReport || "还没有足够的数据生成周报喵～"}
+            {catReport || "还没有足够的数据生成报告喵～"}
           </p>
           <div className="ins-report-chips">
             <span className="ins-chip">
               <span className="ins-chip-num">{fmtHours(weekTotalHours)}</span>
-              <span className="ins-chip-unit">小时 · {isCurrentWeek ? "本周" : "该周"}活跃</span>
+              <span className="ins-chip-unit">小时 · {isCurrentAnchor ? "本" : "该"}{viewKind === "week" ? "周" : "月"}活跃</span>
             </span>
             <span className="ins-chip">
               <span className="ins-chip-num">{fmtHours(weekDailyAvg)}</span>
@@ -307,9 +314,9 @@ export default function Insights() {
 
       {/* ②③ 中间左右分栏：趋势图 · App 排行 */}
       <div className="ins-split">
-        {/* ② 本周活跃趋势 */}
+        {/* ② 活跃趋势 */}
         <section className="panel ins-trend-panel">
-          <h3 className="panel-title">{isCurrentWeek ? "本周" : "该周"}活跃趋势</h3>
+          <h3 className="panel-title">{isCurrentAnchor ? "本周" : "该周"}活跃趋势</h3>
           <div className="ins-trend">
             {weekDays.map((d) => {
               const pct = d.hours > 0 ? (d.hours / maxDay) * 100 : 0;
@@ -340,17 +347,17 @@ export default function Insights() {
           </div>
         </section>
 
-        {/* ③ 本周 App 排行 + 环比 */}
+        {/* ③ App 排行 + 环比 */}
         <section className="panel ins-apps-panel">
-          <h3 className="panel-title">{isCurrentWeek ? "本周" : "该周"} App 排行</h3>
+          <h3 className="panel-title">App 排行</h3>
           <div className="ins-apps">
-            {weekApps.length === 0 && (
+            {apps.length === 0 && (
               <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>
-                {isCurrentWeek ? "本周" : "这一周"}还没有足够的数据
+                这段范围还没有足够的数据
               </div>
             )}
-            {weekApps.map((a) => {
-              const pct = weekApps[0] ? (a.hours / weekApps[0].hours) * 100 : 0;
+            {apps.map((a) => {
+              const pct = apps[0] ? (a.hours / apps[0].hours) * 100 : 0;
               return (
                 <div key={a.bundleId} className="ins-app-row">
                   <div className="ins-app-name" title={a.name}>
@@ -370,8 +377,8 @@ export default function Insights() {
                   <DeltaBadge
                     current={a.currentMin}
                     previous={a.previousMin}
-                    vsLabel="vs 上周"
-                    baseThreshold={120}
+                    vsLabel={vsLabel}
+                    baseThreshold={baseThreshold}
                   />
                 </div>
               );
@@ -380,7 +387,7 @@ export default function Insights() {
         </section>
       </div>
 
-      {/* ④ 作息画像 —— 一周 × 24 小时 */}
+      {/* ④ 作息画像 —— 星期 × 24 小时 */}
       <section className="panel ins-rhythm-panel">
         <h3 className="panel-title">作息画像</h3>
         <div className="ins-rhythm">
@@ -472,4 +479,3 @@ export default function Insights() {
     </PageShell>
   );
 }
-

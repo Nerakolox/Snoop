@@ -383,3 +383,16 @@ export function aggregateByApp(buckets: RawBucket[]): AppStat[] {
 function mondayIndex(getDayValue: number): number {
   return getDayValue === 0 ? 6 : getDayValue - 1;
 }
+
+/**
+ * 有采集数据的天数（按本地日期去重计数）。用作「日均 = 总量 / 有数据天数」
+ * 这类分母 —— 历史范围里可能有几天完全没跑应用，不能除以自然天数。
+ */
+export function daysWithDataOf(buckets: RawBucket[]): number {
+  const days = new Set<string>();
+  for (const b of buckets) {
+    const d = new Date(b.bucket_start);
+    days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+  }
+  return days.size;
+}

@@ -20,17 +20,12 @@ export const KIND_LABEL: Record<RangeKind, string> = {
   day: "日", week: "周", month: "月",
 };
 
-/**
- * 每个页面支持的时间粒度。数组顺序即降级优先级（取第一个可用的）。
- *
- * ⚠️ key 用的是**当前的 NavKey 取值**。'insights' → 'patterns' 的改名
- * 在 Batch 5 做，到时候连同这里一起改。
- */
+/** 每个页面支持的时间粒度。数组顺序即降级优先级（取第一个可用的）。 */
 export const PAGE_KIND_CAP: Record<NavKey, RangeKind[]> = {
   overview:      ["day", "week", "month"],
   timeline:      ["day"],
   input:         ["day", "week", "month"],
-  insights:      ["week", "month"],
+  patterns:      ["week", "month"],
   settings:      ["day", "week", "month"],
   dev:           ["day", "week", "month"],
   "keymap-test": ["day", "week", "month"],

@@ -21,10 +21,6 @@ export function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-export function isSameWeek(a: Date, b: Date): boolean {
-  return isSameDay(startOfWeek(a), startOfWeek(b));
-}
-
 export function formatPeriodLabel(
   d: Date,
   mode: "day" | "week",
@@ -47,25 +43,4 @@ export function formatPeriodLabel(
     const endDate = String(weekEnd.getDate()).padStart(2, "0");
     return `${month}-${date} ~ ${endMonth}-${endDate}`;
   }
-}
-
-export function formatWeekLabel(weekStartDate: Date, today: Date): string {
-  const thisWeekStart = startOfWeek(today);
-  const lastWeekStart = new Date(thisWeekStart.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-  if (isSameDay(weekStartDate, thisWeekStart)) {
-    return "本周";
-  }
-  if (isSameDay(weekStartDate, lastWeekStart)) {
-    return "上周";
-  }
-
-  const DAY_MS = 24 * 60 * 60 * 1000;
-  const weekEnd = new Date(weekStartDate.getTime() + 6 * DAY_MS);
-  const startMonth = String(weekStartDate.getMonth() + 1).padStart(2, "0");
-  const startDate = String(weekStartDate.getDate()).padStart(2, "0");
-  const endMonth = String(weekEnd.getMonth() + 1).padStart(2, "0");
-  const endDate = String(weekEnd.getDate()).padStart(2, "0");
-
-  return `${startMonth}.${startDate} – ${endMonth}.${endDate}`;
 }

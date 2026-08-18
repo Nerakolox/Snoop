@@ -24,7 +24,7 @@ function renderPage(key: NavKey) {
       return <Timeline />;
     case "input":
       return <Keyboard />;
-    case "insights":
+    case "patterns":
       return <Insights />;
     case "settings":
       return <Settings />;
