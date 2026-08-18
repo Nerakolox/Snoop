@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { ContextProvider } from "./store/context";
+import { ToastProvider } from "./components/shared/Toast";
 import "./App.css";
 
 // 平台标记：供 CSS 通过 body[data-platform] 分派样式
@@ -38,7 +39,9 @@ mediaQuery.addEventListener("change", () => {
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <ContextProvider>
-      <App />
+      <ToastProvider>
+        <App />
+      </ToastProvider>
     </ContextProvider>
   </React.StrictMode>,
 );
