@@ -18,11 +18,14 @@ import {
 } from "../analytics";
 import type { RawBucket } from "../data/types";
 import AppIcon from "../components/AppIcon";
+import DeltaBadge from "../components/DeltaBadge";
 import PageShell from "../components/PageShell";
 import ContextChips from "../components/shared/ContextChips";
+import { useToast } from "../components/shared/Toast";
+import type { NavKey } from "../components/Sidebar";
 import { useRangeData } from "../data/useRangeData";
 import { formatAnchor } from "../data/ranges";
-import { adaptKind, useContextState, type RangeKind } from "../store/context";
+import { adaptKind, shiftAnchor, useContextActions, useContextState, type RangeKind } from "../store/context";
 import { anchorLabel } from "../utils/format";
 
 type NowStatus = {
@@ -37,6 +40,9 @@ type KpiPart = { kind: "num" | "unit"; text: string };
 type Kpi = {
   label: string;
   parts: KpiPart[];
+  target: NavKey;
+  targetLabel: string;
+  sub?: string;
 };
 
 type AppRow = {
@@ -134,6 +140,8 @@ function OverviewHeader({
 
 export default function Overview() {
   const { kind, anchor, appId } = useContextState();
+  const actions = useContextActions();
+  const toast = useToast();
 
   const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("overview", { kind, anchor });
   const { buckets: allBuckets, loading, refetch } = useRangeData(viewKind, viewAnchor, null);
@@ -141,6 +149,29 @@ export default function Overview() {
     () => (appId === null ? allBuckets : allBuckets.filter((b) => b.app_bundle_id === appId)),
     [allBuckets, appId]
   );
+
+  // 基期数据，仅供 App 排行的 DeltaBadge 环比用
+  const prevAnchor = shiftAnchor(viewKind, viewAnchor, -1);
+  const { buckets: prevAllBuckets } = useRangeData(viewKind, prevAnchor, null);
+  const prevMinutesByApp = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const a of aggregateByApp(prevAllBuckets)) {
+      map.set(a.app_bundle_id, Math.round(a.duration_ms / 60_000));
+    }
+    return map;
+  }, [prevAllBuckets]);
+  const vsLabel = viewKind === "day" ? "vs 昨天" : viewKind === "week" ? "vs 上周" : "vs 上月";
+  const baseThreshold = viewKind === "day" ? 20 : viewKind === "week" ? 120 : 600;
+
+  function goTo(target: NavKey, targetLabel: string) {
+    actions.navigate({ page: target });
+    toast.show({ message: `已跳转到${targetLabel}`, undoLabel: "返回" });
+  }
+
+  function goToApp(bundleId: string, name: string) {
+    actions.navigate({ page: "timeline", appId: bundleId });
+    toast.show({ message: `已筛选 ${name}，全站生效`, undoLabel: "取消筛选" });
+  }
 
   const isLive = kind === "day" && anchor === formatAnchor(new Date());
 
@@ -208,14 +239,26 @@ export default function Overview() {
     totalClicks += (b.mouse_left || 0) + (b.mouse_right || 0) + (b.mouse_middle || 0);
     totalMouseDist += b.mouse_move_dist || 0;
   }
+  const daysWithData = daysWithDataOf(buckets);
+  const avgMs = daysWithData > 0 ? activeDuration / daysWithData : 0;
+  const avgLabel = formatDuration(avgMs).map((p) => p.text).join("");
+
   const kpis: Kpi[] = [
-    { label: "活跃时长", parts: formatDuration(activeDuration) },
+    {
+      label: "活跃时长",
+      parts: formatDuration(activeDuration),
+      target: "timeline",
+      targetLabel: "时间线",
+      sub: viewKind !== "day" ? `日均 ${avgLabel} · 分母 ${daysWithData} 天` : undefined,
+    },
     {
       label: "总按键",
       parts: [
         { kind: "num", text: formatNumber(totalKeys) },
         { kind: "unit", text: "次" },
       ],
+      target: "keyboard",
+      targetLabel: "键盘",
     },
     {
       label: "总点击",
@@ -223,8 +266,15 @@ export default function Overview() {
         { kind: "num", text: formatNumber(totalClicks) },
         { kind: "unit", text: "次" },
       ],
+      target: "keyboard",
+      targetLabel: "键盘",
     },
-    { label: "鼠标里程", parts: formatMouseDistance(totalMouseDist) },
+    {
+      label: "鼠标里程",
+      parts: formatMouseDistance(totalMouseDist),
+      target: "keyboard",
+      targetLabel: "键盘",
+    },
   ];
 
   const apps: AppRow[] = aggregateByApp(allBuckets)
@@ -239,7 +289,6 @@ export default function Overview() {
 
   const hourly = intensityByHourFromBuckets(buckets);
 
-  const daysWithData = daysWithDataOf(buckets);
   const appName =
     appId === null
       ? undefined
@@ -314,7 +363,13 @@ export default function Overview() {
       {/* ② 核心数字 */}
       <section className="kpi-row">
         {kpis.map((k) => (
-          <div key={k.label} className="kpi-card">
+          <button
+            key={k.label}
+            type="button"
+            className="kpi-card drillable"
+            data-target-label={k.targetLabel}
+            onClick={() => goTo(k.target, k.targetLabel)}
+          >
             <div className="kpi-label">{k.label}</div>
             <div className="kpi-value">
               {k.parts.map((p, i) => (
@@ -323,7 +378,8 @@ export default function Overview() {
                 </span>
               ))}
             </div>
-          </div>
+            {k.sub && <div className="kpi-sub">{k.sub}</div>}
+          </button>
         ))}
       </section>
       {isEmpty && <p className="overview-empty-note">{noDataReason(appId, appName)}</p>}
@@ -339,8 +395,14 @@ export default function Overview() {
           )}
           {apps.map((app) => {
             const pct = (app.minutes / maxMinutes) * 100;
+            const dim = appId !== null && appId !== app.bundleId;
             return (
-              <div key={app.bundleId} className="app-row">
+              <button
+                key={app.bundleId}
+                type="button"
+                className={`app-row drillable${dim ? " app-row--dim" : ""}`}
+                onClick={() => goToApp(app.bundleId, app.name)}
+              >
                 <div className="app-row-name" title={app.name}>
                   <AppIcon bundleId={app.bundleId} appName={app.name} size={18} />
                   <span>{app.name}</span>
@@ -355,7 +417,13 @@ export default function Overview() {
                   />
                 </div>
                 <div className="app-row-time">{app.minutes} 分</div>
-              </div>
+                <DeltaBadge
+                  current={app.minutes}
+                  previous={prevMinutesByApp.get(app.bundleId) ?? 0}
+                  vsLabel={vsLabel}
+                  baseThreshold={baseThreshold}
+                />
+              </button>
             );
           })}
         </div>

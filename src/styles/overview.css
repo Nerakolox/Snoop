@@ -134,6 +134,8 @@
 }
 
 .kpi-card {
+  appearance: none;
+  width: 100%;
   padding: var(--space-6);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -142,6 +144,33 @@
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+/* 悬停/聚焦时右上角浮出下钻目标提示，纯 CSS，不引组件 */
+.kpi-card[data-target-label]::after {
+  content: "→ " attr(data-target-label);
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-4);
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease-smooth);
+  pointer-events: none;
+}
+
+.kpi-card:hover[data-target-label]::after,
+.kpi-card:focus-visible[data-target-label]::after {
+  opacity: 1;
+}
+
+.kpi-sub {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
 .kpi-label {
@@ -201,10 +230,24 @@
 }
 
 .app-row {
+  appearance: none;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
   display: grid;
-  grid-template-columns: 100px 1fr auto;
+  grid-template-columns: 100px 1fr auto auto;
   align-items: center;
   gap: var(--space-4);
+  transition: opacity var(--dur-base) var(--ease-smooth);
+}
+
+/* 全局筛选了某个 App 时，非选中行降透明度而非隐藏 —— 仍能看出它在榜单里 */
+.app-row--dim {
+  opacity: 0.34;
 }
 
 .app-row-name {
