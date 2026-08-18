@@ -83,6 +83,15 @@ export function normalizeAnchor(kind: RangeKind, anchor: string): string {
   return reanchor("day", anchor, kind);
 }
 
+/** anchor 按当前粒度前后位移。dir=-1 上一个区间，dir=1 下一个。 */
+export function shiftAnchor(kind: RangeKind, anchor: string, dir: 1 | -1): string {
+  const d = parseAnchor(anchor);
+  if (kind === "day")   d.setDate(d.getDate() + dir);
+  if (kind === "week")  d.setDate(d.getDate() + 7 * dir);
+  if (kind === "month") d.setMonth(d.getMonth() + dir);   // 不要 +30 天
+  return formatAnchor(d);
+}
+
 export interface AdaptedRange {
   kind: RangeKind;
   anchor: string;
@@ -145,13 +154,8 @@ function reducer(s: Store, a: Action): Store {
     case "SET_ANCHOR":
       return { ...s, cur: { ...cur, anchor: normalizeAnchor(cur.kind, a.anchor) } };
 
-    case "STEP_ANCHOR": {
-      const d = parseAnchor(cur.anchor);
-      if (cur.kind === "day")   d.setDate(d.getDate() + a.dir);
-      if (cur.kind === "week")  d.setDate(d.getDate() + 7 * a.dir);
-      if (cur.kind === "month") d.setMonth(d.getMonth() + a.dir);   // 不要 +30 天
-      return { ...s, cur: { ...cur, anchor: formatAnchor(d) } };
-    }
+    case "STEP_ANCHOR":
+      return { ...s, cur: { ...cur, anchor: shiftAnchor(cur.kind, cur.anchor, a.dir) } };
     case "GO_TODAY":
       return {
         ...s,

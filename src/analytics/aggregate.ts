@@ -3,7 +3,8 @@
  */
 
 import type { RawBucket, RawHourBucket } from "../data/types";
-import { computeIntensityFromTotals } from "./intensity";
+import { DAY_MS } from "../data/ranges";
+import { computeIntensity, computeIntensityFromTotals } from "./intensity";
 import type { AppStat, DayStat, HourStat, Intensity } from "./types";
 
 /**
@@ -123,6 +124,56 @@ export function aggregateByHour(hourBuckets: RawHourBucket[]): HourStat[] {
       key_total: s.key_total,
       mouse_total: s.mouse_total,
       intensity,
+    });
+  }
+  return out;
+}
+
+/**
+ * 按**本地小时**把桶分组，每组走 computeIntensity 得到强度档。
+ * 返回定长 24 的数组，无数据的小时为 0。
+ *
+ * 与 aggregateByHour 的区别：那个吃后端预聚合的 RawHourBucket[]，拿不到 app 维度；
+ * 这个吃已按 appId 过滤好的 RawBucket[]，节奏区统一走这条路径（有无筛选同一条代码路径）。
+ */
+export function intensityByHourFromBuckets(buckets: RawBucket[]): Intensity[] {
+  const groups: RawBucket[][] = Array.from({ length: 24 }, () => []);
+  for (const b of buckets) {
+    const h = new Date(b.bucket_start).getHours();
+    groups[h].push(b);
+  }
+  return groups.map((g) => computeIntensity(g));
+}
+
+/**
+ * 按**本地日期**把桶分组，返回 [startMs, endMs) 内每一天的
+ * { dayMs, activeMs, intensity }，按日期升序，包含无数据的空天
+ * （空天 activeMs=0、intensity=0），调用方不用自己补洞。
+ */
+export function statsByDayFromBuckets(
+  buckets: RawBucket[],
+  startMs: number,
+  endMs: number
+): Array<{ dayMs: number; activeMs: number; intensity: Intensity }> {
+  const byDay = new Map<number, RawBucket[]>();
+  for (const b of buckets) {
+    const d = new Date(b.bucket_start);
+    d.setHours(0, 0, 0, 0);
+    const key = d.getTime();
+    if (!byDay.has(key)) byDay.set(key, []);
+    byDay.get(key)!.push(b);
+  }
+
+  const dayStart = new Date(startMs);
+  dayStart.setHours(0, 0, 0, 0);
+
+  const out: Array<{ dayMs: number; activeMs: number; intensity: Intensity }> = [];
+  for (let t = dayStart.getTime(); t < endMs; t += DAY_MS) {
+    const dayBuckets = byDay.get(t) ?? [];
+    out.push({
+      dayMs: t,
+      activeMs: unionDurationMs(dayBuckets),
+      intensity: computeIntensity(dayBuckets),
     });
   }
   return out;
