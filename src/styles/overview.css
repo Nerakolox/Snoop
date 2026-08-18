@@ -10,6 +10,50 @@
   max-width: 100%;
 }
 
+/* ⓪ 页头 ----------------------------------------------------------------- */
+
+.overview-header-titlerow {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+}
+
+.overview-header-title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.overview-header-note {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.overview-header-subtitle {
+  margin: var(--space-1) 0 var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+}
+
+.overview-loading {
+  padding: var(--space-8) 0;
+  text-align: center;
+  color: var(--color-text-3);
+  font-size: var(--text-sm);
+}
+
+.overview-empty-note {
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
 /* ① 此刻状态 —— 猫的舞台 ------------------------------------------------- */
 
 .now-card {

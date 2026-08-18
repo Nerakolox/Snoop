@@ -1,28 +1,29 @@
 /**
  * 概览 —— Snoop 的首页
- * 定位：今日快照 + 猫的实时陪伴，只展示今天的数据。
+ * 定位：消费全局 (kind, anchor, appId)，是当前范围的快照 + 猫的实时陪伴。
  */
 
-import { useEffect, useState } from "react";
-import {
-  fetchBucketsInRange,
-  fetchHourlyActivity,
-  todayRange,
-  type RawBucket,
-} from "../data";
+import { useEffect, useMemo, useState } from "react";
 import {
   aggregateByApp,
-  aggregateByHour,
   computeIntensity,
+  intensityByHourFromBuckets,
   intensityVar,
   type Intensity,
   MOOD_LABELS,
   MOUSE_PIXELS_PER_METER,
   RECENT_ACTIVITY_WINDOW_MS,
   pickCatQuip,
+  unionDurationMs,
 } from "../analytics";
+import type { RawBucket } from "../data/types";
 import AppIcon from "../components/AppIcon";
 import PageShell from "../components/PageShell";
+import ContextChips from "../components/shared/ContextChips";
+import { useRangeData } from "../data/useRangeData";
+import { formatAnchor } from "../data/ranges";
+import { adaptKind, useContextState, type RangeKind } from "../store/context";
+import { anchorLabel } from "../utils/format";
 
 type NowStatus = {
   appName: string;
@@ -86,8 +87,69 @@ function formatMouseDistance(pixels: number): KpiPart[] {
   ];
 }
 
+/** 该范围没有数据时的说明文案，随是否已筛选应用而不同 */
+function noDataReason(appId: string | null, appName: string | undefined): string {
+  return appId ? `${appName ?? appId} 在该范围内没有记录` : "该范围没有采集到数据";
+}
+
+function daysWithDataOf(buckets: RawBucket[]): number {
+  const days = new Set<string>();
+  for (const b of buckets) {
+    const d = new Date(b.bucket_start);
+    days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
+  }
+  return days.size;
+}
+
+function OverviewHeader({
+  kind,
+  anchor,
+  note,
+  daysWithData,
+  appId,
+  appName,
+}: {
+  kind: RangeKind;
+  anchor: string;
+  note: string | null;
+  daysWithData: number;
+  appId: string | null;
+  appName?: string;
+}) {
+  const now = useMemo(() => new Date(), []);
+  return (
+    <div className="overview-header">
+      <div className="overview-header-titlerow">
+        <h1 className="overview-header-title">概览</h1>
+        {note !== null && <span className="overview-header-note">{note}</span>}
+      </div>
+      <p className="overview-header-subtitle">
+        {anchorLabel(kind, anchor, now)} · {daysWithData} 天数据
+        {appId ? ` · 已筛选 ${appName ?? appId}` : ""}
+      </p>
+      <ContextChips show={["app"]} appName={appName} />
+    </div>
+  );
+}
+
 export default function Overview() {
-  const [, setBuckets] = useState<RawBucket[]>([]);
+  const { kind, anchor, appId } = useContextState();
+
+  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("overview", { kind, anchor });
+  const { buckets: allBuckets, loading, refetch } = useRangeData(viewKind, viewAnchor, null);
+  const buckets = useMemo(
+    () => (appId === null ? allBuckets : allBuckets.filter((b) => b.app_bundle_id === appId)),
+    [allBuckets, appId]
+  );
+
+  const isLive = kind === "day" && anchor === formatAnchor(new Date());
+
+  useEffect(() => {
+    if (!isLive) return; // 看历史数据没必要轮询
+    const timer = setInterval(() => refetch(), 30_000);
+    return () => clearInterval(timer);
+  }, [isLive, refetch]);
+
   const [now, setNow] = useState<NowStatus>({
     appName: "—",
     appBundleId: "",
@@ -95,163 +157,168 @@ export default function Overview() {
     moodIntensity: 0,
     catQuip: "还没有数据喵～",
   });
-  const [kpis, setKpis] = useState<Kpi[]>([]);
-  const [apps, setApps] = useState<AppRow[]>([]);
-  const [hourly, setHourly] = useState<Intensity[]>(Array(24).fill(0));
-  const [, setLoading] = useState(false);
-
-  async function refresh() {
-    setLoading(true);
-    try {
-      const range = todayRange();
-      const [todayBuckets, hourlyData] = await Promise.all([
-        fetchBucketsInRange(range),
-        fetchHourlyActivity(range),
-      ]);
-
-      setBuckets(todayBuckets);
-
-      // ① 此刻状态 —— 最近 1-2 分钟内的"主导 App"（占用时长最多的 App）
-      const nowTs = Date.now();
-      const recentBuckets = todayBuckets.filter(
-        (b) => nowTs - b.bucket_start < RECENT_ACTIVITY_WINDOW_MS
-      );
-      if (recentBuckets.length > 0) {
-        // 按 app_bundle_id 聚合最近窗口内的时长，找出主导 App
-        const appDurations = new Map<string, { duration: number; name: string; bundleId: string }>();
-        for (const b of recentBuckets) {
-          const key = b.app_bundle_id;
-          const existing = appDurations.get(key);
-          if (existing) {
-            existing.duration += b.duration_ms || 0;
-          } else {
-            appDurations.set(key, {
-              duration: b.duration_ms || 0,
-              name: b.app_name || b.app_bundle_id,
-              bundleId: b.app_bundle_id,
-            });
-          }
-        }
-        const dominant = [...appDurations.values()].sort(
-          (a, b) => b.duration - a.duration
-        )[0];
-        const recentIntensity = computeIntensity(recentBuckets);
-        setNow({
-          appName: dominant.name || "未知应用",
-          appBundleId: dominant.bundleId || "",
-          moodLabel: MOOD_LABELS[recentIntensity],
-          moodIntensity: recentIntensity,
-          catQuip: pickCatQuip(recentIntensity, dominant.name || ""),
-        });
-      } else {
-        setNow({
-          appName: "—",
-          appBundleId: "",
-          moodLabel: "挂机中",
-          moodIntensity: 0,
-          catQuip: "人呢？挂机了喵？",
-        });
-      }
-
-      // ② 今日核心数字
-      let totalDuration = 0;
-      let totalKeys = 0;
-      let totalClicks = 0;
-      let totalMouseDist = 0;
-      for (const b of todayBuckets) {
-        totalDuration += b.duration_ms || 0;
-        totalKeys += b.key_total || 0;
-        totalClicks +=
-          (b.mouse_left || 0) + (b.mouse_right || 0) + (b.mouse_middle || 0);
-        totalMouseDist += b.mouse_move_dist || 0;
-      }
-      setKpis([
-        { label: "今日活跃", parts: formatDuration(totalDuration) },
-        {
-          label: "总按键",
-          parts: [
-            { kind: "num", text: formatNumber(totalKeys) },
-            { kind: "unit", text: "次" },
-          ],
-        },
-        {
-          label: "总点击",
-          parts: [
-            { kind: "num", text: formatNumber(totalClicks) },
-            { kind: "unit", text: "次" },
-          ],
-        },
-        { label: "鼠标里程", parts: formatMouseDistance(totalMouseDist) },
-      ]);
-
-      // ③ App 时长排行 Top 6
-      const appStats = aggregateByApp(todayBuckets);
-      setApps(
-        appStats.slice(0, 6).map((a) => ({
-          name: a.app_name || a.app_bundle_id,
-          bundleId: a.app_bundle_id,
-          minutes: Math.round(a.duration_ms / 60_000),
-          intensity: a.intensity,
-        }))
-      );
-
-      // ④ 今日时段分布
-      const hourStats = aggregateByHour(hourlyData);
-      setHourly(hourStats.map((h) => h.intensity));
-    } catch (e) {
-      console.error("Overview refresh failed:", e);
-    } finally {
-      setLoading(false);
-    }
-  }
 
   useEffect(() => {
-    refresh();
-    // 每 30 秒自动刷新
-    const timer = setInterval(refresh, 30_000);
-    return () => clearInterval(timer);
-  }, []);
+    if (!isLive) return;
+    const nowTs = Date.now();
+    const recentBuckets = buckets.filter(
+      (b) => nowTs - b.bucket_start < RECENT_ACTIVITY_WINDOW_MS
+    );
+    if (recentBuckets.length > 0) {
+      const appDurations = new Map<string, { duration: number; name: string; bundleId: string }>();
+      for (const b of recentBuckets) {
+        const key = b.app_bundle_id;
+        const existing = appDurations.get(key);
+        if (existing) {
+          existing.duration += b.duration_ms || 0;
+        } else {
+          appDurations.set(key, {
+            duration: b.duration_ms || 0,
+            name: b.app_name || b.app_bundle_id,
+            bundleId: b.app_bundle_id,
+          });
+        }
+      }
+      const dominant = [...appDurations.values()].sort((a, b) => b.duration - a.duration)[0];
+      const recentIntensity = computeIntensity(recentBuckets);
+      setNow({
+        appName: dominant.name || "未知应用",
+        appBundleId: dominant.bundleId || "",
+        moodLabel: MOOD_LABELS[recentIntensity],
+        moodIntensity: recentIntensity,
+        catQuip: pickCatQuip(recentIntensity, dominant.name || ""),
+      });
+    } else {
+      setNow({
+        appName: "—",
+        appBundleId: "",
+        moodLabel: "挂机中",
+        moodIntensity: 0,
+        catQuip: "人呢？挂机了喵？",
+      });
+    }
+  }, [isLive, buckets]);
 
+  const activeDuration = unionDurationMs(buckets);
+  let totalKeys = 0;
+  let totalClicks = 0;
+  let totalMouseDist = 0;
+  for (const b of buckets) {
+    totalKeys += b.key_total || 0;
+    totalClicks += (b.mouse_left || 0) + (b.mouse_right || 0) + (b.mouse_middle || 0);
+    totalMouseDist += b.mouse_move_dist || 0;
+  }
+  const kpis: Kpi[] = [
+    { label: "活跃时长", parts: formatDuration(activeDuration) },
+    {
+      label: "总按键",
+      parts: [
+        { kind: "num", text: formatNumber(totalKeys) },
+        { kind: "unit", text: "次" },
+      ],
+    },
+    {
+      label: "总点击",
+      parts: [
+        { kind: "num", text: formatNumber(totalClicks) },
+        { kind: "unit", text: "次" },
+      ],
+    },
+    { label: "鼠标里程", parts: formatMouseDistance(totalMouseDist) },
+  ];
+
+  const apps: AppRow[] = aggregateByApp(allBuckets)
+    .slice(0, 6)
+    .map((a) => ({
+      name: a.app_name || a.app_bundle_id,
+      bundleId: a.app_bundle_id,
+      minutes: Math.round(a.duration_ms / 60_000),
+      intensity: a.intensity,
+    }));
   const maxMinutes = Math.max(...apps.map((a) => a.minutes), 1);
 
-  return (
-    <PageShell className="overview">
-      {/* ① 此刻状态 —— 猫的舞台 */}
-      <section className="now-card">
-        <div className="now-mascot" aria-hidden>
-          {now.appBundleId ? (
-            <AppIcon bundleId={now.appBundleId} appName={now.appName} size={64} />
-          ) : (
-            <span className="now-mascot-placeholder">猫</span>
-          )}
-        </div>
-        <div className="now-info">
-          <div className="now-label">此刻</div>
-          <div className="now-app" title={now.appName}>{now.appName}</div>
-          <div
-            className="now-mood"
-            style={{
-              background: intensityVar(now.moodIntensity),
-              color: now.moodIntensity >= 3 ? "#fff" : "var(--color-text)",
-            }}
-          >
-            {now.moodLabel}
-          </div>
-          <p className="now-quip">{now.catQuip}</p>
-        </div>
-      </section>
+  const hourly = intensityByHourFromBuckets(buckets);
 
-      {/* ② 今日核心数字 */}
+  const daysWithData = daysWithDataOf(buckets);
+  const appName =
+    appId === null
+      ? undefined
+      : buckets.find((b) => b.app_bundle_id === appId)?.app_name ?? appId;
+
+  const nowLabel = useMemo(() => new Date(), []);
+  // 「当前筛选下」是否没有数据 —— 用来决定 KPI / 节奏区的空态说明。
+  // App 排行不受筛选影响（展示全量），空态单独按 apps.length 判断。
+  const isEmpty = !loading && buckets.length === 0;
+
+  if (loading && allBuckets.length === 0) {
+    return (
+      <PageShell
+        className="overview"
+        header={
+          <OverviewHeader
+            kind={viewKind}
+            anchor={viewAnchor}
+            note={note}
+            daysWithData={0}
+            appId={appId}
+            appName={appName}
+          />
+        }
+      >
+        <div className="overview-loading">加载中…</div>
+      </PageShell>
+    );
+  }
+
+  return (
+    <PageShell
+      className="overview"
+      header={
+        <OverviewHeader
+          kind={viewKind}
+          anchor={viewAnchor}
+          note={note}
+          daysWithData={daysWithData}
+          appId={appId}
+          appName={appName}
+        />
+      }
+    >
+      {/* ① 此刻状态 —— 猫的舞台，仅当查看的是"今天"时才出现，历史范围不该有实时状态 */}
+      {isLive && (
+        <section className="now-card">
+          <div className="now-mascot" aria-hidden>
+            {now.appBundleId ? (
+              <AppIcon bundleId={now.appBundleId} appName={now.appName} size={64} />
+            ) : (
+              <span className="now-mascot-placeholder">猫</span>
+            )}
+          </div>
+          <div className="now-info">
+            <div className="now-label">此刻</div>
+            <div className="now-app" title={now.appName}>{now.appName}</div>
+            <div
+              className="now-mood"
+              style={{
+                background: intensityVar(now.moodIntensity),
+                color: now.moodIntensity >= 3 ? "#fff" : "var(--color-text)",
+              }}
+            >
+              {now.moodLabel}
+            </div>
+            <p className="now-quip">{now.catQuip}</p>
+          </div>
+        </section>
+      )}
+
+      {/* ② 核心数字 */}
       <section className="kpi-row">
         {kpis.map((k) => (
           <div key={k.label} className="kpi-card">
             <div className="kpi-label">{k.label}</div>
             <div className="kpi-value">
               {k.parts.map((p, i) => (
-                <span
-                  key={i}
-                  className={p.kind === "num" ? "kpi-num" : "kpi-unit"}
-                >
+                <span key={i} className={p.kind === "num" ? "kpi-num" : "kpi-unit"}>
                   {p.text}
                 </span>
               ))}
@@ -259,14 +326,15 @@ export default function Overview() {
           </div>
         ))}
       </section>
+      {isEmpty && <p className="overview-empty-note">{noDataReason(appId, appName)}</p>}
 
       {/* ③ App 时长排行 */}
       <section className="panel">
         <h3 className="panel-title">App 排行</h3>
         <div className="app-list">
           {apps.length === 0 && (
-            <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>
-              今天还没有数据
+            <div className="overview-empty-note">
+              {anchorLabel(viewKind, viewAnchor, nowLabel)}还没有数据
             </div>
           )}
           {apps.map((app) => {
@@ -293,9 +361,9 @@ export default function Overview() {
         </div>
       </section>
 
-      {/* ④ 今日时段分布 —— 24 小时热力条 */}
+      {/* ④ 节奏 —— 24 小时热力条（三形态改造见 C4） */}
       <section className="panel">
-        <h3 className="panel-title">今日节奏</h3>
+        <h3 className="panel-title">节奏</h3>
         <div className="heat-strip">
           {hourly.map((level, hour) => (
             <div
@@ -307,10 +375,7 @@ export default function Overview() {
           ))}
         </div>
         <div className="heat-scale">
-          <span
-            className="heat-scale-tick heat-scale-tick--edge-start"
-            style={{ gridColumn: 1 }}
-          >
+          <span className="heat-scale-tick heat-scale-tick--edge-start" style={{ gridColumn: 1 }}>
             0
           </span>
           <span className="heat-scale-tick" style={{ gridColumn: 7 }}>
@@ -322,13 +387,11 @@ export default function Overview() {
           <span className="heat-scale-tick" style={{ gridColumn: 19 }}>
             18
           </span>
-          <span
-            className="heat-scale-tick heat-scale-tick--edge-end"
-            style={{ gridColumn: 24 }}
-          >
+          <span className="heat-scale-tick heat-scale-tick--edge-end" style={{ gridColumn: 24 }}>
             24
           </span>
         </div>
+        {isEmpty && <p className="overview-empty-note">{noDataReason(appId, appName)}</p>}
       </section>
     </PageShell>
   );

@@ -11,10 +11,10 @@ import {
   type RangeKind,
 } from "../store/context";
 import type { NavKey } from "./Sidebar";
-import { DAY_MS, formatAnchor, parseAnchor, toMs } from "../data/ranges";
+import { formatAnchor, toMs } from "../data/ranges";
 import { fetchAppRankingInRange } from "../data/client";
 import type { RawAppRank } from "../data/types";
-import { formatDuration } from "../utils/format";
+import { anchorLabel, formatDuration } from "../utils/format";
 import AppIcon from "./AppIcon";
 
 const isWindows =
@@ -31,32 +31,6 @@ const PAGE_LABEL: Record<NavKey, string> = {
 };
 
 const KIND_ORDER: RangeKind[] = ["day", "week", "month"];
-
-function anchorLabel(kind: RangeKind, anchor: string, now: Date): string {
-  const today = formatAnchor(now);
-
-  if (kind === "day") {
-    if (anchor === today) return "今天";
-    const yesterday = formatAnchor(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
-    if (anchor === yesterday) return "昨天";
-    const d = parseAnchor(anchor);
-    return d.getFullYear() === now.getFullYear()
-      ? `${d.getMonth() + 1}月${d.getDate()}日`
-      : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
-  }
-
-  if (kind === "week") {
-    if (anchor === normalizeAnchor("week", today)) return "本周";
-    const start = parseAnchor(anchor);
-    const end = new Date(start.getTime() + 6 * DAY_MS);
-    return `${start.getMonth() + 1}月${start.getDate()}日 – ${end.getMonth() + 1}月${end.getDate()}日`;
-  }
-
-  // month
-  if (anchor === normalizeAnchor("month", today)) return "本月";
-  const d = parseAnchor(anchor);
-  return `${d.getFullYear()}年${d.getMonth() + 1}月`;
-}
 
 export default function TopBar() {
   const { page, kind, anchor, appId } = useContextState();
