@@ -149,3 +149,19 @@ export function pickCatQuip(
   if (pool.length === 0) return "喵～";
   return pool[Math.floor(Math.random() * pool.length)];
 }
+
+/** 时间线突变标记的吐槽模板库 —— 按强度分池，`{H}` 会被替换成具体小时数。 */
+const SPIKE_QUIP_TEMPLATES: Record<0 | 1 | 2 | 3 | 4, string[]> = {
+  0: ["{H}点这波动静，猫都被吵醒了喵", "{H}点忽然有点响动喵，谁在敲键盘？"],
+  1: ["{H}点悄悄提了提速喵，摸鱼摸出加速度了？", "{H}点这一下比之前活跃了点喵"],
+  2: ["{H}点节奏突然往上走了喵，进入状态了？", "{H}点这波提速，是灵感来了喵？"],
+  3: ["{H}点突然来劲了喵，键盘要冒烟了", "{H}点这速度，是不是被 deadline 追了喵？"],
+  4: ["{H}点直接原地起飞喵！手速拉满了！", "{H}点这是爆发了喵？键盘都要被敲穿了！"],
+};
+
+/** 从突变吐槽库里随机挑一句，替换具体时刻。 */
+export function pickSpikeQuip(hour: number, intensity: 0 | 1 | 2 | 3 | 4): string {
+  const pool = SPIKE_QUIP_TEMPLATES[intensity];
+  const template = pool[Math.floor(Math.random() * pool.length)];
+  return template.replace("{H}", String(hour));
+}

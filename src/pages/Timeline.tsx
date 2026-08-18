@@ -20,6 +20,8 @@ import type { RawBucket } from "../data/types";
 import {
   buildAppLanes, computeGlobalGaps, buildSegments, timeToVirt, virtToTime, buildTicks,
   COMPRESS_THRESHOLD_MS,
+  intensityByHourFromBuckets,
+  pickSpikeQuip,
   type TimeBlock,
 } from "../analytics";
 import PageShell from "../components/PageShell";
@@ -431,6 +433,70 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentsData, viewRange.start, viewRange.end]);
 
+  // 强度曲线：SVG viewBox 高度，与 CSS 里 .swimlane-intensity-track 的高度对应
+  const CURVE_VB_H = 32;
+
+  // 按小时的活跃强度 —— 复用 Batch 2 的 intensityByHourFromBuckets，不新写聚合
+  const hourlyIntensity = useMemo(() => intensityByHourFromBuckets(buckets), [buckets]);
+
+  // x 坐标统一走 timeToVirt + virtToPct，与刻度尺/色块共用同一套映射
+  const curvePoints = useMemo(() => {
+    return hourlyIntensity.map((level, hour) => {
+      const t = range.start_ms + hour * 3_600_000;
+      const x = virtToPct(timeToVirt(t, segmentsData.segments));
+      const y = CURVE_VB_H - 2 - (level / 4) * (CURVE_VB_H - 4);
+      return { hour, level, x, y };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hourlyIntensity, range.start_ms, segmentsData, viewRange.start, viewRange.end]);
+
+  const curvePathD = useMemo(
+    () => curvePoints.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" "),
+    [curvePoints]
+  );
+
+  // 突变检测：v > prev*1.8 且 v > 当日峰值*0.45（照抄工单公式，不改阈值）
+  const spikeHours = useMemo(() => {
+    const maxLevel = Math.max(...hourlyIntensity, 0);
+    const spikes: number[] = [];
+    for (let h = 1; h < 24; h++) {
+      const v = hourlyIntensity[h];
+      const prev = hourlyIntensity[h - 1];
+      if (v > prev * 1.8 && v > maxLevel * 0.45) {
+        spikes.push(h);
+      }
+    }
+    return spikes;
+  }, [hourlyIntensity]);
+
+  const [spikePopover, setSpikePopover] = useState<{ hour: number; text: string } | null>(null);
+
+  function handleSpikeClick(hour: number, level: number) {
+    setSpikePopover((cur) =>
+      cur?.hour === hour ? null : { hour, text: pickSpikeQuip(hour, level as 0 | 1 | 2 | 3 | 4) }
+    );
+  }
+
+  // 气泡关闭：再点一次（上面 toggle 已处理）/ 点别处 / Esc
+  useEffect(() => {
+    if (!spikePopover) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setSpikePopover(null);
+    }
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".swimlane-spike-marker") && !target.closest(".swimlane-spike-popover")) {
+        setSpikePopover(null);
+      }
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [spikePopover]);
+
   // TODO(样式大改): focusHour 目前只经 ContextChips 展示，不驱动视口。
   // 现有时间线是 viewport 虚拟坐标模型（无 scrollLeft），自动定位需要
   // 与 viewport 安全带、压缩开关同步，等样式重构定稿后再实现。
@@ -487,6 +553,41 @@ export default function Timeline() {
             </div>
           </div>
 
+          {/* 活跃强度曲线 + 突变标记 */}
+          <div className="swimlane-intensity-row">
+            <div className="swimlane-axis-label" aria-hidden />
+            <div className="swimlane-intensity-track">
+              <svg
+                viewBox={`0 0 100 ${CURVE_VB_H}`}
+                preserveAspectRatio="none"
+                className="swimlane-intensity-svg"
+              >
+                <path d={curvePathD} className="swimlane-intensity-line" />
+              </svg>
+              {spikeHours.map((hour) => {
+                const point = curvePoints[hour];
+                return (
+                  <button
+                    key={hour}
+                    type="button"
+                    className="swimlane-spike-marker"
+                    style={{ left: `${point.x}%` }}
+                    title={`${hour}:00 突变`}
+                    onClick={() => handleSpikeClick(hour, point.level)}
+                  />
+                );
+              })}
+              {spikePopover && (
+                <div
+                  className="swimlane-spike-popover"
+                  style={{ left: `${curvePoints[spikePopover.hour].x}%` }}
+                >
+                  {spikePopover.text}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* 泳道列表容器（带渐隐遮罩） */}
           <div className="swimlane-body-wrap">
             {fadeMasks.top && <div className="swimlane-fade-mask swimlane-fade-top" />}
@@ -531,6 +632,23 @@ export default function Timeline() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {lanes.length > 0 && (
+        <div className="swimlane-legend">
+          <span className="swimlane-legend-item">
+            <span className="swimlane-legend-swatch swimlane-legend-swatch--idle" />
+            挂机（有心跳无输入）
+          </span>
+          <span className="swimlane-legend-item">
+            <span className="swimlane-legend-swatch swimlane-legend-swatch--gap" />
+            压缩空白 (&gt;2h)
+          </span>
+          <span className="swimlane-legend-item">
+            <span className="swimlane-legend-swatch swimlane-legend-swatch--curve" />
+            活跃强度曲线
+          </span>
         </div>
       )}
 

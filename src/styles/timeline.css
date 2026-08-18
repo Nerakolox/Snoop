@@ -642,3 +642,99 @@
   opacity: 0.18;
 }
 
+/* 活跃强度曲线 + 突变标记 —— 结构/数据正确即可，视觉从简（样式大改时再打磨） */
+.swimlane-intensity-row {
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+}
+
+.swimlane-intensity-track {
+  flex: 1;
+  position: relative;
+  height: 32px;
+  overflow: hidden;
+}
+
+.swimlane-intensity-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.swimlane-intensity-line {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.7;
+}
+
+.swimlane-spike-marker {
+  position: absolute;
+  top: 2px;
+  width: 8px;
+  height: 8px;
+  margin-left: -4px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-accent);
+  cursor: pointer;
+}
+
+.swimlane-spike-popover {
+  position: absolute;
+  top: 14px;
+  transform: translateX(-50%);
+  max-width: 220px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  white-space: normal;
+  z-index: 20;
+}
+
+/* 底部图例 —— 静态三项，无交互 */
+.swimlane-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+  flex-shrink: 0;
+}
+
+.swimlane-legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.swimlane-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.swimlane-legend-swatch--idle {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+}
+
+.swimlane-legend-swatch--gap {
+  background: var(--color-text-3);
+  opacity: 0.4;
+}
+
+.swimlane-legend-swatch--curve {
+  background: var(--color-accent);
+}
+
