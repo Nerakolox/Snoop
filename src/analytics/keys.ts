@@ -91,6 +91,20 @@ const PUNCTUATION_KEYS = new Set([
   "Grave",
 ]);
 
+/**
+ * 修饰键的左右合并组。KLE 配列里左右键帽共用同一个标签（如左右 Shift 都写
+ * "Shift"），`kleParser.ts` 的 `getLabelRdevCode` 只能把标签映射到左侧 code，
+ * 右侧物理键实际上报的 rdev code（`ShiftRight` 等）会在计数时被漏掉。
+ * key 是 `getLabelRdevCode` 返回的主 code，value 含主 code 自身，取按键次数时
+ * 按组求和即得左右合计。
+ */
+export const MERGED_KEY_GROUPS: Record<string, string[]> = {
+  ShiftLeft: ["ShiftLeft", "ShiftRight"],
+  ControlLeft: ["ControlLeft", "ControlRight"],
+  Alt: ["Alt", "AltGr"],
+  MetaLeft: ["MetaLeft", "MetaRight"],
+};
+
 /** 把一个 key_code 判给某个区域。 */
 export function classifyKeyCode(code: string): KeyRegion {
   if (KEY_REGIONS[code]) return KEY_REGIONS[code];

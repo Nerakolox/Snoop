@@ -13,8 +13,8 @@ import {
   type RawKeyDetail,
 } from "../data";
 import { toMs } from "../data/ranges";
-import { aggregateByApp } from "../analytics";
-import { parseKLE, getLabelRdevCode, type ParsedLayout } from "../kleParser";
+import { aggregateByApp, MERGED_KEY_GROUPS } from "../analytics";
+import { parseKLE, getLabelRdevCode, type KLEKey, type ParsedLayout } from "../kleParser";
 import KLELayoutPicker, {
   getSavedLayout,
   saveLayout,
@@ -23,12 +23,15 @@ import KLELayoutPicker, {
 import TopKeysPanel from "../components/keyboard/TopKeysPanel";
 import MousePanel from "../components/keyboard/MousePanel";
 import KeyboardPanel from "../components/keyboard/KeyboardPanel";
+import KeyDetailPanel from "../components/keyboard/KeyDetailPanel";
+import { KeySelectionProvider } from "../components/keyboard/KeySelectionContext";
 import PageShell from "../components/PageShell";
 import ContextChips from "../components/shared/ContextChips";
-import { adaptKind, useContextState } from "../store/context";
+import { adaptKind, useContextActions, useContextState } from "../store/context";
 
 export default function Keyboard() {
-  const { kind, anchor, appId } = useContextState();
+  const { kind, anchor, appId, selectedKey } = useContextState();
+  const actions = useContextActions();
   const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("input", { kind, anchor });
   const range = useMemo(() => toMs(viewKind, viewAnchor), [viewKind, viewAnchor]);
 
@@ -129,13 +132,15 @@ export default function Keyboard() {
     return map;
   }, [keyDetails]);
 
-  // 构建 KLE 键标签 → count 的映射（通过 rdevCode 匹配）
+  // 构建 KLE 键标签 → count 的映射（通过 rdevCode 匹配，MERGED_KEY_GROUPS 命中的
+  // 修饰键把左右两侧 rdev code 的计数合并求和，见 analytics/keys.ts 顶部注释）
   const kleKeyCounts = useMemo(() => {
     const map: Record<string, number> = {};
     for (const key of kleKeys) {
       const rdevCode = getLabelRdevCode(key.label);
       if (rdevCode) {
-        map[key.label] = keyCounts[rdevCode] ?? 0;
+        const group = MERGED_KEY_GROUPS[rdevCode] ?? [rdevCode];
+        map[key.label] = group.reduce((sum, code) => sum + (keyCounts[code] ?? 0), 0);
       }
     }
     return map;
@@ -143,6 +148,51 @@ export default function Keyboard() {
 
   // 提取所有键的按压次数数组，用于分位数分档
   const allKeyCounts = useMemo(() => Object.values(kleKeyCounts), [kleKeyCounts]);
+
+  // 同 label 的多个键（左右 Shift/Ctrl/Alt/Meta）按 x 取最小者为可点击主键，
+  // 其余进 mergedIndices：不可点、count 已并入主键，仅在 hover 时提示"合并计数"。
+  const { mergedIndices, primaryIndexByLabel } = useMemo(() => {
+    const byLabel = new Map<string, number[]>();
+    kleKeys.forEach((key, index) => {
+      if (key.decal) return;
+      const arr = byLabel.get(key.label) ?? [];
+      arr.push(index);
+      byLabel.set(key.label, arr);
+    });
+    const merged = new Set<number>();
+    const primary = new Map<string, number>();
+    for (const [label, indices] of byLabel) {
+      if (indices.length <= 1) {
+        primary.set(label, indices[0]);
+        continue;
+      }
+      const sorted = [...indices].sort((a, b) => kleKeys[a].x - kleKeys[b].x);
+      primary.set(label, sorted[0]);
+      for (const idx of sorted.slice(1)) merged.add(idx);
+    }
+    return { mergedIndices: merged, primaryIndexByLabel: primary };
+  }, [kleKeys]);
+
+  const keyTitles = useMemo(() => {
+    const titles: Record<number, string> = {};
+    for (const idx of mergedIndices) titles[idx] = "与左侧同名键合并计数";
+    return titles;
+  }, [mergedIndices]);
+
+  const handleKeyClick = (index: number, key: KLEKey) => {
+    if (mergedIndices.has(index)) return;
+    actions.setSelectedKey(selectedKey === key.label ? null : key.label);
+  };
+
+  const selectedIndex = useMemo(
+    () => (selectedKey === null ? null : primaryIndexByLabel.get(selectedKey) ?? null),
+    [selectedKey, primaryIndexByLabel]
+  );
+
+  const selectedRdevCode = selectedKey !== null ? getLabelRdevCode(selectedKey) ?? null : null;
+  const selectedTotalCount = selectedKey !== null ? kleKeyCounts[selectedKey] ?? 0 : 0;
+  const selectedMerged =
+    selectedRdevCode !== null && (MERGED_KEY_GROUPS[selectedRdevCode]?.length ?? 0) > 1;
 
   const isToday = viewKind === "day" && viewAnchor === formatAnchor(new Date());
   const topPanelTitle =
@@ -187,15 +237,19 @@ export default function Keyboard() {
           </div>
         ) : (
           <>
-            <KeyboardPanel
-              kleKeys={kleKeys}
-              kleKeyCounts={kleKeyCounts}
-              allKeyCounts={allKeyCounts}
-              maxX={layout.maxX}
-              maxY={layout.maxY}
-            />
+            <KeySelectionProvider
+              value={{ onKeyClick: handleKeyClick, selectedIndex, mergedIndices, keyTitles }}
+            >
+              <KeyboardPanel
+                kleKeys={kleKeys}
+                kleKeyCounts={kleKeyCounts}
+                allKeyCounts={allKeyCounts}
+                maxX={layout.maxX}
+                maxY={layout.maxY}
+              />
+            </KeySelectionProvider>
 
-            {/* 下方分栏：鼠标 + Top 按键 */}
+            {/* 下方分栏：鼠标 + Top 按键 + 单键详情 */}
             <div className="kb-lower-section">
               <MousePanel buckets={filteredBuckets} />
 
@@ -203,6 +257,15 @@ export default function Keyboard() {
                 kleKeyCounts={kleKeyCounts}
                 allKeyCounts={allKeyCounts}
                 title={topPanelTitle}
+              />
+
+              <KeyDetailPanel
+                label={selectedKey}
+                rdevCode={selectedRdevCode}
+                totalCount={selectedTotalCount}
+                merged={selectedMerged}
+                range={range}
+                appId={appId}
               />
             </div>
           </>

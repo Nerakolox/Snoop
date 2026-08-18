@@ -23,6 +23,7 @@ import {
   type FittedLabel,
 } from "../layouts/labels";
 import KeyCountTooltip, { type KeyCountAnchor } from "./keyboard/KeyCountTooltip";
+import { useKeySelection } from "./keyboard/KeySelectionContext";
 
 type KLEKeyboardProps = {
   keys: KLEKey[];
@@ -53,6 +54,9 @@ export default function KLEKeyboard({
   pressedIndices,
   viewportRef,
 }: KLEKeyboardProps) {
+  // 单键下钻的交互状态经 Context 传入，见 KeySelectionContext.tsx 顶部注释
+  const { onKeyClick, selectedIndex, mergedIndices, keyTitles } = useKeySelection();
+
   const layoutWidth = maxX * KEY_UNIT;
   const layoutHeight = maxY * KEY_UNIT;
   // 击键数 tooltip：hover 键时记录标签/次数 + 光标坐标，Portal 挂 body（脱离缩放层）
@@ -126,6 +130,9 @@ export default function KLEKeyboard({
             }
             const readableLabel = hasDualLabel ? sub! : main;
 
+            const isMerged = !key.decal && (mergedIndices?.has(index) ?? false);
+            const clickable = !key.decal && !!onKeyClick && !isMerged;
+
             const keyStyle: CSSProperties = {
               position: "absolute",
               left: `${left}px`,
@@ -140,7 +147,7 @@ export default function KLEKeyboard({
               justifyContent: hasDualLabel ? "flex-start" : "center",
               fontWeight: 600,
               letterSpacing: "0.01em",
-              cursor: "default",
+              cursor: clickable ? "pointer" : "default",
               padding: hasDualLabel ? "4px 6px" : "0",
               backfaceVisibility: "hidden",
               transition:
@@ -154,9 +161,11 @@ export default function KLEKeyboard({
             return (
               <div
                 key={`${key.row}-${key.col}-${index}`}
-                className={`kle-key${key.decal ? " kle-key--decal" : ""}`}
+                className={`kle-key${key.decal ? " kle-key--decal" : ""}${selectedIndex === index ? " kle-key--selected" : ""}`}
                 style={keyStyle}
                 aria-label={key.decal ? readableLabel : `${readableLabel}, ${count} 次`}
+                title={keyTitles?.[index]}
+                onClick={clickable ? () => onKeyClick!(index, key) : undefined}
                 onMouseEnter={hoverable ? setTip : undefined}
                 onMouseMove={hoverable ? setTip : undefined}
                 onMouseLeave={hoverable ? () => setHovered(null) : undefined}
