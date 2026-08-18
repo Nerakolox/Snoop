@@ -6,7 +6,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   computeIntensity,
-  eyeStateOf,
   moodLabelOf,
   pickCatQuip,
   RECENT_ACTIVITY_WINDOW_MS,
@@ -14,7 +13,6 @@ import {
 } from "../../analytics";
 import { formatAnchor } from "../../data/ranges";
 import { useRangeData } from "../../data/useRangeData";
-import CatMascot from "./CatMascot";
 
 export default function SidebarLive() {
   const today = formatAnchor(new Date());
@@ -50,7 +48,6 @@ export default function SidebarLive() {
   return (
     <div className="sidebar-live">
       <div className="sidebar-live-top">
-        <CatMascot eyeState={eyeStateOf(status.intensity)} className="sidebar-live-mascot" />
         <div className="sidebar-live-status">
           <span className={`sidebar-live-dot sidebar-live-dot--${status.intensity}`} aria-hidden />
           <span className="sidebar-live-label">{moodLabelOf(status.intensity)}</span>

@@ -374,11 +374,6 @@ body[data-platform="macos"] .sidebar-nav {
   gap: var(--space-2);
 }
 
-.sidebar-live-mascot {
-  color: var(--color-accent);
-  flex-shrink: 0;
-}
-
 .sidebar-live-status {
   display: flex;
   align-items: center;

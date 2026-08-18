@@ -20,13 +20,6 @@ export function moodLabelOf(intensity: Intensity): string {
   return "挂机中";
 }
 
-/** 猫头三态眼睛——2 与 3/4 共用"睁"，靠呼吸圆点/标签文字区分档位。 */
-export function eyeStateOf(intensity: Intensity): "open" | "squint" | "closed" {
-  if (intensity >= 2) return "open";
-  if (intensity === 1) return "squint";
-  return "closed";
-}
-
 /** 猫吐槽文案库 —— 按强度 + App 类型匹配。
  * 结构：intensity → appPattern → quips[]，随机抽一句。
  * appPattern 用简单的关键词匹配（toLowerCase + includes）。 */
