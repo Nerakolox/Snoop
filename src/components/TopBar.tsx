@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Copy, Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
@@ -47,6 +47,23 @@ export default function TopBar() {
   const [rank, setRank] = useState<RawAppRank[]>([]);
   const [rankLoading, setRankLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuScrollRef = useRef<HTMLDivElement>(null);
+  const [menuThumb, setMenuThumb] = useState<{ top: number; height: number } | null>(null);
+
+  const updateMenuThumb = useCallback(() => {
+    const el = menuScrollRef.current;
+    if (!el) return;
+    const { scrollTop, scrollHeight, clientHeight } = el;
+    if (scrollHeight <= clientHeight) {
+      setMenuThumb(null);
+      return;
+    }
+    const inset = 4;
+    const trackHeight = clientHeight - inset * 2;
+    const thumbHeight = Math.max((clientHeight / scrollHeight) * trackHeight, 24);
+    const top = inset + (scrollTop / (scrollHeight - clientHeight)) * (trackHeight - thumbHeight);
+    setMenuThumb({ top, height: thumbHeight });
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -101,6 +118,11 @@ export default function TopBar() {
   const filteredRank = rank.filter(
     (r) => r.app_bundle_id && r.app_bundle_id !== "unknown"
   );
+
+  useLayoutEffect(() => {
+    if (!menuOpen) return;
+    updateMenuThumb();
+  }, [menuOpen, rankLoading, filteredRank.length, updateMenuThumb]);
 
   return (
     <div className="topbar" data-tauri-drag-region>
@@ -200,31 +222,44 @@ export default function TopBar() {
         </button>
 
         {menuOpen && (
-          <div className="topbar__app-menu scroll-area" data-tauri-drag-region="false">
-            <button
-              type="button"
-              className={`topbar__app-menu-item ${!selectedApp ? "is-active" : ""}`}
-              onClick={() => pickApp(null)}
+          <div className="topbar__app-menu" data-tauri-drag-region="false">
+            <div
+              className="topbar__app-menu-scroll"
+              ref={menuScrollRef}
+              onScroll={updateMenuThumb}
             >
-              全部应用
-            </button>
-            {rankLoading && <div className="topbar__app-menu-empty">加载中…</div>}
-            {!rankLoading && filteredRank.length === 0 && (
-              <div className="topbar__app-menu-empty">该范围内暂无数据</div>
+              <button
+                type="button"
+                className={`topbar__app-menu-item ${!selectedApp ? "is-active" : ""}`}
+                onClick={() => pickApp(null)}
+              >
+                全部应用
+              </button>
+              {rankLoading && <div className="topbar__app-menu-empty">加载中…</div>}
+              {!rankLoading && filteredRank.length === 0 && (
+                <div className="topbar__app-menu-empty">该范围内暂无数据</div>
+              )}
+              {!rankLoading &&
+                filteredRank.map((r) => (
+                  <button
+                    type="button"
+                    key={r.app_bundle_id}
+                    className={`topbar__app-menu-item ${selectedApp?.bundleId === r.app_bundle_id ? "is-active" : ""}`}
+                    onClick={() => pickApp(r)}
+                  >
+                    <AppIcon bundleId={r.app_bundle_id} appName={r.app_name} size={16} />
+                    <span className="topbar__app-menu-name">{r.app_name || r.app_bundle_id}</span>
+                    <span className="topbar__app-menu-time">{formatDuration(r.total_sec * 1000)}</span>
+                  </button>
+                ))}
+            </div>
+            {menuThumb && (
+              <div
+                className="topbar__app-menu-thumb"
+                style={{ top: menuThumb.top, height: menuThumb.height }}
+                aria-hidden
+              />
             )}
-            {!rankLoading &&
-              filteredRank.map((r) => (
-                <button
-                  type="button"
-                  key={r.app_bundle_id}
-                  className={`topbar__app-menu-item ${selectedApp?.bundleId === r.app_bundle_id ? "is-active" : ""}`}
-                  onClick={() => pickApp(r)}
-                >
-                  <AppIcon bundleId={r.app_bundle_id} appName={r.app_name} size={16} />
-                  <span className="topbar__app-menu-name">{r.app_name || r.app_bundle_id}</span>
-                  <span className="topbar__app-menu-time">{formatDuration(r.total_sec * 1000)}</span>
-                </button>
-              ))}
           </div>
         )}
       </div>
