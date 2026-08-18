@@ -73,8 +73,6 @@
   border: none;
   background: transparent;
   color: var(--color-text-2);
-  font-size: var(--text-lg);
-  line-height: 1;
   width: 24px;
   height: 24px;
   border-radius: var(--radius-sm);

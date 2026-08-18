@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronDown, Copy, Minus, Square, X } from "lucide-react";
+import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Copy, Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   useContextState,
@@ -134,7 +134,7 @@ export default function TopBar() {
         aria-label="上一个"
         title="上一个"
       >
-        ‹
+        <ChevronLeft size={16} strokeWidth={2} />
       </button>
       <span className="topbar__anchor-label">{anchorLabel(kind, anchor, now)}</span>
       <button
@@ -146,7 +146,7 @@ export default function TopBar() {
         aria-label="下一个"
         title={atCurrentAnchor ? "没有未来的数据" : "下一个"}
       >
-        ›
+        <ChevronRight size={16} strokeWidth={2} />
       </button>
       <button
         type="button"
