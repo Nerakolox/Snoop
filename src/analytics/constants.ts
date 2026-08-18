@@ -2,6 +2,8 @@
  * 分析层常量配置 —— 集中放置所有可调参数。
  */
 
+import type { Intensity } from "./types";
+
 /** 鼠标移动像素 → 物理距离（米）的换算系数。
  * 假设典型显示器 DPI ~96，1 像素约等于 0.26mm。
  * 这个值可根据实际显示器调整；1000 像素 ≈ 0.26 米。 */
@@ -10,14 +12,20 @@ export const MOUSE_PIXELS_PER_METER = 3846; // ~1 米 = 3846 像素
 /** "此刻状态"判断的时间窗口（ms）—— 取最近这段时间的桶算当前强度。 */
 export const RECENT_ACTIVITY_WINDOW_MS = 2 * 60_000; // 2 分钟
 
-/** 强度等级 → 状态标签映射 */
-export const MOOD_LABELS: Record<0 | 1 | 2 | 3 | 4, string> = {
-  0: "挂机中",
-  1: "摸鱼中",
-  2: "正常节奏",
-  3: "认真工作",
-  4: "爆肝模式",
-};
+/** 侧栏实时区的四态标签——五档强度折叠成四态，3/4 合并为"爆肝中"。 */
+export function moodLabelOf(intensity: Intensity): string {
+  if (intensity >= 3) return "爆肝中";
+  if (intensity === 2) return "正常节奏";
+  if (intensity === 1) return "摸鱼中";
+  return "挂机中";
+}
+
+/** 猫头三态眼睛——2 与 3/4 共用"睁"，靠呼吸圆点/标签文字区分档位。 */
+export function eyeStateOf(intensity: Intensity): "open" | "squint" | "closed" {
+  if (intensity >= 2) return "open";
+  if (intensity === 1) return "squint";
+  return "closed";
+}
 
 /** 猫吐槽文案库 —— 按强度 + App 类型匹配。
  * 结构：intensity → appPattern → quips[]，随机抽一句。

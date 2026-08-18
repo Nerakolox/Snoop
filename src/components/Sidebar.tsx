@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BarChart3, Clock, Keyboard, Lightbulb, Settings, Database, TestTube } from "lucide-react";
+import SidebarLive from "./sidebar/SidebarLive";
 
 export type NavKey = "overview" | "timeline" | "input" | "patterns" | "settings" | "dev" | "keymap-test";
 
@@ -63,6 +64,7 @@ export default function Sidebar({ active, onSelect }: Props) {
       )}
 
       <div className="sidebar-bottom" data-tauri-drag-region>
+        <SidebarLive />
         {renderItem(SETTINGS_ITEM)}
       </div>
     </aside>

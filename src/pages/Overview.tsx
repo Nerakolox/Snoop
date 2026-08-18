@@ -3,19 +3,15 @@
  * 定位：消费全局 (kind, anchor, appId)，是当前范围的快照 + 猫的实时陪伴。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import {
   aggregateByApp,
-  computeIntensity,
   daysWithDataOf,
   intensityByHourFromBuckets,
   intensityVar,
   statsByDayFromBuckets,
   type Intensity,
-  MOOD_LABELS,
   MOUSE_PIXELS_PER_METER,
-  RECENT_ACTIVITY_WINDOW_MS,
-  pickCatQuip,
   unionDurationMs,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
@@ -35,14 +31,6 @@ import {
   type RangeKind,
 } from "../store/context";
 import { anchorLabel } from "../utils/format";
-
-type NowStatus = {
-  appName: string;
-  appBundleId: string;
-  moodLabel: string;
-  moodIntensity: Intensity;
-  catQuip: string;
-};
 
 type KpiPart = { kind: "num" | "unit"; text: string };
 type Kpi = {
@@ -205,55 +193,6 @@ export default function Overview() {
     const timer = setInterval(() => refetch(), 30_000);
     return () => clearInterval(timer);
   }, [isLive, refetch]);
-
-  const [now, setNow] = useState<NowStatus>({
-    appName: "—",
-    appBundleId: "",
-    moodLabel: "静默中",
-    moodIntensity: 0,
-    catQuip: "还没有数据喵～",
-  });
-
-  useEffect(() => {
-    if (!isLive) return;
-    const nowTs = Date.now();
-    const recentBuckets = buckets.filter(
-      (b) => nowTs - b.bucket_start < RECENT_ACTIVITY_WINDOW_MS
-    );
-    if (recentBuckets.length > 0) {
-      const appDurations = new Map<string, { duration: number; name: string; bundleId: string }>();
-      for (const b of recentBuckets) {
-        const key = b.app_bundle_id;
-        const existing = appDurations.get(key);
-        if (existing) {
-          existing.duration += b.duration_ms || 0;
-        } else {
-          appDurations.set(key, {
-            duration: b.duration_ms || 0,
-            name: b.app_name || b.app_bundle_id,
-            bundleId: b.app_bundle_id,
-          });
-        }
-      }
-      const dominant = [...appDurations.values()].sort((a, b) => b.duration - a.duration)[0];
-      const recentIntensity = computeIntensity(recentBuckets);
-      setNow({
-        appName: dominant.name || "未知应用",
-        appBundleId: dominant.bundleId || "",
-        moodLabel: MOOD_LABELS[recentIntensity],
-        moodIntensity: recentIntensity,
-        catQuip: pickCatQuip(recentIntensity, dominant.name || ""),
-      });
-    } else {
-      setNow({
-        appName: "—",
-        appBundleId: "",
-        moodLabel: "挂机中",
-        moodIntensity: 0,
-        catQuip: "人呢？挂机了喵？",
-      });
-    }
-  }, [isLive, buckets]);
 
   const activeDuration = unionDurationMs(buckets);
   let totalKeys = 0;
@@ -420,34 +359,7 @@ export default function Overview() {
         />
       }
     >
-      {/* ① 此刻状态 —— 猫的舞台，仅当查看的是"今天"时才出现，历史范围不该有实时状态 */}
-      {isLive && (
-        <section className="now-card">
-          <div className="now-mascot" aria-hidden>
-            {now.appBundleId ? (
-              <AppIcon bundleId={now.appBundleId} appName={now.appName} size={64} />
-            ) : (
-              <span className="now-mascot-placeholder">猫</span>
-            )}
-          </div>
-          <div className="now-info">
-            <div className="now-label">此刻</div>
-            <div className="now-app" title={now.appName}>{now.appName}</div>
-            <div
-              className="now-mood"
-              style={{
-                background: intensityVar(now.moodIntensity),
-                color: now.moodIntensity >= 3 ? "#fff" : "var(--color-text)",
-              }}
-            >
-              {now.moodLabel}
-            </div>
-            <p className="now-quip">{now.catQuip}</p>
-          </div>
-        </section>
-      )}
-
-      {/* ② 核心数字 */}
+      {/* ① 核心数字 */}
       <section className="kpi-row">
         {kpis.map((k) => (
           <button
