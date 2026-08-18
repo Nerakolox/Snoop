@@ -54,6 +54,22 @@
   color: var(--color-text-3);
 }
 
+/* ②' 周期总结卡（Batch 5 C4 新增，从规律页的猫周报迁入，最朴素排版） -------- */
+
+.overview-summary {
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-accent-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.overview-summary-text {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-text);
+}
+
 /* ① 此刻状态 —— 猫的舞台 ------------------------------------------------- */
 
 .now-card {

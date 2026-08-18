@@ -111,6 +111,14 @@ function noDataReason(appId: string | null, appName: string | undefined): string
   return appId ? `${appName ?? appId} 在该范围内没有记录` : "该范围没有采集到数据";
 }
 
+/** 周期总结卡的判语，按日均活跃小时数分四档（阈值 9 / 6 / 3，工单写死）。 */
+function judgeLabel(avgHours: number): string {
+  if (avgHours >= 9) return "妥妥的爆肝档，悠着点喵";
+  if (avgHours >= 6) return "认真档，稳扎稳打喵";
+  if (avgHours >= 3) return "正常档，张弛有度喵";
+  return "摸鱼档，劳逸结合也不错喵";
+}
+
 const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
 /** JS getDay(): 周日=0..周六=6 → 周一为第一列的索引 0..6，与 analytics/aggregate.ts 的 mondayIndex 同一约定 */
@@ -323,6 +331,41 @@ export default function Overview() {
   // App 排行不受筛选影响（展示全量），空态单独按 apps.length 判断。
   const isEmpty = !loading && buckets.length === 0;
 
+  // 周期总结卡：纯展示，不可点、不弹 toast，X/Y/Z/W 复用上面已算好的数字，不重算。
+  const avgActiveHours = daysWithData > 0 ? activeDuration / daysWithData / (60 * 60 * 1000) : 0;
+  const summaryText = useMemo(() => {
+    const introParts = [anchorLabel(viewKind, viewAnchor, nowLabel)];
+    if (viewKind !== "day") introParts.push(`共 ${daysWithData} 天有数据`);
+    if (appId !== null) introParts.unshift(`已筛选 ${appName ?? appId}`);
+
+    const topApp = apps[0];
+    const homeSentence =
+      appId === null && topApp
+        ? `住得最久的是 ${topApp.name}（${formatDurationPlain(topApp.minutes * 60_000)}）。`
+        : "";
+
+    return (
+      `${introParts.join("，")}，你活跃了 ${formatDurationPlain(activeDuration)}，` +
+      `敲下 ${formatNumber(totalKeys)} 次按键、点出 ${formatNumber(totalClicks)} 次点击，` +
+      `鼠标跑了 ${formatMouseDistance(totalMouseDist).map((p) => p.text).join("")}。` +
+      homeSentence +
+      judgeLabel(avgActiveHours)
+    );
+  }, [
+    viewKind,
+    viewAnchor,
+    nowLabel,
+    daysWithData,
+    appId,
+    appName,
+    apps,
+    activeDuration,
+    totalKeys,
+    totalClicks,
+    totalMouseDist,
+    avgActiveHours,
+  ]);
+
   const isCurrentAnchor = viewAnchor === normalizeAnchor(viewKind, formatAnchor(nowLabel));
   const rhythmTitle = isCurrentAnchor
     ? viewKind === "day"
@@ -427,6 +470,13 @@ export default function Overview() {
         ))}
       </section>
       {isEmpty && <p className="overview-empty-note">{noDataReason(appId, appName)}</p>}
+
+      {/* ②' 周期总结卡 —— 纯展示，不可点、不弹 toast，没有单一的下钻目标 */}
+      {!isEmpty && (
+        <section className="overview-summary">
+          <p className="overview-summary-text">{summaryText}</p>
+        </section>
+      )}
 
       {/* ③ App 时长排行 */}
       <section className="panel">

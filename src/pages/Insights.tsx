@@ -1,24 +1,21 @@
 /**
  * 规律 —— 跨天使用回顾（原「洞察」）
- * 以周/月为粒度：猫的报告吐槽 + 顶部两张卡（活跃对比 · 键鼠比）+
- * 活跃趋势柱状图 + App 排行（带环比）+ 星期 x 24 小时作息热力网格。
+ * 以周/月为粒度：顶部两张卡（活跃对比 · 键鼠比）+ 活跃趋势柱状图 +
+ * App 排行（带环比）+ 星期 x 24 小时作息热力网格 + 猫发现的规律。
  */
 
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
-import { Sparkles } from "lucide-react";
 import DeltaBadge from "../components/DeltaBadge";
 import {
   fetchBucketsInRange,
   fetchHourlyActivity,
   fetchHourlyHeartbeats,
-  DAY_MS,
 } from "../data";
 import {
   aggregateByApp,
   aggregateDowHourGrid,
   bucketSimple,
-  computeDelta,
   daysWithDataOf,
   intensityVar,
   ratioToSliderPos,
@@ -57,43 +54,6 @@ type WeekApp = {
 const DAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
 // ---- 工具 -------------------------------------------------------------------
-
-/** 根据选中范围的真实数据生成猫报告文案 */
-function generateCatReport(
-  weekTotalHours: number,
-  topApp: { name: string; hours: number } | null,
-  busiestDay: { name: string; hours: number; app: string } | null,
-  weekChange: number | null,
-  isCurrentWeek: boolean
-): string {
-  const parts: string[] = [];
-  const weekPrefix = isCurrentWeek ? "这周" : "那周";
-
-  parts.push(`${weekPrefix}你一共活跃了 ${fmtHours(weekTotalHours)} 小时`);
-
-  if (topApp && topApp.hours > 0) {
-    parts.push(`，其中 ${topApp.name} 占了 ${fmtHours(topApp.hours)} 小时`);
-    if (weekChange !== null) {
-      if (weekChange > 15) {
-        parts.push(`——比前一周还多，我们真的需要谈谈`);
-      } else if (weekChange < -15) {
-        parts.push(`，比前一周少多了喵～`);
-      }
-    }
-  }
-
-  parts.push(`。`);
-
-  if (busiestDay && busiestDay.hours >= 6) {
-    parts.push(
-      `不过${busiestDay.name}那天你在 ${busiestDay.app} 上爆肝了 ${fmtHours(busiestDay.hours)} 小时，算你厉害。`
-    );
-  } else if (weekTotalHours < 10) {
-    parts.push(`${isCurrentWeek ? "这周" : "那周"}摸鱼有点狠喵～`);
-  }
-
-  return parts.join("");
-}
 
 /** JS getDay(): 周日=0..周六=6 → 周一为第一列的索引 0..6，与 analytics/aggregate.ts 的 mondayIndex 同一约定 */
 function mondayIndex(dayMs: number): number {
@@ -170,7 +130,7 @@ export default function Insights() {
 
   // 全量（未按 app 过滤）——App 排行要看全站数据
   const { buckets: allBuckets } = useRangeData(viewKind, viewAnchor, null);
-  // 按当前筛选过滤——顶部两张卡、趋势图、猫报告的数字用它
+  // 按当前筛选过滤——顶部两张卡、趋势图的数字用它
   const buckets = useMemo(
     () => (appId === null ? allBuckets : allBuckets.filter((b) => b.app_bundle_id === appId)),
     [allBuckets, appId]
@@ -436,46 +396,6 @@ export default function Insights() {
     });
   }
 
-  // ---- 猫的报告（临时挂账，C4 整块删除） ------------------------------------
-
-  const weekTotalHours = activeDurationMs / (60 * 60 * 1000);
-  const weekDailyAvg = daysWithData > 0 ? weekTotalHours / daysWithData : 0;
-  const topApp = apps[0] ?? null;
-
-  const busiestDay = useMemo(() => {
-    if (dailyStats.length === 0) return null;
-    const maxDayStat = dailyStats.reduce((max, d) => (d.activeMs > max.activeMs ? d : max));
-    if (maxDayStat.activeMs <= 0) return null;
-    const maxDayStart = maxDayStat.dayMs;
-    const maxDayEnd = maxDayStart + DAY_MS;
-    const maxDayBuckets = buckets.filter(
-      (b) => b.bucket_start >= maxDayStart && b.bucket_start < maxDayEnd
-    );
-    const maxDayApps = aggregateByApp(maxDayBuckets);
-    if (maxDayApps.length === 0) return null;
-    const topAppOnDay = maxDayApps[0];
-    return {
-      name: `周${DAY_LABELS[mondayIndex(maxDayStat.dayMs)]}`,
-      hours: topAppOnDay.duration_ms / (60 * 60 * 1000),
-      app: topAppOnDay.app_name || topAppOnDay.app_bundle_id,
-    };
-  }, [dailyStats, buckets]);
-
-  // 环比口径与 DeltaBadge 共用 computeDelta，不再自己算百分比（挂账 #1 的正解）
-  const topAppDeltaPct = useMemo(() => {
-    if (!topApp) return null;
-    const verdict = computeDelta(topApp.currentMin, topApp.previousMin, baseThreshold);
-    if (verdict.kind === "up") return verdict.pct;
-    if (verdict.kind === "down") return -verdict.pct;
-    if (verdict.kind === "flat") return 0;
-    return null; // "na" | "new"：基数不够，不给百分比
-  }, [topApp, baseThreshold]);
-
-  const catReport = useMemo(
-    () => generateCatReport(weekTotalHours, topApp, busiestDay, topAppDeltaPct, isCurrentAnchor),
-    [weekTotalHours, topApp, busiestDay, topAppDeltaPct, isCurrentAnchor]
-  );
-
   return (
     <PageShell
       className="ins-page"
@@ -490,29 +410,6 @@ export default function Insights() {
         />
       }
     >
-      {/* ① 猫的报告 —— 顶部通栏（临时挂账，C4 删除并迁往概览的周期总结卡） */}
-      <section className="ins-report">
-        <div className="ins-report-avatar" aria-hidden>
-          <Sparkles size={20} />
-        </div>
-        <div className="ins-report-body">
-          <div className="ins-report-title">猫的报告</div>
-          <p className="ins-report-text">
-            {catReport || "还没有足够的数据生成报告喵～"}
-          </p>
-          <div className="ins-report-chips">
-            <span className="ins-chip">
-              <span className="ins-chip-num">{fmtHours(weekTotalHours)}</span>
-              <span className="ins-chip-unit">小时 · {isCurrentAnchor ? "本" : "该"}{viewKind === "week" ? "周" : "月"}活跃</span>
-            </span>
-            <span className="ins-chip">
-              <span className="ins-chip-num">{fmtHours(weekDailyAvg)}</span>
-              <span className="ins-chip-unit">小时 · 日均</span>
-            </span>
-          </div>
-        </div>
-      </section>
-
       {/* ⓪ 顶部两张卡：活跃对比 · 键鼠比 */}
       <section className="ins-top-cards">
         <div className="panel ins-card">
