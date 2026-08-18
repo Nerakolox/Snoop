@@ -176,12 +176,13 @@ pub fn get_buckets_in_range(
 }
 
 /// 范围内 key_details 的 SUM(count) by key_code，直接返回聚合结果。
-/// 前端不用再自己 join 桶了。
+/// 前端不用再自己 join 桶了。`app_bundle_id` 为 None 时不过滤（全部应用）。
 #[tauri::command]
 pub fn get_key_details_in_range(
     state: State<'_, DbPath>,
     start_ms: i64,
     end_ms: i64,
+    app_bundle_id: Option<String>,
 ) -> Result<Vec<KeyDetail>, String> {
     let conn = open(&state)?;
     let mut stmt = conn
@@ -190,16 +191,111 @@ pub fn get_key_details_in_range(
              FROM key_details kd
              JOIN activity_buckets ab ON ab.id = kd.bucket_id
              WHERE ab.bucket_start >= ?1 AND ab.bucket_start < ?2
+               AND (?3 IS NULL OR ab.app_bundle_id = ?3)
              GROUP BY kd.key_code
              ORDER BY c DESC",
         )
         .map_err(|e| e.to_string())?;
 
     let rows = stmt
-        .query_map([start_ms, end_ms], |row| {
+        .query_map(rusqlite::params![start_ms, end_ms, app_bundle_id], |row| {
             Ok(KeyDetail {
                 key_code: row.get(0)?,
                 count: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// 单个按键在范围内、按本地整点聚合的次数。用于单键时段分布。
+/// hour_start 的时区处理照抄 `get_hourly_activity` 的四步做法。
+#[derive(Serialize)]
+pub struct KeyHourBucket {
+    pub hour_start: i64,
+    pub count: i64,
+}
+
+#[tauri::command]
+pub fn get_key_hourly_distribution(
+    state: State<'_, DbPath>,
+    key_code: String,
+    start_ms: i64,
+    end_ms: i64,
+    app_bundle_id: Option<String>,
+) -> Result<Vec<KeyHourBucket>, String> {
+    let conn = open(&state)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT
+                CAST(strftime('%s',
+                    strftime('%Y-%m-%d %H:00:00',
+                        datetime(ab.bucket_start/1000, 'unixepoch', 'localtime')),
+                    'utc') AS INTEGER) * 1000 AS hour_start,
+                SUM(kd.count) AS c
+             FROM key_details kd
+             JOIN activity_buckets ab ON ab.id = kd.bucket_id
+             WHERE kd.key_code = ?1
+               AND ab.bucket_start >= ?2 AND ab.bucket_start < ?3
+               AND (?4 IS NULL OR ab.app_bundle_id = ?4)
+             GROUP BY hour_start
+             ORDER BY hour_start ASC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(
+            rusqlite::params![key_code, start_ms, end_ms, app_bundle_id],
+            |row| {
+                Ok(KeyHourBucket {
+                    hour_start: row.get(0)?,
+                    count: row.get(1)?,
+                })
+            },
+        )
+        .map_err(|e| e.to_string())?;
+
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// 单个按键在范围内按 App 聚合的次数，按次数降序。用于单键跨应用 Top N。
+/// 不接 app 过滤（它本身就是按 app 分组）。
+#[derive(Serialize)]
+pub struct KeyAppCount {
+    pub app_bundle_id: String,
+    pub app_name: String,
+    pub count: i64,
+}
+
+#[tauri::command]
+pub fn get_key_app_distribution(
+    state: State<'_, DbPath>,
+    key_code: String,
+    start_ms: i64,
+    end_ms: i64,
+) -> Result<Vec<KeyAppCount>, String> {
+    let conn = open(&state)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT ab.app_bundle_id,
+                    MAX(ab.app_name) AS app_name,
+                    SUM(kd.count) AS c
+             FROM key_details kd
+             JOIN activity_buckets ab ON ab.id = kd.bucket_id
+             WHERE kd.key_code = ?1
+               AND ab.bucket_start >= ?2 AND ab.bucket_start < ?3
+             GROUP BY ab.app_bundle_id
+             ORDER BY c DESC",
+        )
+        .map_err(|e| e.to_string())?;
+
+    let rows = stmt
+        .query_map(rusqlite::params![key_code, start_ms, end_ms], |row| {
+            Ok(KeyAppCount {
+                app_bundle_id: row.get(0)?,
+                app_name: row.get(1)?,
+                count: row.get(2)?,
             })
         })
         .map_err(|e| e.to_string())?;

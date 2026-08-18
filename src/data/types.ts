@@ -54,6 +54,19 @@ export type RawHourBucket = {
   duration_ms: number;
 };
 
+/** 单个按键按本地整点聚合的次数。用于单键时段分布。 */
+export type RawKeyHourBucket = {
+  hour_start: number;
+  count: number;
+};
+
+/** 单个按键按 App 聚合的次数，后端已按次数降序。 */
+export type RawKeyAppCount = {
+  app_bundle_id: string;
+  app_name: string;
+  count: number;
+};
+
 /** 一个闭右开的时间窗 [start_ms, end_ms)。 */
 export type TimeRange = {
   start_ms: number;

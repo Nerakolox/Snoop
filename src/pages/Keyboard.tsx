@@ -9,7 +9,6 @@ import { ChevronLeft, ChevronRight, Calendar, RefreshCw } from "lucide-react";
 import {
   fetchBucketsInRange,
   fetchKeyDetailsInRange,
-  fetchKeyDetailsOfBucket,
   dayRangeOf,
   DAY_MS,
   type RawBucket,
@@ -184,36 +183,12 @@ export default function Keyboard() {
   // 加载筛选后的数据（基于 App 筛选）
   async function loadFilteredData(targetApp: AppFilter, buckets: RawBucket[]) {
     try {
-      if (targetApp === "all") {
-        // 全部 App：用汇总 API
-        const range = getTimeRange(selectedDate, timeFilter);
-        const allKeys = await fetchKeyDetailsInRange(range);
-        setFilteredData({ buckets, keyDetails: allKeys });
-      } else {
-        // 特定 App：筛选该 App 的桶，并逐桶查询 key_details 聚合
-        const appBuckets = buckets.filter((b) => b.app_bundle_id === targetApp);
-
-        // 逐桶查询并聚合 key_details
-        const keyMap = new Map<string, number>();
-        for (const bucket of appBuckets) {
-          if (!(bucket as any).id) continue; // 跳过没有 id 的桶
-          try {
-            const details = await fetchKeyDetailsOfBucket((bucket as any).id);
-            for (const d of details) {
-              keyMap.set(d.key_code, (keyMap.get(d.key_code) ?? 0) + d.count);
-            }
-          } catch (e) {
-            console.warn(`Failed to fetch key details for bucket ${(bucket as any).id}:`, e);
-          }
-        }
-
-        const aggregatedKeys: RawKeyDetail[] = [...keyMap.entries()].map(([key_code, count]) => ({
-          key_code,
-          count,
-        }));
-
-        setFilteredData({ buckets: appBuckets, keyDetails: aggregatedKeys });
-      }
+      const range = getTimeRange(selectedDate, timeFilter);
+      const appBundleId = targetApp === "all" ? undefined : targetApp;
+      const keyDetails = await fetchKeyDetailsInRange(range, appBundleId);
+      const appBuckets =
+        targetApp === "all" ? buckets : buckets.filter((b) => b.app_bundle_id === targetApp);
+      setFilteredData({ buckets: appBuckets, keyDetails });
     } catch (e) {
       console.error("loadFilteredData failed:", e);
     }

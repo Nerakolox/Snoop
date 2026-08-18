@@ -12,7 +12,9 @@ import type {
   RawAppRank,
   RawBucket,
   RawHourBucket,
+  RawKeyAppCount,
   RawKeyDetail,
+  RawKeyHourBucket,
   TimeRange,
 } from "./types";
 
@@ -43,8 +45,38 @@ export function fetchBucketsInRange(range: TimeRange): Promise<RawBucket[]> {
   });
 }
 
-export function fetchKeyDetailsInRange(range: TimeRange): Promise<RawKeyDetail[]> {
+export function fetchKeyDetailsInRange(
+  range: TimeRange,
+  appBundleId?: string
+): Promise<RawKeyDetail[]> {
   return invoke<RawKeyDetail[]>("get_key_details_in_range", {
+    startMs: range.start_ms,
+    endMs: range.end_ms,
+    appBundleId: appBundleId ?? null,
+  });
+}
+
+/** 单个按键在范围内按本地整点聚合的次数，用于单键时段分布迷你柱。 */
+export function fetchKeyHourlyDistribution(
+  keyCode: string,
+  range: TimeRange,
+  appBundleId?: string
+): Promise<RawKeyHourBucket[]> {
+  return invoke<RawKeyHourBucket[]>("get_key_hourly_distribution", {
+    keyCode,
+    startMs: range.start_ms,
+    endMs: range.end_ms,
+    appBundleId: appBundleId ?? null,
+  });
+}
+
+/** 单个按键在范围内按 App 聚合的次数（降序），用于单键跨应用 Top N。 */
+export function fetchKeyAppDistribution(
+  keyCode: string,
+  range: TimeRange
+): Promise<RawKeyAppCount[]> {
+  return invoke<RawKeyAppCount[]>("get_key_app_distribution", {
+    keyCode,
     startMs: range.start_ms,
     endMs: range.end_ms,
   });
