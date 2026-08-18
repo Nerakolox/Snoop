@@ -504,3 +504,60 @@
   cursor: pointer;
 }
 
+/* 作息画像标题右侧「不受应用筛选影响」标注（Batch 5 C3） ------------------- */
+
+.ins-rhythm-note {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-3);
+  background: var(--color-surface-2);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+/* 活跃格改为原生 <button>（Batch 5 C3），只对 button 加光标提示，
+   挂机/未采集格仍是不可交互的 <div>，不追加 cursor。 */
+button.ins-rhythm-cell {
+  appearance: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+/* ⑤ 猫发现的规律（Batch 5 C3 新增） ---------------------------------------- */
+
+.ins-rules {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.ins-rule-card {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.ins-rule-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ins-rule-body {
+  margin: 0;
+  font-size: var(--text-xs);
+  line-height: 1.5;
+  color: var(--color-text-2);
+}
+

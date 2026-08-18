@@ -16,7 +16,7 @@ import {
 } from "../data";
 import {
   aggregateByApp,
-  aggregateWeekHourGrid,
+  aggregateDowHourGrid,
   bucketSimple,
   computeDelta,
   daysWithDataOf,
@@ -25,6 +25,7 @@ import {
   ratioVerdict,
   statsByDayFromBuckets,
   unionDurationMs,
+  type DowHourCell,
   type Intensity,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
@@ -103,6 +104,26 @@ function mondayIndex(dayMs: number): number {
 function dateLabelOf(dayMs: number): string {
   const d = new Date(dayMs);
   return `${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+/** 范围内该 dow(0=周一) 的最后一天，不晚于今天；没有则返回 null。 */
+function lastDateOfDow(
+  dowIndex: number,
+  startMs: number,
+  endMs: number,
+  now: Date
+): string | null {
+  const nowDayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const cur = new Date(endMs);
+  cur.setHours(0, 0, 0, 0);
+  cur.setDate(cur.getDate() - 1); // endMs 是闭右开，范围内最后一天是 endMs 前一天
+  while (cur.getTime() >= startMs) {
+    if (mondayIndex(cur.getTime()) === dowIndex && cur.getTime() <= nowDayMs) {
+      return formatAnchor(cur);
+    }
+    cur.setDate(cur.getDate() - 1);
+  }
+  return null;
 }
 
 // ---- 页头 -------------------------------------------------------------------
@@ -191,13 +212,11 @@ export default function Insights() {
     toast.show({ message: `已切换到 ${dateLabelOf(dayMs)}`, undoLabel: "返回" });
   }
 
-  // ---- 作息画像（算法本批未变，C3 换成 aggregateDowHourGrid） --------------
+  // ---- 作息画像：星期 × 24 小时，任意范围通用（月粒度下同一格对应 4~5 天） ---
 
-  const [hourlyGrid, setHourlyGrid] = useState<
-    Array<Array<{ intensity: Intensity; state: "active" | "idle" | "no_data" }>>
-  >(
+  const [hourlyGrid, setHourlyGrid] = useState<DowHourCell[][]>(
     Array.from({ length: 7 }, () =>
-      Array(24).fill({ intensity: 0, state: "no_data" as const })
+      Array(24).fill({ intensity: 0, state: "no_data" as const, sampleDays: 0 })
     )
   );
 
@@ -210,13 +229,20 @@ export default function Insights() {
         for (const hb of heartbeatList) {
           heartbeatMap.set(hb.hour_start, hb.has_heartbeat);
         }
-        setHourlyGrid(aggregateWeekHourGrid(hourly, heartbeatMap, range.start_ms));
+        setHourlyGrid(aggregateDowHourGrid(hourly, heartbeatMap, range.start_ms, range.end_ms));
       })
       .catch((e) => console.error("规律页作息数据获取失败:", e));
     return () => {
       cancelled = true;
     };
   }, [range]);
+
+  function goToRhythmCell(ri: number, ci: number) {
+    const dayAnchor = lastDateOfDow(ri, range.start_ms, range.end_ms, new Date());
+    if (dayAnchor === null) return;
+    actions.navigate({ page: "timeline", kind: "day", anchor: dayAnchor, focusHour: ci });
+    toast.show({ message: "已跳转到时间线", undoLabel: "返回" });
+  }
 
   // ---- 卡 A · 活跃对比 ------------------------------------------------------
 
@@ -304,6 +330,111 @@ export default function Insights() {
       };
     });
   }, [allBuckets, prevAllBuckets]);
+
+  // ---- 猫发现的规律 -----------------------------------------------------------
+
+  /** 统计类规律至少要看这么多天数据，太少容易是噪音 */
+  const CAT_RULE_MIN_DAYS = 3;
+
+  type RhythmPeak = { ri: number; ci: number; intensity: Intensity };
+  const topRhythmCell = useMemo<RhythmPeak | null>(() => {
+    if (daysWithData < CAT_RULE_MIN_DAYS) return null;
+    let best: RhythmPeak | null = null;
+    hourlyGrid.forEach((row, ri) => {
+      row.forEach((cell, ci) => {
+        if (cell.state !== "active" || cell.intensity <= 0) return;
+        if (!best || cell.intensity > best.intensity) {
+          best = { ri, ci, intensity: cell.intensity };
+        }
+      });
+    });
+    return best;
+  }, [hourlyGrid, daysWithData]);
+
+  const topRhythmAnchor = useMemo(() => {
+    if (!topRhythmCell) return null;
+    return lastDateOfDow(topRhythmCell.ri, range.start_ms, range.end_ms, new Date());
+  }, [topRhythmCell, range]);
+
+  const homeAppShare = useMemo(() => {
+    if (apps.length === 0) return null;
+    const totalMs = unionDurationMs(allBuckets);
+    if (totalMs <= 0) return null;
+    const top = apps[0];
+    return { app: top, pct: ((top.hours * 3_600_000) / totalMs) * 100 };
+  }, [apps, allBuckets]);
+
+  const nightOwl = useMemo(() => {
+    if (daysWithData < CAT_RULE_MIN_DAYS) return null;
+    let nightMs = 0;
+    let totalMs = 0;
+    let lastDataMs = 0;
+    for (const b of allBuckets) {
+      const h = new Date(b.bucket_start).getHours();
+      const dur = b.duration_ms || 0;
+      totalMs += dur;
+      if (h >= 22 || h < 2) nightMs += dur;
+      if (b.bucket_start > lastDataMs) lastDataMs = b.bucket_start;
+    }
+    if (totalMs <= 0) return null;
+    return { pct: (nightMs / totalMs) * 100, anchor: formatAnchor(new Date(lastDataMs)) };
+  }, [allBuckets, daysWithData]);
+
+  type CatRule = { key: string; title: string; body: string; onClick: () => void };
+  const catRules: CatRule[] = [];
+
+  if (topRhythmCell && topRhythmAnchor) {
+    catRules.push({
+      key: "peak",
+      title: "你的高产时段",
+      body: `周${DAY_LABELS[topRhythmCell.ri]} ${topRhythmCell.ci}:00 前后强度常年拉满第 ${topRhythmCell.intensity} 档，猫都替你紧张喵。`,
+      onClick: () => {
+        actions.navigate({
+          page: "timeline",
+          kind: "day",
+          anchor: topRhythmAnchor,
+          focusHour: topRhythmCell.ci,
+        });
+        toast.show({ message: "已跳转到时间线", undoLabel: "返回" });
+      },
+    });
+  }
+
+  if (homeAppShare) {
+    catRules.push({
+      key: "home",
+      title: "你几乎住在这里",
+      body: `${homeAppShare.app.name} 占了 ${homeAppShare.pct.toFixed(0)}% 的活跃时长，是当之无愧的第二个家喵。`,
+      onClick: () => {
+        actions.navigate({ page: "overview", appId: homeAppShare.app.bundleId });
+        toast.show({ message: `已筛选 ${homeAppShare.app.name}，全站生效`, undoLabel: "取消筛选" });
+      },
+    });
+  }
+
+  if (keys > 0 && ratioLabel) {
+    catRules.push({
+      key: "ratio",
+      title: "键鼠画像",
+      body: `键鼠比 ${ratio.toFixed(2)}，判定为「${ratioLabel}」，去输入页看细账喵？`,
+      onClick: () => {
+        actions.navigate({ page: "input" });
+        toast.show({ message: "已跳转到输入页", undoLabel: "返回" });
+      },
+    });
+  }
+
+  if (nightOwl) {
+    catRules.push({
+      key: "night-owl",
+      title: "夜猫子指数",
+      body: `22 点到次日 2 点贡献了 ${nightOwl.pct.toFixed(1)}% 的活跃时长，早点睡喵～`,
+      onClick: () => {
+        actions.navigate({ page: "timeline", kind: "day", anchor: nightOwl.anchor, focusHour: 23 });
+        toast.show({ message: "已跳转到时间线", undoLabel: "返回" });
+      },
+    });
+  }
 
   // ---- 猫的报告（临时挂账，C4 整块删除） ------------------------------------
 
@@ -535,7 +666,17 @@ export default function Insights() {
 
       {/* ④ 作息画像 —— 星期 × 24 小时 */}
       <section className="panel ins-rhythm-panel">
-        <h3 className="panel-title">作息画像</h3>
+        <h3 className="panel-title">
+          作息画像
+          {appId !== null && (
+            <span
+              className="ins-rhythm-note"
+              title="此视图基于 get_hourly_heartbeats，与前台 App 无关"
+            >
+              不受应用筛选影响
+            </span>
+          )}
+        </h3>
         <div className="ins-rhythm">
           <div className="ins-rhythm-days" aria-hidden>
             {DAY_LABELS.map((d) => (
@@ -548,28 +689,31 @@ export default function Insights() {
             <div className="ins-rhythm-grid">
               {hourlyGrid.map((row, ri) =>
                 row.map((cell, ci) => {
-                  let bg: string;
-                  let tooltipText: string;
                   const dayLabel = `周${DAY_LABELS[ri]}`;
                   const hourLabel = `${ci}:00`;
+                  const sampleSuffix = cell.sampleDays > 1 ? ` · 合并 ${cell.sampleDays} 天` : "";
 
                   if (cell.state === "active") {
-                    bg = intensityVar(cell.intensity);
-                    tooltipText = `${dayLabel} ${hourLabel} · 活跃强度 ${cell.intensity}`;
-                  } else if (cell.state === "idle") {
-                    bg = "#D1D5DB"; // 中性灰实心
-                    tooltipText = `${dayLabel} ${hourLabel} · 挂机（无输入）`;
-                  } else {
-                    bg = "#F3F4F6"; // 极浅底色
-                    tooltipText = `${dayLabel} ${hourLabel} · 未采集`;
+                    return (
+                      <button
+                        key={`${ri}-${ci}`}
+                        type="button"
+                        className="ins-rhythm-cell drillable"
+                        style={{ background: intensityVar(cell.intensity) }}
+                        title={`${dayLabel} ${hourLabel} · 强度 ${cell.intensity}${sampleSuffix}`}
+                        onClick={() => goToRhythmCell(ri, ci)}
+                      />
+                    );
                   }
 
+                  const bg = cell.state === "idle" ? "#D1D5DB" : "#F3F4F6"; // 挂机=中性灰实心 / 未采集=极浅底色
+                  const stateLabel = cell.state === "idle" ? "挂机（无输入）" : "未采集";
                   return (
                     <div
                       key={`${ri}-${ci}`}
                       className={`ins-rhythm-cell ${cell.state === "no_data" ? "ins-rhythm-cell--no-data" : ""}`}
                       style={{ background: bg }}
-                      title={tooltipText}
+                      title={`${dayLabel} ${hourLabel} · ${stateLabel}${sampleSuffix}`}
                     />
                   );
                 })
@@ -621,6 +765,28 @@ export default function Insights() {
             <span className="ins-legend-label">未采集</span>
           </div>
         </div>
+      </section>
+
+      {/* ⑤ 猫发现的规律 */}
+      <section className="panel ins-rules-panel">
+        <h3 className="panel-title">猫发现的规律</h3>
+        {catRules.length === 0 ? (
+          <p className="ins-card-empty">数据还不够，猫还没发现规律喵～</p>
+        ) : (
+          <div className="ins-rules">
+            {catRules.map((r) => (
+              <button
+                key={r.key}
+                type="button"
+                className="ins-rule-card drillable"
+                onClick={r.onClick}
+              >
+                <div className="ins-rule-title">{r.title}</div>
+                <p className="ins-rule-body">{r.body}</p>
+              </button>
+            ))}
+          </div>
+        )}
       </section>
     </PageShell>
   );

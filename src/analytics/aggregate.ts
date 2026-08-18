@@ -396,3 +396,104 @@ export function daysWithDataOf(buckets: RawBucket[]): number {
   }
   return days.size;
 }
+
+export type DowHourCell = {
+  intensity: Intensity;
+  state: "active" | "idle" | "no_data";
+  /** 该格在本范围内覆盖了几天（周粒度恒为 1，月粒度 4~5） */
+  sampleDays: number;
+};
+
+/**
+ * 星期 × 小时的三态网格，适用于**任意长度**的范围。行 0=周一 … 6=周日。
+ *
+ * 与 aggregateWeekHourGrid 的区别：那个把「格子 → 时刻」的映射写死成
+ * weekStartMs + ri*24h + ci*1h，只在范围恰好是一周时成立。月粒度下同一格
+ * 对应 4~5 个不同日期，那个式子算出来的时刻是错的，会让挂机/未采集大面积误判。
+ * 这里改为遍历范围内每一个本地整点，逐格累计。
+ */
+export function aggregateDowHourGrid(
+  hourBuckets: RawHourBucket[],
+  heartbeats: Map<number, boolean>,
+  startMs: number,
+  endMs: number
+): DowHourCell[][] {
+  type Cell = {
+    key_total: number;
+    mouse_total: number;
+    mouse_move_dist: number;
+    scroll_dist: number;
+    duration_ms: number;
+  };
+  const grid: Cell[][] = Array.from({ length: 7 }, () =>
+    Array.from({ length: 24 }, () => ({
+      key_total: 0,
+      mouse_total: 0,
+      mouse_move_dist: 0,
+      scroll_dist: 0,
+      duration_ms: 0,
+    }))
+  );
+  const hasActivity: boolean[][] = Array.from({ length: 7 }, () => Array(24).fill(false));
+
+  for (const hb of hourBuckets) {
+    const d = new Date(hb.hour_start);
+    const row = mondayIndex(d.getDay());
+    const col = d.getHours();
+    const cell = grid[row][col];
+    cell.key_total += hb.key_total;
+    cell.mouse_total += hb.mouse_clicks;
+    cell.mouse_move_dist += hb.mouse_move_dist;
+    cell.scroll_dist += hb.scroll_dist;
+    cell.duration_ms += hb.duration_ms;
+    hasActivity[row][col] = true;
+  }
+
+  // 心跳 + 样本天数：从 startMs 所在日 0 点起，逐天推进游标（setDate，不用 t += DAY_MS，
+  // 避免 DST 地区漂移），每天内 h=0..23 用 new Date(y,m,d,h) 生成本地整点，
+  // 落在 [startMs, endMs) 内才计入。
+  const hasHeartbeat: boolean[][] = Array.from({ length: 7 }, () => Array(24).fill(false));
+  const sampleDays: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
+
+  const cur = new Date(startMs);
+  cur.setHours(0, 0, 0, 0);
+  while (cur.getTime() < endMs) {
+    const row = mondayIndex(cur.getDay());
+    const y = cur.getFullYear();
+    const m = cur.getMonth();
+    const dd = cur.getDate();
+    for (let h = 0; h < 24; h++) {
+      const hourStartMs = new Date(y, m, dd, h).getTime();
+      if (hourStartMs < startMs || hourStartMs >= endMs) continue;
+      sampleDays[row][h] += 1;
+      if (heartbeats.has(hourStartMs)) hasHeartbeat[row][h] = true;
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  return grid.map((row, ri) =>
+    row.map((c, ci) => {
+      const intensity = computeIntensityFromTotals({
+        key_total: c.key_total,
+        mouse_left: c.mouse_total,
+        mouse_right: 0,
+        mouse_middle: 0,
+        mouse_move_dist: c.mouse_move_dist,
+        scroll_dist: c.scroll_dist,
+        duration_ms: c.duration_ms,
+      });
+
+      // 判定状态：活跃 > 挂机 > 未采集
+      let state: "active" | "idle" | "no_data";
+      if (hasActivity[ri][ci]) {
+        state = "active";
+      } else if (hasHeartbeat[ri][ci]) {
+        state = "idle";
+      } else {
+        state = "no_data";
+      }
+
+      return { intensity, state, sampleDays: sampleDays[ri][ci] };
+    })
+  );
+}
