@@ -22,6 +22,7 @@ import KLELayoutPicker, {
 } from "../components/KLELayoutPicker";
 import TopKeysPanel from "../components/keyboard/TopKeysPanel";
 import MousePanel from "../components/keyboard/MousePanel";
+import RatioPanel from "../components/keyboard/RatioPanel";
 import KeyboardPanel from "../components/keyboard/KeyboardPanel";
 import KeyDetailPanel from "../components/keyboard/KeyDetailPanel";
 import { KeySelectionProvider } from "../components/keyboard/KeySelectionContext";
@@ -249,7 +250,7 @@ export default function Keyboard() {
               />
             </KeySelectionProvider>
 
-            {/* 下方分栏：鼠标 + Top 按键 + 单键详情 */}
+            {/* 下方分栏：鼠标 + Top 按键 + 单键详情 + 键鼠比 */}
             <div className="kb-lower-section">
               <MousePanel buckets={filteredBuckets} />
 
@@ -258,6 +259,8 @@ export default function Keyboard() {
                 allKeyCounts={allKeyCounts}
                 title={topPanelTitle}
               />
+
+              <RatioPanel buckets={filteredBuckets} />
 
               <KeyDetailPanel
                 label={selectedKey}

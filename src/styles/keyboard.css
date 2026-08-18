@@ -472,10 +472,10 @@
   overflow-x: auto;
 }
 
-/* 下方分栏区域 */
+/* 下方分栏区域 —— 鼠标/Top 按键/键鼠比/单键详情四块，自适应换行 */
 .kb-lower-section {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
@@ -804,6 +804,16 @@
   top: 54%;
 }
 
+.mouse-side--unused {
+  opacity: 0.35;
+}
+
+.mouse-side-note {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
 /* 鼠标右侧统计 —— 2x2 网格 */
 .mouse-stats {
   margin: 0;
@@ -846,6 +856,67 @@
   font-size: var(--text-sm);
   font-weight: 500;
   color: var(--color-text-2);
+}
+
+.mouse-stat--unused dd {
+  opacity: 0.45;
+  font-weight: 500;
+}
+
+/* 键鼠比卡片（RatioPanel.tsx） */
+.ratio-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ratio-number {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ratio-tag {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.ratio-slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.ratio-slider-track {
+  position: relative;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+}
+
+.ratio-slider-thumb {
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  transform: translate(-50%, -50%);
+}
+
+.ratio-slider-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
 /* Top 按键排行 —— 复用 app-row 的三列布局思路 */

@@ -78,52 +78,61 @@ export default function MousePanel({ buckets }: MousePanelProps) {
             }}
             title={`滚轮 · ${mouseData.wheel.toLocaleString()}`}
           />
-          {(mouseData.back > 0 || mouseData.forward > 0) && (
-            <>
-              <div
-                className="mouse-side mouse-side--back"
-                style={{
-                  background: intensityVar(bucketSimple(mouseData.back, maxMouse)),
-                }}
-                title={`后退侧键 · ${mouseData.back.toLocaleString()} 次`}
-              />
-              <div
-                className="mouse-side mouse-side--forward"
-                style={{
-                  background: intensityVar(bucketSimple(mouseData.forward, maxMouse)),
-                }}
-                title={`前进侧键 · ${mouseData.forward.toLocaleString()} 次`}
-              />
-            </>
-          )}
+          <div
+            className={`mouse-side mouse-side--back${mouseData.back === 0 ? " mouse-side--unused" : ""}`}
+            style={{
+              background: intensityVar(bucketSimple(mouseData.back, maxMouse)),
+            }}
+            title={mouseData.back > 0 ? `后退侧键 · ${mouseData.back.toLocaleString()} 次` : "后退侧键 · 未使用"}
+          />
+          <div
+            className={`mouse-side mouse-side--forward${mouseData.forward === 0 ? " mouse-side--unused" : ""}`}
+            style={{
+              background: intensityVar(bucketSimple(mouseData.forward, maxMouse)),
+            }}
+            title={mouseData.forward > 0 ? `前进侧键 · ${mouseData.forward.toLocaleString()} 次` : "前进侧键 · 未使用"}
+          />
         </div>
         <dl className="mouse-stats">
-          <div className="mouse-stat">
+          <div className={`mouse-stat${mouseData.left === 0 ? " mouse-stat--unused" : ""}`}>
             <dt>左键</dt>
-            <dd>{mouseData.left.toLocaleString()}</dd>
+            <dd>{mouseData.left === 0 ? "未使用" : mouseData.left.toLocaleString()}</dd>
           </div>
-          <div className="mouse-stat">
+          <div className={`mouse-stat${mouseData.right === 0 ? " mouse-stat--unused" : ""}`}>
             <dt>右键</dt>
-            <dd>{mouseData.right.toLocaleString()}</dd>
+            <dd>{mouseData.right === 0 ? "未使用" : mouseData.right.toLocaleString()}</dd>
           </div>
-          <div className="mouse-stat">
+          <div className={`mouse-stat${mouseData.wheel === 0 ? " mouse-stat--unused" : ""}`}>
             <dt>滚轮</dt>
-            <dd>{mouseData.wheel.toLocaleString()}</dd>
+            <dd>{mouseData.wheel === 0 ? "未使用" : mouseData.wheel.toLocaleString()}</dd>
           </div>
-          {(mouseData.back > 0 || mouseData.forward > 0) && (
-            <div className="mouse-stat">
-              <dt>侧键</dt>
-              <dd>{(mouseData.back + mouseData.forward).toLocaleString()}</dd>
-            </div>
-          )}
-          <div className="mouse-stat">
+          <div className={`mouse-stat${mouseData.back + mouseData.forward === 0 ? " mouse-stat--unused" : ""}`}>
+            <dt>侧键</dt>
+            <dd>
+              {mouseData.back + mouseData.forward === 0
+                ? "未使用"
+                : (mouseData.back + mouseData.forward).toLocaleString()}
+            </dd>
+          </div>
+          <div className={`mouse-stat${mouseData.travelKm === 0 ? " mouse-stat--unused" : ""}`}>
             <dt>移动</dt>
             <dd>
-              {mouseData.travelKm}
-              <span className="mouse-stat-unit">公里</span>
+              {mouseData.travelKm === 0 ? (
+                "未使用"
+              ) : (
+                <>
+                  {mouseData.travelKm}
+                  <span className="mouse-stat-unit">公里</span>
+                </>
+              )}
             </dd>
           </div>
         </dl>
+        <p className="mouse-side-note">
+          {mouseData.back + mouseData.forward > 0
+            ? "你是会用侧键的少数人，配列里值得给它们留位置"
+            : "可以在配列里隐藏它们"}
+        </p>
       </div>
     </div>
   );
