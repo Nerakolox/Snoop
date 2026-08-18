@@ -625,3 +625,14 @@
   text-overflow: ellipsis;
 }
 
+/* ---------- Batch 3 · 全局上下文接入 ---------- */
+
+.swimlane-header-note {
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+

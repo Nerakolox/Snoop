@@ -1,7 +1,8 @@
 /**
  * 时间线 —— 横向泳道图（甘特图）
  * 纵轴：每个 App 一条泳道，横轴：时间轴，色块表示使用时段。
- * 支持日期切换查看历史任意一天。
+ * 消费全局 (kind, anchor, appId)；本页粒度恒为「日」（PAGE_KIND_CAP 限制），
+ * 日期切换与范围导航统一由顶栏驱动。
  *
  * 时间轴压缩：
  *  超过 COMPRESS_THRESHOLD_MS 的全局空白（所有 App 均无活动）会被压缩成
@@ -14,59 +15,28 @@ import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { CSSProperties } from "react";
 import { Calendar } from "lucide-react";
 import { fetchBucketsInRange } from "../data";
+import { formatAnchor, toMs } from "../data/ranges";
+import type { RawBucket } from "../data/types";
 import {
   buildAppLanes, computeGlobalGaps, buildSegments, timeToVirt, virtToTime, buildTicks,
   COMPRESS_THRESHOLD_MS,
-  type AppLane, type TimeBlock,
+  type TimeBlock,
 } from "../analytics";
 import PageShell from "../components/PageShell";
 import TimelineHeader from "../components/timeline/TimelineHeader";
 import TimelineTooltip from "../components/timeline/TimelineTooltip";
 import SwimLane from "../components/timeline/SwimLane";
-import { startOfDay, isSameDay, formatPeriodLabel } from "../utils/date";
+import { adaptKind, useContextState } from "../store/context";
 import { formatTime, formatDuration } from "../utils/format";
-
-
-function dataRange(
-  d: Date,
-  isToday: boolean,
-  nowMs: number
-): { start_ms: number; end_ms: number } {
-  const start = startOfDay(d);
-  let end: Date;
-  if (isToday) {
-    end = new Date(nowMs);
-  } else {
-    end = new Date(start);
-    end.setDate(end.getDate() + 1);
-  }
-  return { start_ms: start.getTime(), end_ms: end.getTime() };
-}
-
-/**
- * 显示范围（也是压缩计算所依据的"日范围"）：
- *  - 今天：0 点 → 当前时刻（未来时间不参与渲染，也不作为空闲）
- *  - 历史：完整 0 点 → 次日 0 点
- */
-function displayRange(
-  d: Date,
-  isToday: boolean,
-  nowMs: number
-): { start_ms: number; end_ms: number } {
-  const start = startOfDay(d);
-  if (isToday) {
-    return { start_ms: start.getTime(), end_ms: nowMs };
-  }
-  const end = new Date(start);
-  end.setDate(end.getDate() + 1);
-  return { start_ms: start.getTime(), end_ms: end.getTime() };
-}
 
 // ---- 主组件 -----------------------------------------------------------------
 
 export default function Timeline() {
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [lanes, setLanes] = useState<AppLane[]>([]);
+  const { kind, anchor, appId } = useContextState();
+  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("timeline", { kind, anchor });
+
+  const [buckets, setBuckets] = useState<RawBucket[]>([]);
+  const lanes = useMemo(() => buildAppLanes(buckets), [buckets]);
   const [loading, setLoading] = useState(false);
   const [hoveredBlock, setHoveredBlock] = useState<{
     app: string;
@@ -101,32 +71,22 @@ export default function Timeline() {
     right: false,
   });
 
-  const today = useMemo(() => startOfDay(new Date()), []);
-  const isToday = useMemo(
-    () => isSameDay(selectedDate, today),
-    [selectedDate, today]
-  );
-  const dateLabel = useMemo(
-    () => formatPeriodLabel(selectedDate, "day", isToday),
-    [selectedDate, isToday]
-  );
-
   // 当前时刻：仅在查看今天时按分钟推进（历史查看不需要）
+  const isTodayView = viewAnchor === formatAnchor(new Date());
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
-    if (!isToday) return;
+    if (!isTodayView) return;
     setNowMs(Date.now());
     const timer = setInterval(() => setNowMs(Date.now()), 60_000);
     return () => clearInterval(timer);
-  }, [isToday]);
+  }, [isTodayView]);
 
-  const fetchRange = useMemo(
-    () => dataRange(selectedDate, isToday, nowMs),
-    [selectedDate, isToday, nowMs]
-  );
-  const fullDayRange = useMemo(
-    () => displayRange(selectedDate, isToday, nowMs),
-    [selectedDate, isToday, nowMs]
+  // 今天：0 点 → 当前时刻（活范围）；历史：完整 0 点 → 次日 0 点。
+  // 由 toMs(..., {liveEnd:true}) 统一给出，nowMs 是驱动它按分钟前进的依赖。
+  const range = useMemo(
+    () => toMs(viewKind, viewAnchor, { liveEnd: true }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [viewKind, viewAnchor, nowMs]
   );
 
   // 全局空白（基于所有 App 合并区间）
@@ -134,23 +94,23 @@ export default function Timeline() {
     () =>
       computeGlobalGaps(
         lanes,
-        fullDayRange.start_ms,
-        fullDayRange.end_ms,
+        range.start_ms,
+        range.end_ms,
         COMPRESS_THRESHOLD_MS
       ),
-    [lanes, fullDayRange.start_ms, fullDayRange.end_ms]
+    [lanes, range.start_ms, range.end_ms]
   );
 
   // 分段映射（时间 <-> 虚拟坐标）
   const segmentsData = useMemo(
     () =>
       buildSegments(
-        fullDayRange.start_ms,
-        fullDayRange.end_ms,
+        range.start_ms,
+        range.end_ms,
         globalGaps,
         compressed
       ),
-    [fullDayRange.start_ms, fullDayRange.end_ms, globalGaps, compressed]
+    [range.start_ms, range.end_ms, globalGaps, compressed]
   );
 
   // 视口安全带：数据变化导致 totalVirt 变化时，越界就复位
@@ -183,32 +143,10 @@ export default function Timeline() {
     setViewport(null);
   }, []);
 
-  // 切换日期时重置视图
+  // 换天时重置视图（顶栏切 anchor 驱动）
   useEffect(() => {
     setViewport(null);
-  }, [selectedDate]);
-
-  function goPrevDay() {
-    setSelectedDate((d) => {
-      const prev = new Date(d);
-      prev.setDate(prev.getDate() - 1);
-      return prev;
-    });
-  }
-
-  function goNextDay() {
-    if (!isToday) {
-      setSelectedDate((d) => {
-        const next = new Date(d);
-        next.setDate(next.getDate() + 1);
-        return next;
-      });
-    }
-  }
-
-  function goToday() {
-    setSelectedDate(new Date());
-  }
+  }, [viewAnchor]);
 
   // 切换压缩：保留当前视口的真实时间范围
   const toggleCompressed = useCallback(() => {
@@ -221,8 +159,8 @@ export default function Timeline() {
     const t2 = virtToTime(curEnd, oldSegs.segments);
 
     const newSegs = buildSegments(
-      fullDayRange.start_ms,
-      fullDayRange.end_ms,
+      range.start_ms,
+      range.end_ms,
       globalGaps,
       newCompressed
     );
@@ -241,18 +179,20 @@ export default function Timeline() {
         setViewport({ start: clampedStart, end: clampedEnd });
       }
     }
-  }, [compressed, viewport, segmentsData, fullDayRange, globalGaps]);
+  }, [compressed, viewport, segmentsData, range, globalGaps]);
 
-  // 加载数据（fetchRange 会随 nowMs 每分钟变化，天然驱动刷新，无需再挂 interval）
+  // 加载数据：直接调 fetchBucketsInRange 拿全量（不接 useRangeData），因为
+  // ① 其他 App 的泳道要灰化显示而不是被过滤掉，取数阶段必须是全量；
+  // ② useRangeData 的缓存键不含 liveEnd，会把"今天"的 now 冻在首次加载那一刻。
+  // range 随 nowMs 每分钟变化，天然驱动刷新，无需再挂 interval。
   useEffect(() => {
     let cancelled = false;
     async function fetchData() {
       setLoading(true);
       try {
-        const buckets = await fetchBucketsInRange(fetchRange);
+        const raw = await fetchBucketsInRange(range);
         if (cancelled) return;
-        const appLanes = buildAppLanes(buckets);
-        setLanes(appLanes);
+        setBuckets(raw);
       } catch (e) {
         console.error("Timeline refresh failed:", e);
       } finally {
@@ -263,7 +203,7 @@ export default function Timeline() {
     return () => {
       cancelled = true;
     };
-  }, [fetchRange.start_ms, fetchRange.end_ms]);
+  }, [range.start_ms, range.end_ms]);
 
   // 滚轮缩放（虚拟坐标空间）
   useEffect(() => {
@@ -462,19 +402,25 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentsData, viewRange.start, viewRange.end]);
 
+  // TODO(样式大改): focusHour 目前只经 ContextChips 展示，不驱动视口。
+  // 现有时间线是 viewport 虚拟坐标模型（无 scrollLeft），自动定位需要
+  // 与 viewport 安全带、压缩开关同步，等样式重构定稿后再实现。
+
+  const appName =
+    appId === null
+      ? undefined
+      : lanes.find((l) => l.app_bundle_id === appId)?.app_name ?? appId;
+
   return (
     <PageShell
       className="swimlane-page"
       fill
       header={
         <TimelineHeader
-          dateLabel={dateLabel}
-          isToday={isToday}
+          note={note}
+          appName={appName}
           hasCustomViewport={viewport !== null}
           compressed={compressed}
-          onPrevDay={goPrevDay}
-          onNextDay={goNextDay}
-          onToday={goToday}
           onResetView={resetView}
           onToggleCompressed={toggleCompressed}
         />
@@ -483,7 +429,7 @@ export default function Timeline() {
       {lanes.length === 0 && !loading && (
         <div className="swimlane-empty">
           <Calendar size={48} strokeWidth={1.5} />
-          <p>{isToday ? "今天还没有活动数据" : "这天没有记录"}</p>
+          <p>{isTodayView ? "今天还没有活动数据" : "这天没有记录"}</p>
         </div>
       )}
 

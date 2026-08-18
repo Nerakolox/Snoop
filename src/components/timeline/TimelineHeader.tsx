@@ -1,61 +1,34 @@
 /**
- * 时间线顶部日期切换栏 —— 日期导航、回到今天、重置视图、压缩空白切换。
+ * 时间线顶部控制栏 —— 映射警示、上下文 chips、重置视图、压缩空白切换。
+ * 日期导航已交给全局顶栏（`TopBar.tsx`），此处不再自管日期。
  */
 
-import {
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  Maximize2,
-  Minimize2,
-} from "lucide-react";
+import { Maximize2, Minimize2 } from "lucide-react";
+import ContextChips from "../shared/ContextChips";
 
 type TimelineHeaderProps = {
-  dateLabel: string;
-  isToday: boolean;
+  /** adaptKind 降级警示；未降级为 null */
+  note: string | null;
+  appName?: string;
   /** 是否处于自定义视口（非"全视图"）。为 true 时展示"重置视图"按钮 */
   hasCustomViewport: boolean;
   compressed: boolean;
-  onPrevDay: () => void;
-  onNextDay: () => void;
-  onToday: () => void;
   onResetView: () => void;
   onToggleCompressed: () => void;
 };
 
 export default function TimelineHeader({
-  dateLabel,
-  isToday,
+  note,
+  appName,
   hasCustomViewport,
   compressed,
-  onPrevDay,
-  onNextDay,
-  onToday,
   onResetView,
   onToggleCompressed,
 }: TimelineHeaderProps) {
   return (
     <div className="swimlane-date-picker">
-      <button className="swimlane-nav-btn" onClick={onPrevDay} title="前一天">
-        <ChevronLeft size={18} />
-      </button>
-      <div className="swimlane-date-label">
-        <Calendar size={16} />
-        <span>{dateLabel}</span>
-      </div>
-      <button
-        className="swimlane-nav-btn"
-        onClick={onNextDay}
-        disabled={isToday}
-        title="后一天"
-      >
-        <ChevronRight size={18} />
-      </button>
-      {!isToday && (
-        <button className="swimlane-today-btn" onClick={onToday}>
-          回到今天
-        </button>
-      )}
+      {note !== null && <span className="swimlane-header-note">{note}</span>}
+      <ContextChips show={["app", "focusHour"]} appName={appName} />
       {hasCustomViewport && (
         <button
           className="swimlane-reset-btn"
