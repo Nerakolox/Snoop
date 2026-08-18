@@ -9,6 +9,7 @@ import Insights from "./pages/Insights";
 import Settings from "./pages/Settings";
 import Dev from "./pages/Dev";
 import KeymapTest from "./pages/KeymapTest";
+import { useContextState, useContextActions } from "./store/context";
 
 const isWindows =
   typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
@@ -40,8 +41,9 @@ function renderPage(key: NavKey) {
 type Phase = "idle" | "leaving" | "entering-start" | "entering";
 
 export default function App() {
-  const [active, setActive] = useState<NavKey>("overview");
-  const [displayed, setDisplayed] = useState<NavKey>("overview");
+  const { page } = useContextState();
+  const actions = useContextActions();
+  const [displayed, setDisplayed] = useState<NavKey>(page);
   const [phase, setPhase] = useState<Phase>("idle");
   const [transitionEnabled, setTransitionEnabled] = useState(
     () => localStorage.getItem("page_transition_enabled") !== "false"
@@ -57,17 +59,15 @@ export default function App() {
     return () => window.removeEventListener("page-transition-change", handler);
   }, []);
 
-  const handleSelectRef = useRef<(k: NavKey) => void>(() => {});
-
   useEffect(() => {
     const unlistenPromise = listen<string>("menu-navigate", (event) => {
       const target = event.payload as NavKey;
-      handleSelectRef.current(target);
+      actions.navigate({ page: target });
     });
     return () => {
       unlistenPromise.then((un) => un()).catch(() => {});
     };
-  }, []);
+  }, [actions]);
 
   useEffect(() => {
     return () => {
@@ -87,31 +87,24 @@ export default function App() {
     }
   }
 
-  function handleSelect(next: NavKey) {
-    if (next === active) return;
-    setActive(next);
+  useEffect(() => {
+    if (page === displayed) return;
 
     if (!transitionEnabled) {
       clearTimers();
-      setDisplayed(next);
+      setDisplayed(page);
       setPhase("idle");
       return;
     }
 
     clearTimers();
-
-    // 1) 淡出旧页
-    setPhase("leaving");
-
+    setPhase("leaving");                                   // 1) 淡出旧页
     timerRef.current = window.setTimeout(() => {
-      // 2) 换页 —— 新页以"entering-start"（透明 + 下方 10px）挂载，无过渡
-      setDisplayed(next);
+      setDisplayed(page);                                  // 2) 换页
       setPhase("entering-start");
-
-      // 3) 两次 rAF 后切到 entering，触发 transition
       rafRef.current = window.requestAnimationFrame(() => {
         rafRef.current = window.requestAnimationFrame(() => {
-          setPhase("entering");
+          setPhase("entering");                            // 3) 双 rAF 后触发 transition
           timerRef.current = window.setTimeout(() => {
             setPhase("idle");
             timerRef.current = null;
@@ -119,9 +112,13 @@ export default function App() {
         });
       });
     }, FADE_OUT_MS);
-  }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
-  handleSelectRef.current = handleSelect;
+  function handleSelect(next: NavKey) {
+    if (next === page) return;
+    actions.navigate({ page: next });
+  }
 
   let layerClass = "page-layer";
   if (phase === "leaving") layerClass += " is-leaving";
@@ -133,7 +130,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <Sidebar active={active} onSelect={handleSelect} />
+      <Sidebar active={page} onSelect={handleSelect} />
       <div className="app-right">
         {isWindows && <TitleBar />}
         <main className="app-main">
