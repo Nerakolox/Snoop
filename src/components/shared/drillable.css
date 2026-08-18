@@ -1,0 +1,29 @@
+/* ---------- 悬停导轨（全站可下钻元素统一视觉语言） ----------
+   Batch 2 / 3 / 5 的所有可点行直接挂 .drillable，不许各自复制一份。
+   挂载元素必须是真 <button> 或带 tabindex={0} + role="button" +
+   键盘 Enter/Space 处理。
+*/
+
+.drillable {
+  position: relative;
+}
+.drillable::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2.5px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  transform: scaleY(0);
+  transform-origin: center;
+  transition: transform var(--dur-fast) var(--ease-smooth);
+}
+.drillable:hover::before,
+.drillable:focus-visible::before {
+  transform: scaleY(1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .drillable::before { transition: none; }
+}

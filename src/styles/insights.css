@@ -258,6 +258,16 @@
   background: var(--color-surface-2);
 }
 
+.ins-delta--new {
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.ins-delta--na {
+  color: var(--color-text-3);
+  background: var(--color-surface-2);
+}
+
 /* ④ 作息画像 一周 × 24 小时 ---------------------------------------------- */
 
 .ins-rhythm {

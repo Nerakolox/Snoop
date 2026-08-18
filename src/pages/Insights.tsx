@@ -42,8 +42,9 @@ type WeekApp = {
   bundleId: string;
   hours: number;
   intensity: Intensity;
-  /** 环比上周：> 0 上升，< 0 下降，null 视作持平/新 App */
-  deltaPct: number | null;
+  /** 当期/基期用量，单位分钟，供 DeltaBadge 自行判断环比 */
+  currentMin: number;
+  previousMin: number;
 };
 
 const DAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
@@ -86,15 +87,6 @@ function generateCatReport(
   }
 
   return parts.join("");
-}
-
-/** 计算环比变化百分比 */
-function calculateDelta(thisWeek: number, lastWeek: number): number | null {
-  if (lastWeek === 0) return null; // 上周没用过，返回 null 表示"新"
-  const pct = Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
-  // 变化极小（±5% 以内）视为持平
-  if (Math.abs(pct) <= 5) return 0;
-  return pct;
 }
 
 /** 构建周一到周日的完整 7 天数组，包含未来的空槽 */
@@ -204,17 +196,16 @@ export default function Insights() {
         const lastWeekApp = lastWeekAppStats.find(
           (la) => la.app_bundle_id === a.app_bundle_id
         );
-        const lastWeekHours = lastWeekApp
-          ? lastWeekApp.duration_ms / (60 * 60 * 1000)
-          : 0;
-        const deltaPct = calculateDelta(hours, lastWeekHours);
+        const currentMin = a.duration_ms / (60 * 1000);
+        const previousMin = lastWeekApp ? lastWeekApp.duration_ms / (60 * 1000) : 0;
 
         return {
           name: a.app_name || a.app_bundle_id,
           bundleId: a.app_bundle_id,
           hours,
           intensity: a.intensity,
-          deltaPct,
+          currentMin,
+          previousMin,
         };
       });
       setWeekApps(apps);
@@ -255,7 +246,9 @@ export default function Insights() {
             const lastWeekHours = lastWeekSameApp
               ? lastWeekSameApp.duration_ms / (60 * 60 * 1000)
               : 0;
-            return calculateDelta(topApp.hours, lastWeekHours);
+            if (lastWeekHours === 0) return null;
+            const pct = Math.round(((topApp.hours - lastWeekHours) / lastWeekHours) * 100);
+            return Math.abs(pct) <= 5 ? 0 : pct;
           })()
         : null;
 
@@ -374,7 +367,12 @@ export default function Insights() {
                     />
                   </div>
                   <div className="ins-app-time">{fmtHours(a.hours)}h</div>
-                  <DeltaBadge delta={a.deltaPct} />
+                  <DeltaBadge
+                    current={a.currentMin}
+                    previous={a.previousMin}
+                    vsLabel="vs 上周"
+                    baseThreshold={120}
+                  />
                 </div>
               );
             })}
