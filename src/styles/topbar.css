@@ -1,0 +1,336 @@
+/* ---------- TopBar ----------
+   右侧主区顶部常驻栏：粒度切换 + anchor 导航 + 应用筛选 + 返回 +
+   （Windows）窗口按钮。定高不参与伸缩，唯一弹性项是 .topbar__spacer。
+*/
+
+.topbar {
+  flex: 0 0 46px;          /* 定高，不参与伸缩 */
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
+  flex-wrap: nowrap;       /* 绝不换行 */
+  overflow: hidden;        /* 挤爆时裁掉而不是撑破布局 */
+  position: relative;
+  z-index: 10;
+  background: var(--color-bg);
+  border-bottom: 1px solid var(--color-border);
+  -webkit-app-region: drag;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.topbar > * { flex: none; }              /* 所有直接子元素不伸不缩 */
+.topbar__spacer { flex: 1 1 auto; min-width: 0; }   /* 唯一的弹性项 */
+
+.topbar__app-menu { z-index: 100; }      /* 应用列表弹层 */
+
+/* 交互元素统一排除拖拽 */
+.topbar button,
+.topbar .topbar__chip,
+.topbar__app-menu { -webkit-app-region: no-drag; }
+
+/* ---------- 粒度分段 ---------- */
+
+.topbar__kind {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+}
+
+.topbar__kind-btn {
+  border: none;
+  background: transparent;
+  padding: var(--space-1) var(--space-2);
+  border-radius: calc(var(--radius-sm) - 2px);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-smooth), color var(--dur-fast) var(--ease-smooth);
+}
+
+.topbar__kind-btn:hover:not(.is-disabled) {
+  color: var(--color-text);
+}
+
+.topbar__kind-btn.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.topbar__kind-btn.is-disabled {
+  text-decoration: line-through;
+  color: var(--color-text-3);
+  cursor: not-allowed;
+}
+
+/* ---------- anchor 导航 ---------- */
+
+.topbar__nav-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-2);
+  font-size: var(--text-lg);
+  line-height: 1;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-fast) var(--ease-smooth);
+}
+
+.topbar__nav-btn:hover:not(:disabled) {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.topbar__nav-btn:disabled {
+  color: var(--color-text-3);
+  cursor: not-allowed;
+}
+
+.topbar__anchor-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  padding: 0 var(--space-1);
+}
+
+.topbar__today-btn {
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-smooth), color var(--dur-fast) var(--ease-smooth);
+}
+
+.topbar__today-btn:hover:not(:disabled) {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.topbar__today-btn:disabled {
+  color: var(--color-text-3);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.topbar__divider {
+  width: 1px;
+  height: 20px;
+  background: var(--color-border);
+}
+
+/* ---------- 应用筛选芯片 + 弹层 ---------- */
+
+.topbar__app-filter {
+  position: relative;
+}
+
+.topbar__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  max-width: 220px;
+}
+
+.topbar__chip.is-filtered {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border-color: transparent;
+}
+
+.topbar__chip .topbar__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar__chip-clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  padding: 1px;
+  cursor: pointer;
+}
+
+.topbar__chip-clear:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.topbar__app-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  min-width: 240px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: var(--space-1);
+}
+
+.topbar__app-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.topbar__app-menu-item:hover {
+  background: var(--color-surface-2);
+}
+
+.topbar__app-menu-item.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.topbar__app-menu-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.topbar__app-menu-time {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  flex: none;
+}
+
+.topbar__app-menu-empty {
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+  text-align: center;
+}
+
+/* ---------- 返回按钮 ---------- */
+
+.topbar__back-btn {
+  border: none;
+  background: transparent;
+  color: var(--color-text-2);
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-fast) var(--ease-smooth), color var(--dur-fast) var(--ease-smooth);
+}
+
+.topbar__back-btn:hover:not(:disabled) {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.topbar__back-btn:disabled {
+  color: var(--color-text-3);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* ---------- 窗口按钮（Windows） ---------- */
+
+.topbar__winctrls {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  margin: 0 calc(var(--space-3) * -1) 0 0;
+}
+
+.topbar__winbtn {
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-2);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.topbar__winbtn:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--color-text);
+}
+
+.topbar__winbtn:active {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.topbar__winbtn--close:hover {
+  background: var(--intensity-4);
+  color: #fff;
+}
+
+.topbar__winbtn--close:active {
+  background: rgba(225, 90, 76, 0.85);
+  color: #fff;
+}
+
+/* ---------- 深色模式 ---------- */
+
+[data-theme="dark"] .topbar__winbtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--color-text);
+}
+
+[data-theme="dark"] .topbar__winbtn:active {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+[data-theme="dark"] .topbar__chip-clear:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* ---------- 窄窗口降级 ---------- */
+
+@media (max-width: 940px) {
+  /* 隐藏"范围"/"应用"这类文字标签，只留控件本体 */
+  .topbar__label { display: none; }
+}
+@media (max-width: 820px) {
+  .topbar { gap: var(--space-1); padding: 0 var(--space-2); }
+  .topbar button { padding-left: var(--space-2); padding-right: var(--space-2); }
+  .topbar__chip { max-width: 130px; }
+}
