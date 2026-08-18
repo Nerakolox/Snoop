@@ -5,21 +5,12 @@
 
 import { useMemo } from "react";
 import type { RawBucket } from "../../data";
+import { ratioToSliderPos, ratioVerdict } from "../../analytics/keys";
 
 type RatioPanelProps = {
   /** 已按当前筛选过的桶列表 */
   buckets: RawBucket[];
 };
-
-/**
- * 比值在不同 App 间跨度约 60 倍（终端类 ~0.03，播放器类 ~1.7），线性映射会把
- * 大半应用挤在最左端，必须走对数。ratio <= 0 时 log10 会是 -Infinity，先行
- * 短路成 0，避免 NaN% 渗进 style。
- */
-function ratioToSliderPos(ratio: number): number {
-  if (ratio <= 0) return 0;
-  return Math.min(1, Math.max(0, (Math.log10(ratio) + 1.6) / 2.2));
-}
 
 export default function RatioPanel({ buckets }: RatioPanelProps) {
   const { clicks, keys } = useMemo(() => {
@@ -43,7 +34,7 @@ export default function RatioPanel({ buckets }: RatioPanelProps) {
 
   const ratio = clicks / keys;
   const pos = ratioToSliderPos(ratio);
-  const label = ratio > 0.25 ? "鼠标型" : ratio < 0.08 ? "键盘型" : "均衡型";
+  const label = ratioVerdict(ratio);
 
   return (
     <div className="kb-subsection">

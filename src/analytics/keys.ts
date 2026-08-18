@@ -105,6 +105,22 @@ export const MERGED_KEY_GROUPS: Record<string, string[]> = {
   MetaLeft: ["MetaLeft", "MetaRight"],
 };
 
+/**
+ * 键鼠比 → 滑块位置 [0,1]。
+ * 比值在不同 App 间跨度约 60 倍（终端类 ~0.03，播放器类 ~1.7），线性映射会把
+ * 大半应用挤在最左端，必须走对数。ratio <= 0 时 log10 是 -Infinity，
+ * 先行短路成 0，避免 NaN% 渗进 style。
+ */
+export function ratioToSliderPos(ratio: number): number {
+  if (ratio <= 0) return 0;
+  return Math.min(1, Math.max(0, (Math.log10(ratio) + 1.6) / 2.2));
+}
+
+/** 键鼠比判定标签。阈值与 RatioPanel 一致，改这里两页同时生效。 */
+export function ratioVerdict(ratio: number): "鼠标型" | "键盘型" | "均衡型" {
+  return ratio > 0.25 ? "鼠标型" : ratio < 0.08 ? "键盘型" : "均衡型";
+}
+
 /** 把一个 key_code 判给某个区域。 */
 export function classifyKeyCode(code: string): KeyRegion {
   if (KEY_REGIONS[code]) return KEY_REGIONS[code];

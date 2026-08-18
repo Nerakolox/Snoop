@@ -1,9 +1,5 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
-
-/** 环比百分比封顶：超过此值一律显示 "999%+"，避免分母极小时的百分比爆炸把布局撑破 */
-const MAX_DELTA_PCT = 999;
-/** 变化幅度在此比例以内视为持平 */
-const FLAT_RATIO = 0.025;
+import { computeDelta, MAX_DELTA_PCT } from "../analytics/delta";
 
 interface DeltaBadgeProps {
   /** 当期值，单位分钟 */
@@ -16,8 +12,11 @@ interface DeltaBadgeProps {
   baseThreshold: number;
 }
 
+/** 全站唯一的环比展示。判定逻辑在 analytics/delta.ts 的 computeDelta，这里只负责渲染。 */
 export default function DeltaBadge({ current, previous, vsLabel, baseThreshold }: DeltaBadgeProps) {
-  if (current < baseThreshold && previous < baseThreshold) {
+  const verdict = computeDelta(current, previous, baseThreshold);
+
+  if (verdict.kind === "na") {
     return (
       <span className="ins-delta ins-delta--na" title={`基期不足 ${baseThreshold} 分钟`}>
         <span className="ins-delta-num">—</span>
@@ -25,7 +24,7 @@ export default function DeltaBadge({ current, previous, vsLabel, baseThreshold }
     );
   }
 
-  if (previous < baseThreshold && current >= baseThreshold) {
+  if (verdict.kind === "new") {
     return (
       <span className="ins-delta ins-delta--new" title={`基期不足 ${baseThreshold} 分钟，视为新增`}>
         <span className="ins-delta-num">新</span>
@@ -33,9 +32,7 @@ export default function DeltaBadge({ current, previous, vsLabel, baseThreshold }
     );
   }
 
-  const ratio = (current - previous) / previous;
-
-  if (Math.abs(ratio) < FLAT_RATIO) {
+  if (verdict.kind === "flat") {
     return (
       <span className="ins-delta ins-delta--flat" title={`${vsLabel}基本持平`}>
         <Minus size={12} />
@@ -44,11 +41,10 @@ export default function DeltaBadge({ current, previous, vsLabel, baseThreshold }
     );
   }
 
-  const pct = Math.abs(ratio) * 100;
-  const capped = pct > MAX_DELTA_PCT;
+  const { pct, capped } = verdict;
   const numText = capped ? `${MAX_DELTA_PCT}%+` : `${pct.toFixed(1)}%`;
 
-  if (current > previous) {
+  if (verdict.kind === "up") {
     const title = capped
       ? `${vsLabel} +${pct.toFixed(1)}%（已封顶显示 ${MAX_DELTA_PCT}%+）`
       : `${vsLabel} +${pct.toFixed(1)}%`;

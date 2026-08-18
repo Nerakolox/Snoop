@@ -420,3 +420,87 @@
   color: var(--color-text-2);
 }
 
+/* ⓪' 顶部两张卡：活跃对比 · 键鼠比（Batch 5 C2 新增） ---------------------- */
+
+.ins-top-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.ins-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ins-card-value {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.ins-card-sub {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.ins-card-empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+}
+
+.ins-trend14 {
+  display: grid;
+  grid-template-columns: repeat(14, 1fr);
+  align-items: flex-end;
+  gap: 3px;
+  height: 40px;
+  margin-top: var(--space-2);
+}
+
+.ins-trend14-bar-wrap {
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+
+.ins-trend14-bar {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+}
+
+/* App 排行行、趋势柱改为原生 <button>（Batch 5 C2），追加按钮样式重置，
+   不改上面 .ins-app-row / .ins-trend-col 已有的布局规则。 */
+.ins-app-row {
+  appearance: none;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ins-app-row--dim {
+  opacity: 0.34;
+}
+
+.ins-trend-col {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
