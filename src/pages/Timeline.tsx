@@ -26,13 +26,16 @@ import PageShell from "../components/PageShell";
 import TimelineHeader from "../components/timeline/TimelineHeader";
 import TimelineTooltip from "../components/timeline/TimelineTooltip";
 import SwimLane from "../components/timeline/SwimLane";
-import { adaptKind, useContextState } from "../store/context";
+import { useToast } from "../components/shared/Toast";
+import { adaptKind, useContextActions, useContextState } from "../store/context";
 import { formatTime, formatDuration } from "../utils/format";
 
 // ---- 主组件 -----------------------------------------------------------------
 
 export default function Timeline() {
   const { kind, anchor, appId } = useContextState();
+  const actions = useContextActions();
+  const toast = useToast();
   const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("timeline", { kind, anchor });
 
   const [buckets, setBuckets] = useState<RawBucket[]>([]);
@@ -315,7 +318,9 @@ export default function Timeline() {
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
-    dragStartRef.current = null;
+    // 注意：这里不清 dragStartRef —— click 事件在浏览器里晚于 mouseup 触发，
+    // 若此处置 null，色块的 onClick 里就再也读不到本次拖拽的起点，
+    // 拖拽/点击判定会失效。dragStartRef 留到下一次 mousedown 时自然覆盖。
   }, []);
 
   useEffect(() => {
@@ -383,6 +388,30 @@ export default function Timeline() {
     const vs = timeToVirt(block.start_ms, segmentsData.segments);
     const ve = timeToVirt(block.end_ms, segmentsData.segments);
     return ve >= viewRange.start && vs <= viewRange.end;
+  }
+
+  // 拖拽平移松手时会在同一位置触发 click，需按位移量区分「点击」与「拖拽后松手」
+  function isClickNotDrag(e: React.MouseEvent): boolean {
+    const s = dragStartRef.current;
+    if (!s) return true;
+    return Math.abs(e.clientX - s.x) < 4 && Math.abs(e.clientY - s.y) < 4;
+  }
+
+  function selectApp(bundleId: string, name: string, block: TimeBlock) {
+    const hour = new Date(block.start_ms).getHours();
+    actions.navigate({ appId: bundleId, focusHour: hour });
+    toast.show({ message: `已筛选 ${name}，全站生效`, undoLabel: "取消筛选" });
+  }
+
+  function handleBlockClick(e: React.MouseEvent, bundleId: string, name: string, block: TimeBlock) {
+    if (!isClickNotDrag(e)) return;
+    selectApp(bundleId, name, block);
+  }
+
+  function handleBlockKeyDown(e: React.KeyboardEvent, bundleId: string, name: string, block: TimeBlock) {
+    if (e.key !== "Enter" && e.key !== " ") return;
+    e.preventDefault();
+    selectApp(bundleId, name, block);
   }
 
   const gapBands = useMemo(() => {
@@ -495,6 +524,9 @@ export default function Timeline() {
                   isBlockVisible={isBlockVisible}
                   trackRef={trackRef}
                   onHoverBlock={setHoveredBlock}
+                  dimmed={appId !== null && lane.app_bundle_id !== appId}
+                  onBlockClick={handleBlockClick}
+                  onBlockKeyDown={handleBlockKeyDown}
                 />
               ))}
             </div>

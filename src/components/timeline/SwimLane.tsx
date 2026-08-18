@@ -18,6 +18,10 @@ type SwimLaneProps = {
   /** 轨道 DOM ref —— 主组件用它做视口 rect 测量，用于滚轮缩放和拖拽 */
   trackRef: RefObject<HTMLDivElement | null>;
   onHoverBlock: (hovered: HoveredBlock | null) => void;
+  /** 存在全局 App 筛选且本泳道不是被选中的那个时为 true */
+  dimmed?: boolean;
+  onBlockClick: (e: React.MouseEvent, bundleId: string, appName: string, block: TimeBlock) => void;
+  onBlockKeyDown: (e: React.KeyboardEvent, bundleId: string, appName: string, block: TimeBlock) => void;
 };
 
 export default function SwimLane({
@@ -28,9 +32,12 @@ export default function SwimLane({
   isBlockVisible,
   trackRef,
   onHoverBlock,
+  dimmed,
+  onBlockClick,
+  onBlockKeyDown,
 }: SwimLaneProps) {
   return (
-    <div className="swimlane-row">
+    <div className={`swimlane-row${dimmed ? " swimlane-row--dim" : ""}`}>
       <div className="swimlane-label">
         <AppIcon
           bundleId={lane.app_bundle_id}
@@ -53,6 +60,8 @@ export default function SwimLane({
           <div
             key={i}
             className="swimlane-block"
+            role="button"
+            tabIndex={0}
             style={{
               ...blockStyle(block),
               background: lane.color,
@@ -68,6 +77,8 @@ export default function SwimLane({
               });
             }}
             onMouseLeave={() => onHoverBlock(null)}
+            onClick={(e) => onBlockClick(e, lane.app_bundle_id, lane.app_name, block)}
+            onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name, block)}
           />
         ))}
       </div>

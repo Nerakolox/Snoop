@@ -636,3 +636,9 @@
   white-space: nowrap;
 }
 
+/* 存在全局 App 筛选时，未选中的泳道灰化（不隐藏）。区间取 0.12–0.25，先定 0.18，
+   样式大改时再定最终值。gap 覆盖层是全局状态，不参与灰化，见 .swimlane-gap-overlay。 */
+.swimlane-row--dim {
+  opacity: 0.18;
+}
+
