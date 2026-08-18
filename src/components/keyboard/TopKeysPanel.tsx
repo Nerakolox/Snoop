@@ -32,7 +32,9 @@ export default function TopKeysPanel({
       <h3 className="kb-subsection-title">{title}</h3>
       <div className="topkey-list">
         {topKeys.length === 0 && (
-          <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>还没有数据</div>
+          <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>
+            这段范围还没有按键记录，换个时间范围或清除应用筛选试试
+          </div>
         )}
         {topKeys.map((k) => {
           const pct = topKeys[0] ? (k.n / topKeys[0].n) * 100 : 0;
