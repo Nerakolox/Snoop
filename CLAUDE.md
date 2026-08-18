@@ -5,7 +5,7 @@
 - 不加 Claude 署名 / Co-Authored-By 尾注。
 
 ## 主视图页面布局：PageShell
-右侧主视图的所有页面级组件都用 `src/components/PageShell.tsx` 包裹，它是「视口顶 → 首个可见内容 = `var(--space-6)`」的唯一真源。样式在 `src/styles/page-shell.css`。
+右侧主视图的所有页面级组件都用 `src/components/PageShell.tsx` 包裹，它是「顶栏底沿 → 首个可见内容 = `var(--space-6)`」的唯一真源。样式在 `src/styles/page-shell.css`。
 
 新增页面时：
 - 根元素写 `<PageShell className="xxx-page" header={...} stickyHeader fill>`，页面根 class 只放布局，**绝不再写 padding**（顶距由 PageShell 提供，左右/底沿用 `--space-8` / `--space-6`）。
@@ -14,6 +14,7 @@
 
 不要动：
 - `base.css` 的 `.app-shell` / `.app-right` / `.app-main` / `.page-layer`。
-- `body[data-platform="macos"]` 下的红绿灯让位、`[data-platform="windows"]` 下的 titlebar。
+- `body[data-platform="macos"]` 下的红绿灯让位。
+- `src/styles/topbar.css` 的 `.topbar` 三条约束：46px 定高不参与伸缩、`flex-wrap: nowrap` 绝不换行、`z-index: 10`（弹层 `z-index: 100`）。
 
 引入于 commit ee042b8。
