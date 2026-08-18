@@ -283,8 +283,8 @@ export default function Overview() {
         { kind: "num", text: formatNumber(totalKeys) },
         { kind: "unit", text: "次" },
       ],
-      target: "keyboard",
-      targetLabel: "键盘",
+      target: "input",
+      targetLabel: "输入",
     },
     {
       label: "总点击",
@@ -292,14 +292,14 @@ export default function Overview() {
         { kind: "num", text: formatNumber(totalClicks) },
         { kind: "unit", text: "次" },
       ],
-      target: "keyboard",
-      targetLabel: "键盘",
+      target: "input",
+      targetLabel: "输入",
     },
     {
       label: "鼠标里程",
       parts: formatMouseDistance(totalMouseDist),
-      target: "keyboard",
-      targetLabel: "键盘",
+      target: "input",
+      targetLabel: "输入",
     },
   ];
 

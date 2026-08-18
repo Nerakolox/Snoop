@@ -22,7 +22,7 @@ function renderPage(key: NavKey) {
       return <Overview />;
     case "timeline":
       return <Timeline />;
-    case "keyboard":
+    case "input":
       return <Keyboard />;
     case "insights":
       return <Insights />;

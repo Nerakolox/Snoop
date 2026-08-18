@@ -23,7 +23,7 @@ const isWindows =
 const PAGE_LABEL: Record<NavKey, string> = {
   overview: "概览",
   timeline: "时间线",
-  keyboard: "键盘",
+  input: "输入",
   insights: "洞察",
   settings: "设置",
   dev: "原始数据",

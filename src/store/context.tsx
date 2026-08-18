@@ -23,14 +23,13 @@ export const KIND_LABEL: Record<RangeKind, string> = {
 /**
  * 每个页面支持的时间粒度。数组顺序即降级优先级（取第一个可用的）。
  *
- * ⚠️ key 用的是**当前的 NavKey 取值**。Batch 1 不改页面命名，
- * 'keyboard' → 'input'、'insights' → 'patterns' 的改名在 Batch 4 / 5 做，
- * 到时候连同这里一起改。现在写 'input' 会直接查不到。
+ * ⚠️ key 用的是**当前的 NavKey 取值**。'insights' → 'patterns' 的改名
+ * 在 Batch 5 做，到时候连同这里一起改。
  */
 export const PAGE_KIND_CAP: Record<NavKey, RangeKind[]> = {
   overview:      ["day", "week", "month"],
   timeline:      ["day"],
-  keyboard:      ["day", "week", "month"],
+  input:         ["day", "week", "month"],
   insights:      ["week", "month"],
   settings:      ["day", "week", "month"],
   dev:           ["day", "week", "month"],

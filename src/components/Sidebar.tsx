@@ -1,14 +1,14 @@
 import { useEffect, useState } from "react";
 import { BarChart3, Clock, Keyboard, Lightbulb, Settings, Database, TestTube } from "lucide-react";
 
-export type NavKey = "overview" | "timeline" | "keyboard" | "insights" | "settings" | "dev" | "keymap-test";
+export type NavKey = "overview" | "timeline" | "input" | "insights" | "settings" | "dev" | "keymap-test";
 
 type NavItem = { key: NavKey; label: string; icon: React.ReactNode };
 
 const MAIN_ITEMS: NavItem[] = [
   { key: "overview", label: "概览", icon: <BarChart3 size={18} /> },
   { key: "timeline", label: "时间线", icon: <Clock size={18} /> },
-  { key: "keyboard", label: "键盘", icon: <Keyboard size={18} /> },
+  { key: "input", label: "输入", icon: <Keyboard size={18} /> },
   { key: "insights", label: "洞察", icon: <Lightbulb size={18} /> },
 ];
 

@@ -434,9 +434,9 @@
   gap: var(--space-8);
 }
 
-/* 键盘区域 —— ResizeObserver 观测对象。
-   它自身绝不滚动（滚动交给内部 .kle-viewport），宽度不受滚动条影响，
-   从而断开 观测宽↔滚动条 的反馈震荡。 */
+/* 键盘区域容器。真正被 ResizeObserver 观测的是内部的 .kle-viewport
+   （KeyboardPanel.tsx 的 ro.observe(vp)），这一层自身绝不滚动
+   （滚动交给内部 .kle-viewport），宽度不受滚动条影响。 */
 .kb-keyboard-section {
   display: block;
   width: 100%;
