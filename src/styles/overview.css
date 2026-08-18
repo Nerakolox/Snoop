@@ -301,6 +301,10 @@
 }
 
 .heat-cell {
+  appearance: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
   border-radius: var(--radius-sm);
   transition: transform var(--dur-fast) var(--ease-smooth);
 }
@@ -333,5 +337,97 @@
 
 .heat-scale-tick--edge-end {
   justify-self: end;
+}
+
+/* 周形态：7 天柱状 ------------------------------------------------------- */
+
+.week-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-3);
+  height: 140px;
+}
+
+.week-bar {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  font: inherit;
+  color: inherit;
+}
+
+.week-bar-track {
+  width: 100%;
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+/* 空天：无采集数据，虚线边框 + 无填充，与"有数据但强度 0"（灰色实心柱）区分 */
+.week-bar--empty .week-bar-track {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+}
+
+.week-bar-fill {
+  width: 100%;
+  border-radius: var(--radius-sm);
+  transition: height var(--dur-base) var(--ease-smooth);
+}
+
+.week-bar-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+/* 月形态：日历热力 ------------------------------------------------------- */
+
+.month-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-2);
+}
+
+.month-cell {
+  appearance: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  background: var(--intensity-0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--dur-fast) var(--ease-smooth);
+}
+
+.month-cell:hover {
+  transform: scale(1.08);
+}
+
+/* 空天：无采集数据，虚线边框 + 无底色，与强度 0（实心浅灰）区分 */
+.month-cell--empty {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+}
+
+.month-cell-date {
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.month-cell--empty .month-cell-date {
+  color: var(--color-text-3);
 }
 

@@ -9,6 +9,7 @@ import {
   computeIntensity,
   intensityByHourFromBuckets,
   intensityVar,
+  statsByDayFromBuckets,
   type Intensity,
   MOOD_LABELS,
   MOUSE_PIXELS_PER_METER,
@@ -24,8 +25,15 @@ import ContextChips from "../components/shared/ContextChips";
 import { useToast } from "../components/shared/Toast";
 import type { NavKey } from "../components/Sidebar";
 import { useRangeData } from "../data/useRangeData";
-import { formatAnchor } from "../data/ranges";
-import { adaptKind, shiftAnchor, useContextActions, useContextState, type RangeKind } from "../store/context";
+import { formatAnchor, toMs } from "../data/ranges";
+import {
+  adaptKind,
+  normalizeAnchor,
+  shiftAnchor,
+  useContextActions,
+  useContextState,
+  type RangeKind,
+} from "../store/context";
 import { anchorLabel } from "../utils/format";
 
 type NowStatus = {
@@ -71,6 +79,11 @@ function formatDuration(ms: number): KpiPart[] {
   ];
 }
 
+/** formatDuration 的纯字符串版，用于副文案/tooltip 里不需要分段样式的场合 */
+function formatDurationPlain(ms: number): string {
+  return formatDuration(ms).map((p) => p.text).join("");
+}
+
 /** 格式化数字：加千分位 */
 function formatNumber(n: number): string {
   return n.toLocaleString("zh-CN");
@@ -105,6 +118,19 @@ function daysWithDataOf(buckets: RawBucket[]): number {
     days.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
   }
   return days.size;
+}
+
+const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
+
+/** JS getDay(): 周日=0..周六=6 → 周一为第一列的索引 0..6，与 analytics/aggregate.ts 的 mondayIndex 同一约定 */
+function mondayIndex(dayMs: number): number {
+  const dow = new Date(dayMs).getDay();
+  return dow === 0 ? 6 : dow - 1;
+}
+
+function dateLabelOf(dayMs: number): string {
+  const d = new Date(dayMs);
+  return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
 function OverviewHeader({
@@ -241,7 +267,7 @@ export default function Overview() {
   }
   const daysWithData = daysWithDataOf(buckets);
   const avgMs = daysWithData > 0 ? activeDuration / daysWithData : 0;
-  const avgLabel = formatDuration(avgMs).map((p) => p.text).join("");
+  const avgLabel = formatDurationPlain(avgMs);
 
   const kpis: Kpi[] = [
     {
@@ -289,6 +315,13 @@ export default function Overview() {
 
   const hourly = intensityByHourFromBuckets(buckets);
 
+  const rhythmRange = useMemo(() => toMs(viewKind, viewAnchor), [viewKind, viewAnchor]);
+  const dailyStats = useMemo(() => {
+    const stats = statsByDayFromBuckets(buckets, rhythmRange.start_ms, rhythmRange.end_ms);
+    return stats.map((s) => ({ ...s, hasData: s.activeMs > 0 }));
+  }, [buckets, rhythmRange]);
+  const maxDayActiveMs = Math.max(...dailyStats.map((d) => d.activeMs), 1);
+
   const appName =
     appId === null
       ? undefined
@@ -298,6 +331,26 @@ export default function Overview() {
   // 「当前筛选下」是否没有数据 —— 用来决定 KPI / 节奏区的空态说明。
   // App 排行不受筛选影响（展示全量），空态单独按 apps.length 判断。
   const isEmpty = !loading && buckets.length === 0;
+
+  const isCurrentAnchor = viewAnchor === normalizeAnchor(viewKind, formatAnchor(nowLabel));
+  const rhythmTitle = isCurrentAnchor
+    ? viewKind === "day"
+      ? "今日节奏"
+      : viewKind === "week"
+        ? "本周节奏"
+        : "本月节奏"
+    : `${anchorLabel(viewKind, viewAnchor, nowLabel)}节奏`;
+
+  function goToHour(hour: number) {
+    actions.navigate({ page: "timeline", focusHour: hour });
+    toast.show({ message: "已跳转到时间线", undoLabel: "返回" });
+  }
+
+  function goToDay(dayMs: number) {
+    const dayAnchor = formatAnchor(new Date(dayMs));
+    actions.navigate({ kind: "day", anchor: dayAnchor });
+    toast.show({ message: `已切换到 ${dateLabelOf(dayMs)}`, undoLabel: "返回" });
+  }
 
   if (loading && allBuckets.length === 0) {
     return (
@@ -429,36 +482,95 @@ export default function Overview() {
         </div>
       </section>
 
-      {/* ④ 节奏 —— 24 小时热力条（三形态改造见 C4） */}
+      {/* ④ 节奏 —— 日=24 格热力条 / 周=7 柱 / 月=日历热力 */}
       <section className="panel">
-        <h3 className="panel-title">节奏</h3>
-        <div className="heat-strip">
-          {hourly.map((level, hour) => (
-            <div
-              key={hour}
-              className="heat-cell"
-              style={{ background: intensityVar(level) }}
-              title={`${hour}:00 · 强度 ${level}`}
-            />
-          ))}
-        </div>
-        <div className="heat-scale">
-          <span className="heat-scale-tick heat-scale-tick--edge-start" style={{ gridColumn: 1 }}>
-            0
-          </span>
-          <span className="heat-scale-tick" style={{ gridColumn: 7 }}>
-            6
-          </span>
-          <span className="heat-scale-tick" style={{ gridColumn: 13 }}>
-            12
-          </span>
-          <span className="heat-scale-tick" style={{ gridColumn: 19 }}>
-            18
-          </span>
-          <span className="heat-scale-tick heat-scale-tick--edge-end" style={{ gridColumn: 24 }}>
-            24
-          </span>
-        </div>
+        <h3 className="panel-title">{rhythmTitle}</h3>
+
+        {viewKind === "day" && (
+          <>
+            <div className="heat-strip">
+              {hourly.map((level, hour) => (
+                <button
+                  key={hour}
+                  type="button"
+                  className="heat-cell drillable"
+                  style={{ background: intensityVar(level) }}
+                  title={`${hour}:00 · 强度 ${level}`}
+                  onClick={() => goToHour(hour)}
+                />
+              ))}
+            </div>
+            <div className="heat-scale">
+              <span className="heat-scale-tick heat-scale-tick--edge-start" style={{ gridColumn: 1 }}>
+                0
+              </span>
+              <span className="heat-scale-tick" style={{ gridColumn: 7 }}>
+                6
+              </span>
+              <span className="heat-scale-tick" style={{ gridColumn: 13 }}>
+                12
+              </span>
+              <span className="heat-scale-tick" style={{ gridColumn: 19 }}>
+                18
+              </span>
+              <span className="heat-scale-tick heat-scale-tick--edge-end" style={{ gridColumn: 24 }}>
+                24
+              </span>
+            </div>
+          </>
+        )}
+
+        {viewKind === "week" && (
+          <div className="week-bars">
+            {dailyStats.map((d) => {
+              const pct = d.hasData ? Math.max((d.activeMs / maxDayActiveMs) * 100, 4) : 0;
+              return (
+                <button
+                  key={d.dayMs}
+                  type="button"
+                  className={`week-bar drillable${d.hasData ? "" : " week-bar--empty"}`}
+                  onClick={() => goToDay(d.dayMs)}
+                  title={
+                    d.hasData
+                      ? `${dateLabelOf(d.dayMs)} · ${formatDurationPlain(d.activeMs)}`
+                      : `${dateLabelOf(d.dayMs)} · 无采集数据`
+                  }
+                >
+                  <span className="week-bar-track">
+                    {d.hasData && (
+                      <span
+                        className="week-bar-fill"
+                        style={{ height: `${pct}%`, background: intensityVar(d.intensity) }}
+                      />
+                    )}
+                  </span>
+                  <span className="week-bar-label">{WEEKDAY_LABELS[mondayIndex(d.dayMs)]}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {viewKind === "month" && (
+          <div className="month-grid">
+            {dailyStats.map((d, i) => (
+              <button
+                key={d.dayMs}
+                type="button"
+                className={`month-cell drillable${d.hasData ? "" : " month-cell--empty"}`}
+                style={{
+                  gridColumnStart: i === 0 ? mondayIndex(d.dayMs) + 1 : undefined,
+                  background: d.hasData ? intensityVar(d.intensity) : undefined,
+                }}
+                title={d.hasData ? `${dateLabelOf(d.dayMs)} · 强度 ${d.intensity}` : `${dateLabelOf(d.dayMs)} · 无采集数据`}
+                onClick={() => goToDay(d.dayMs)}
+              >
+                <span className="month-cell-date">{new Date(d.dayMs).getDate()}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {isEmpty && <p className="overview-empty-note">{noDataReason(appId, appName)}</p>}
       </section>
     </PageShell>
