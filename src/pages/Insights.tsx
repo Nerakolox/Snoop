@@ -494,7 +494,7 @@ export default function Insights() {
                 <button
                   key={d.dayMs}
                   type="button"
-                  className="ins-trend-col drillable"
+                  className="ins-trend-col"
                   onClick={() => goToDay(d.dayMs)}
                   title={
                     hasData
@@ -595,7 +595,7 @@ export default function Insights() {
                       <button
                         key={`${ri}-${ci}`}
                         type="button"
-                        className="ins-rhythm-cell drillable"
+                        className="ins-rhythm-cell"
                         style={{ background: intensityVar(cell.intensity) }}
                         title={`${dayLabel} ${hourLabel} · 强度 ${cell.intensity}${sampleSuffix}`}
                         onClick={() => goToRhythmCell(ri, ci)}
@@ -675,7 +675,7 @@ export default function Insights() {
               <button
                 key={r.key}
                 type="button"
-                className="ins-rule-card drillable"
+                className="ins-rule-card"
                 onClick={r.onClick}
               >
                 <div className="ins-rule-title">{r.title}</div>

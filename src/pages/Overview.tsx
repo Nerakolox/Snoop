@@ -365,7 +365,7 @@ export default function Overview() {
           <button
             key={k.label}
             type="button"
-            className="kpi-card drillable"
+            className="kpi-card"
             data-target-label={k.targetLabel}
             onClick={() => goTo(k.target, k.targetLabel)}
           >
@@ -446,7 +446,7 @@ export default function Overview() {
                 <button
                   key={hour}
                   type="button"
-                  className="heat-cell drillable"
+                  className="heat-cell"
                   style={{ background: intensityVar(level) }}
                   title={`${hour}:00 · 强度 ${level}`}
                   onClick={() => goToHour(hour)}
@@ -481,7 +481,7 @@ export default function Overview() {
                 <button
                   key={d.dayMs}
                   type="button"
-                  className={`week-bar drillable${d.hasData ? "" : " week-bar--empty"}`}
+                  className={`week-bar${d.hasData ? "" : " week-bar--empty"}`}
                   onClick={() => goToDay(d.dayMs)}
                   title={
                     d.hasData
@@ -510,7 +510,7 @@ export default function Overview() {
               <button
                 key={d.dayMs}
                 type="button"
-                className={`month-cell drillable${d.hasData ? "" : " month-cell--empty"}`}
+                className={`month-cell${d.hasData ? "" : " month-cell--empty"}`}
                 style={{
                   gridColumnStart: i === 0 ? mondayIndex(d.dayMs) + 1 : undefined,
                   background: d.hasData ? intensityVar(d.intensity) : undefined,

@@ -79,6 +79,7 @@
 }
 
 .kpi-card {
+  position: relative;
   appearance: none;
   width: 100%;
   padding: var(--space-6);
@@ -93,6 +94,15 @@
   font: inherit;
   color: inherit;
   cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
+}
+
+.kpi-card:hover,
+.kpi-card:focus-visible {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
 }
 
 /* 悬停/聚焦时右上角浮出下钻目标提示，纯 CSS，不引组件 */
@@ -179,7 +189,9 @@
   width: 100%;
   background: none;
   border: none;
-  padding: 0;
+  padding: var(--space-2) var(--space-3);
+  margin-inline: calc(-1 * var(--space-3));
+  border-radius: var(--radius-sm);
   font: inherit;
   color: inherit;
   cursor: pointer;
@@ -187,7 +199,14 @@
   grid-template-columns: 100px 1fr auto auto;
   align-items: center;
   gap: var(--space-4);
-  transition: opacity var(--dur-base) var(--ease-smooth);
+  transition:
+    opacity var(--dur-base) var(--ease-smooth),
+    background var(--dur-fast) var(--ease-smooth);
+}
+
+.app-row:hover,
+.app-row:focus-visible {
+  background: var(--color-surface-2);
 }
 
 /* 全局筛选了某个 App 时，非选中行降透明度而非隐藏 —— 仍能看出它在榜单里 */
@@ -326,7 +345,14 @@
 .week-bar-fill {
   width: 100%;
   border-radius: var(--radius-sm);
-  transition: height var(--dur-base) var(--ease-smooth);
+  transition:
+    height var(--dur-base) var(--ease-smooth),
+    filter var(--dur-fast) var(--ease-smooth);
+}
+
+.week-bar:hover .week-bar-fill,
+.week-bar:focus-visible .week-bar-fill {
+  filter: brightness(1.07);
 }
 
 .week-bar-label {
@@ -358,6 +384,12 @@
 
 .month-cell:hover {
   transform: scale(1.08);
+}
+
+.month-cell:hover,
+.month-cell:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 /* 空天：无采集数据，虚线边框 + 无底色，与强度 0（实心浅灰）区分 */

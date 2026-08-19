@@ -140,8 +140,9 @@
     filter var(--dur-fast) var(--ease-smooth);
 }
 
-.ins-trend-bar:hover {
-  filter: brightness(1.05);
+.ins-trend-col:hover .ins-trend-bar,
+.ins-trend-col:focus-visible .ins-trend-bar {
+  filter: brightness(1.07);
 }
 
 .ins-trend-value {
@@ -323,6 +324,12 @@
   transform: scale(1.15);
 }
 
+.ins-rhythm-cell:hover,
+.ins-rhythm-cell:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 /* 图例 */
 .ins-rhythm-legend {
   display: flex;
@@ -483,11 +490,19 @@
   width: 100%;
   background: none;
   border: none;
-  padding: 0;
+  padding: var(--space-2) var(--space-3);
+  margin-inline: calc(-1 * var(--space-3));
+  border-radius: var(--radius-sm);
   font: inherit;
   color: inherit;
   text-align: left;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-smooth);
+}
+
+.ins-app-row:hover,
+.ins-app-row:focus-visible {
+  background: var(--color-surface-2);
 }
 
 .ins-app-row--dim {
@@ -546,6 +561,15 @@ button.ins-rhythm-cell {
   font: inherit;
   color: inherit;
   cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    background var(--dur-fast) var(--ease-smooth);
+}
+
+.ins-rule-card:hover,
+.ins-rule-card:focus-visible {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .ins-rule-title {
