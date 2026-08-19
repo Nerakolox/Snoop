@@ -16,6 +16,7 @@ import { fetchAppRankingInRange } from "../data/client";
 import type { RawAppRank } from "../data/types";
 import { anchorLabel, formatDuration } from "../utils/format";
 import AppIcon from "./AppIcon";
+import TopBarTools from "./topbar/TopBarTools";
 
 const isWindows =
   typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
@@ -297,6 +298,8 @@ export default function TopBar() {
           </div>
         )}
       </div>
+
+      <TopBarTools />
 
       <div className="topbar__spacer" data-tauri-drag-region />
 

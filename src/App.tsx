@@ -10,6 +10,7 @@ import Settings from "./pages/Settings";
 import Dev from "./pages/Dev";
 import KeymapTest from "./pages/KeymapTest";
 import { useContextState, useContextActions } from "./store/context";
+import { TopBarToolsProvider } from "./components/topbar/TopBarToolsContext";
 
 // 两段动画：先淡出旧页（旧内容往上飞），换页并等新页 layout 完成，
 // 再淡入新页（新内容从下方浮上）
@@ -128,14 +129,16 @@ export default function App() {
   return (
     <div className="app-shell">
       <Sidebar active={page} onSelect={handleSelect} />
-      <div className="app-right">
-        <TopBar />
-        <main className="app-main">
-          <div className={layerClass} style={style}>
-            {renderPage(displayed)}
-          </div>
-        </main>
-      </div>
+      <TopBarToolsProvider>
+        <div className="app-right">
+          <TopBar />
+          <main className="app-main">
+            <div className={layerClass} style={style}>
+              {renderPage(displayed)}
+            </div>
+          </main>
+        </div>
+      </TopBarToolsProvider>
     </div>
   );
 }

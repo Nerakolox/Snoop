@@ -27,7 +27,8 @@
 /* 交互元素统一排除拖拽 */
 .topbar button,
 .topbar .topbar__chip,
-.topbar__app-menu { -webkit-app-region: no-drag; }
+.topbar__app-menu,
+.topbar__tools-menu { -webkit-app-region: no-drag; }
 
 /* ---------- 粒度分段 ---------- */
 
@@ -395,6 +396,102 @@
 [data-theme="dark"] .topbar__chip-clear:hover {
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* ---------- 页面工具槽 ----------
+   页面把自己的操作控件注册到这里（见 components/topbar/TopBarToolsContext.tsx）。
+   这是顶栏里第二个可收缩项（第一个是 .topbar__spacer），装不下时低优先级项
+   收进 .topbar__tools-more 的「⋯」菜单，由 JS 实测宽度决定，不是媒体查询。
+   选择器写 `.topbar > .topbar__tools` 是为了压过 22 行的 `.topbar > * { flex: none }`。
+*/
+
+.topbar > .topbar__tools {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+/* 无工具时彻底塌掉，不留 gap */
+.topbar > .topbar__tools:empty { display: none; }
+
+/* 实际裁剪只作用于这一行——.topbar__tools-menu 是它的外部兄弟，
+   不会被这里的 overflow:hidden 一起裁掉（弹层要露出到行外）。 */
+.topbar__tools-row {
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.topbar__tools-measure {
+  position: absolute;
+  left: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.topbar__tools-item { display: inline-flex; align-items: center; flex: none; }
+
+/* 「⋯」沿用 .topbar__nav-btn 的尺寸与悬停语言 */
+.topbar__tools-more {
+  border: none;
+  background: transparent;
+  color: var(--color-text-2);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--dur-fast) var(--ease-smooth), color var(--dur-fast) var(--ease-smooth);
+}
+
+.topbar__tools-more:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+/* 内建上下文芯片（定位 / 单键）：与应用筛选芯片同语言，恒为已筛选态 */
+.topbar__chip--context { max-width: 160px; }
+
+/* 弹层与 .topbar__app-menu 同层同视觉 */
+.topbar__tools-menu {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  right: 0;
+  z-index: 100;
+  min-width: 160px;
+  padding: var(--space-1);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.topbar__tools-menu-row { display: flex; }
+
+/* 页面切换时工具整体淡入：工具区在 TopBar 里，不参与页面淡入淡出，不加会硬切 */
+.topbar__tools-item { animation: topbar-tool-in 120ms var(--ease-smooth); }
+@keyframes topbar-tool-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .topbar__tools-item { animation: none; }
+}
+
+/* 测量层不参与动画：aria-hidden 层不需要动画，且动画期间宽度不稳会污染测量 */
+.topbar__tools-measure .topbar__tools-item { animation: none; }
 
 /* ---------- 窄窗口降级 ---------- */
 
