@@ -18,6 +18,7 @@ import AppIcon from "../components/AppIcon";
 import DeltaBadge from "../components/DeltaBadge";
 import PageShell from "../components/PageShell";
 import { useToast } from "../components/shared/Toast";
+import Tooltip from "../components/shared/Tooltip";
 import type { NavKey } from "../components/Sidebar";
 import { useRangeData } from "../data/useRangeData";
 import { formatAnchor, toMs } from "../data/ranges";
@@ -407,10 +408,12 @@ export default function Overview() {
                 className={`app-row drillable${dim ? " app-row--dim" : ""}`}
                 onClick={() => goToApp(app.bundleId, app.name)}
               >
-                <div className="app-row-name" title={app.name}>
-                  <AppIcon bundleId={app.bundleId} appName={app.name} size={18} />
-                  <span>{app.name}</span>
-                </div>
+                <Tooltip content={app.name}>
+                  <div className="app-row-name">
+                    <AppIcon bundleId={app.bundleId} appName={app.name} size={18} />
+                    <span>{app.name}</span>
+                  </div>
+                </Tooltip>
                 <div className="app-row-track">
                   <div
                     className="app-row-fill"
@@ -441,14 +444,14 @@ export default function Overview() {
           <>
             <div className="heat-strip">
               {hourly.map((level, hour) => (
-                <button
-                  key={hour}
-                  type="button"
-                  className="heat-cell"
-                  style={{ background: intensityVar(level) }}
-                  title={`${hour}:00 · 强度 ${level}`}
-                  onClick={() => goToHour(hour)}
-                />
+                <Tooltip key={hour} content={`${hour}:00 · 强度 ${level}`}>
+                  <button
+                    type="button"
+                    className="heat-cell"
+                    style={{ background: intensityVar(level) }}
+                    onClick={() => goToHour(hour)}
+                  />
+                </Tooltip>
               ))}
             </div>
             <div className="heat-scale">
@@ -476,27 +479,30 @@ export default function Overview() {
             {dailyStats.map((d) => {
               const pct = d.hasData ? Math.max((d.activeMs / maxDayActiveMs) * 100, 4) : 0;
               return (
-                <button
+                <Tooltip
                   key={d.dayMs}
-                  type="button"
-                  className={`week-bar${d.hasData ? "" : " week-bar--empty"}`}
-                  onClick={() => goToDay(d.dayMs)}
-                  title={
+                  content={
                     d.hasData
                       ? `${dateLabelOf(d.dayMs)} · ${formatDurationPlain(d.activeMs)}`
                       : `${dateLabelOf(d.dayMs)} · 无采集数据`
                   }
                 >
-                  <span className="week-bar-track">
-                    {d.hasData && (
-                      <span
-                        className="week-bar-fill"
-                        style={{ height: `${pct}%`, background: intensityVar(d.intensity) }}
-                      />
-                    )}
-                  </span>
-                  <span className="week-bar-label">{WEEKDAY_LABELS[mondayIndex(d.dayMs)]}</span>
-                </button>
+                  <button
+                    type="button"
+                    className={`week-bar${d.hasData ? "" : " week-bar--empty"}`}
+                    onClick={() => goToDay(d.dayMs)}
+                  >
+                    <span className="week-bar-track">
+                      {d.hasData && (
+                        <span
+                          className="week-bar-fill"
+                          style={{ height: `${pct}%`, background: intensityVar(d.intensity) }}
+                        />
+                      )}
+                    </span>
+                    <span className="week-bar-label">{WEEKDAY_LABELS[mondayIndex(d.dayMs)]}</span>
+                  </button>
+                </Tooltip>
               );
             })}
           </div>
@@ -505,19 +511,22 @@ export default function Overview() {
         {viewKind === "month" && (
           <div className="month-grid">
             {dailyStats.map((d, i) => (
-              <button
+              <Tooltip
                 key={d.dayMs}
-                type="button"
-                className={`month-cell${d.hasData ? "" : " month-cell--empty"}`}
-                style={{
-                  gridColumnStart: i === 0 ? mondayIndex(d.dayMs) + 1 : undefined,
-                  background: d.hasData ? intensityVar(d.intensity) : undefined,
-                }}
-                title={d.hasData ? `${dateLabelOf(d.dayMs)} · 强度 ${d.intensity}` : `${dateLabelOf(d.dayMs)} · 无采集数据`}
-                onClick={() => goToDay(d.dayMs)}
+                content={d.hasData ? `${dateLabelOf(d.dayMs)} · 强度 ${d.intensity}` : `${dateLabelOf(d.dayMs)} · 无采集数据`}
               >
-                <span className="month-cell-date">{new Date(d.dayMs).getDate()}</span>
-              </button>
+                <button
+                  type="button"
+                  className={`month-cell${d.hasData ? "" : " month-cell--empty"}`}
+                  style={{
+                    gridColumnStart: i === 0 ? mondayIndex(d.dayMs) + 1 : undefined,
+                    background: d.hasData ? intensityVar(d.intensity) : undefined,
+                  }}
+                  onClick={() => goToDay(d.dayMs)}
+                >
+                  <span className="month-cell-date">{new Date(d.dayMs).getDate()}</span>
+                </button>
+              </Tooltip>
             ))}
           </div>
         )}

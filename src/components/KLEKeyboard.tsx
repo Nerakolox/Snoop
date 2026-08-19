@@ -24,6 +24,7 @@ import {
 } from "../layouts/labels";
 import KeyCountTooltip, { type KeyCountAnchor } from "./keyboard/KeyCountTooltip";
 import { useKeySelection } from "./keyboard/KeySelectionContext";
+import Tooltip from "./shared/Tooltip";
 
 type KLEKeyboardProps = {
   keys: KLEKey[];
@@ -159,12 +160,11 @@ export default function KLEKeyboard({
               setHovered({ label: readableLabel, count, x: e.clientX, y: e.clientY });
 
             return (
+              <Tooltip key={`${key.row}-${key.col}-${index}`} content={keyTitles?.[index]}>
               <div
-                key={`${key.row}-${key.col}-${index}`}
                 className={`kle-key${key.decal ? " kle-key--decal" : ""}${selectedIndex === index ? " kle-key--selected" : ""}`}
                 style={keyStyle}
                 aria-label={key.decal ? readableLabel : `${readableLabel}, ${count} 次`}
-                title={keyTitles?.[index]}
                 onClick={clickable ? () => onKeyClick!(index, key) : undefined}
                 onMouseEnter={hoverable ? setTip : undefined}
                 onMouseMove={hoverable ? setTip : undefined}
@@ -202,6 +202,7 @@ export default function KLEKeyboard({
                   </span>
                 )}
               </div>
+              </Tooltip>
             );
           })}
         </div>

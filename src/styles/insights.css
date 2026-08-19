@@ -93,6 +93,7 @@
 .ins-split {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  align-items: stretch;
   gap: var(--space-6);
 }
 
@@ -107,13 +108,16 @@
 .ins-trend-panel {
   display: flex;
   flex-direction: column;
+  /* 撑满 .ins-split 拉伸出的行高，不再比右侧 App 排行矮一截 */
+  height: 100%;
 }
 
 .ins-trend {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: var(--space-3);
-  height: 200px;
+  flex: 1;
+  min-height: 200px;
 }
 
 .ins-trend-col {
@@ -171,10 +175,12 @@
 
 .ins-app-row {
   display: grid;
-  /* 图标+名称 · 横条 · 时长 · 环比胶囊；环比列固定 72px，能容纳到 "999%+" 而不会撑破布局 */
-  grid-template-columns: 96px minmax(0, 1fr) 48px 72px;
+  /* 图标+名称 · 横条 · 时长 · 环比胶囊；环比列固定 60px，能容纳到 "999%+" 而不会撑破布局，
+     列宽/间距比早期版本收紧了一圈——原 72px+12px 间距在「—」「新」这类短内容右侧留出一整条
+     很显眼的空白，视觉上像多出一道边距。 */
+  grid-template-columns: 96px minmax(0, 1fr) 44px 60px;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .ins-app-name {
@@ -353,6 +359,7 @@
   gap: 2px;
   border-radius: var(--radius-sm);
   overflow: hidden;
+  cursor: help;
 }
 
 .ins-legend-gradient > span {
@@ -441,6 +448,13 @@
   gap: var(--space-2);
 }
 
+/* DeltaBadge 在 App 排行里是靠 .ins-delta 的 width:100% 撑满固定网格列的，
+   搬到这里 flex 列默认拉伸会把它撑成一整条空胶囊，改成按内容宽度靠左 */
+.ins-card > .ins-delta {
+  align-self: flex-start;
+  width: auto;
+}
+
 .ins-card-value {
   display: flex;
   align-items: baseline;
@@ -454,6 +468,15 @@
 .ins-card-sub {
   font-size: var(--text-xs);
   color: var(--color-text-3);
+}
+
+/* 可 hover 查看说明的标题/术语——虚线下划线做视觉提示，避免用户看不出能悬浮 */
+.panel-title--hint,
+.ins-card-sub-hint {
+  cursor: help;
+  text-decoration: underline dotted;
+  text-decoration-color: var(--color-text-3);
+  text-underline-offset: 3px;
 }
 
 .ins-card-empty {
@@ -481,6 +504,15 @@
   width: 100%;
   border-radius: var(--radius-sm);
   background: var(--color-accent);
+}
+
+/* 没数据的天不再是纯空白——留一条极淡的基线，14 天始终是完整的一排，
+   而不是几根孤零零飘在角落的柱子 */
+.ins-trend14-bar--empty {
+  width: 100%;
+  height: 3px;
+  border-radius: var(--radius-sm);
+  background: var(--color-border);
 }
 
 /* App 排行行、趋势柱改为原生 <button>（Batch 5 C2），追加按钮样式重置，

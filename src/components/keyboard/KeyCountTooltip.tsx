@@ -6,6 +6,7 @@
 
 import { useLayoutEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { positionTooltip } from "../shared/tooltipPosition";
 
 export type KeyCountAnchor = {
   /** 键帽标签（已 getDisplayLabel 处理） */
@@ -18,7 +19,6 @@ export type KeyCountAnchor = {
 
 type Props = { anchor: KeyCountAnchor };
 
-const GAP = 8;
 const OFFSET = 12;
 
 export default function KeyCountTooltip({ anchor }: Props) {
@@ -27,19 +27,7 @@ export default function KeyCountTooltip({ anchor }: Props) {
   useLayoutEffect(() => {
     const tip = ref.current;
     if (!tip) return;
-    const tipW = tip.offsetWidth;
-    const tipH = tip.offsetHeight;
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-
-    // 默认居中于光标上方；碰上边则翻到下方；再左右/上下 clamp 进视口。
-    let left = anchor.x - tipW / 2;
-    left = Math.max(GAP, Math.min(W - tipW - GAP, left));
-
-    let top = anchor.y - OFFSET - tipH;
-    if (top < GAP) top = anchor.y + OFFSET;
-    top = Math.max(GAP, Math.min(H - tipH - GAP, top));
-
+    const { left, top } = positionTooltip(tip, anchor.x, anchor.y, OFFSET);
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
     tip.style.visibility = "visible";

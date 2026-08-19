@@ -9,6 +9,7 @@ import { ChevronLeft, ChevronRight, ExternalLink, Plus, Trash2, X } from "lucide
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { parseKLE, type KLEKey } from "../kleParser";
 import KLELayoutPreview from "./KLELayoutPreview";
+import Tooltip from "./shared/Tooltip";
 import {
   getAllLayouts,
   getLayoutById,
@@ -153,15 +154,16 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
       <label className="kle-layout-label">配列</label>
       <div className="kle-layout-carousel">
         {totalPages > 1 && (
-          <button
-            type="button"
-            className="kle-carousel-btn"
-            onClick={goToPrevPage}
-            disabled={currentPage === 0}
-            title="上一页"
-          >
-            <ChevronLeft size={16} />
-          </button>
+          <Tooltip content="上一页">
+            <button
+              type="button"
+              className="kle-carousel-btn"
+              onClick={goToPrevPage}
+              disabled={currentPage === 0}
+            >
+              <ChevronLeft size={16} />
+            </button>
+          </Tooltip>
         )}
         <div className="kle-layout-options">
           {visibleLayouts.map((layout) => {
@@ -172,60 +174,68 @@ export default function KLELayoutPicker({ value, onChange }: KLELayoutPickerProp
                 key={layout.id}
                 className={`kle-layout-option${value === layout.id ? " is-active" : ""}${isCustom ? " is-custom" : ""}`}
               >
-                <button
-                  type="button"
-                  className="kle-layout-option-btn"
-                  onClick={() => onChange(layout.id)}
-                  title={layout.name}
-                >
-                  <div className="kle-layout-preview">
-                    {previewKeys.length > 0 ? (
-                      <KLELayoutPreview keys={previewKeys} width={64} height={26} />
-                    ) : (
-                      <div style={{ width: 64, height: 26 }} />
-                    )}
-                  </div>
-                  <div className="kle-layout-name">
-                    {isCustom && <span className="kle-layout-badge" title="自定义">·</span>}
-                    {layout.name}
-                  </div>
-                </button>
-                {isCustom && (
+                <Tooltip content={layout.name}>
                   <button
                     type="button"
-                    className="kle-layout-delete"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      askDelete(layout.id);
-                    }}
-                    title="删除自定义配列"
+                    className="kle-layout-option-btn"
+                    onClick={() => onChange(layout.id)}
                   >
-                    <X size={11} />
+                    <div className="kle-layout-preview">
+                      {previewKeys.length > 0 ? (
+                        <KLELayoutPreview keys={previewKeys} width={64} height={26} />
+                      ) : (
+                        <div style={{ width: 64, height: 26 }} />
+                      )}
+                    </div>
+                    <div className="kle-layout-name">
+                      {isCustom && (
+                        <Tooltip content="自定义">
+                          <span className="kle-layout-badge">·</span>
+                        </Tooltip>
+                      )}
+                      {layout.name}
+                    </div>
                   </button>
+                </Tooltip>
+                {isCustom && (
+                  <Tooltip content="删除自定义配列">
+                    <button
+                      type="button"
+                      className="kle-layout-delete"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        askDelete(layout.id);
+                      }}
+                    >
+                      <X size={11} />
+                    </button>
+                  </Tooltip>
                 )}
               </div>
             );
           })}
         </div>
         {totalPages > 1 && (
+          <Tooltip content="下一页">
+            <button
+              type="button"
+              className="kle-carousel-btn"
+              onClick={goToNextPage}
+              disabled={currentPage >= totalPages - 1}
+            >
+              <ChevronRight size={16} />
+            </button>
+          </Tooltip>
+        )}
+        <Tooltip content="导入 KLE 配列（keyboard-layout-editor.com 导出的 JSON）">
           <button
             type="button"
-            className="kle-carousel-btn"
-            onClick={goToNextPage}
-            disabled={currentPage >= totalPages - 1}
-            title="下一页"
+            className="kle-carousel-btn kle-import-btn"
+            onClick={openImportIntro}
           >
-            <ChevronRight size={16} />
+            <Plus size={16} />
           </button>
-        )}
-        <button
-          type="button"
-          className="kle-carousel-btn kle-import-btn"
-          onClick={openImportIntro}
-          title="导入 KLE 配列（keyboard-layout-editor.com 导出的 JSON）"
-        >
-          <Plus size={16} />
-        </button>
+        </Tooltip>
       </div>
 
       <input

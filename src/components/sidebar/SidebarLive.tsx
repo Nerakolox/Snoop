@@ -13,6 +13,7 @@ import {
 } from "../../analytics";
 import { formatAnchor } from "../../data/ranges";
 import { useRangeData } from "../../data/useRangeData";
+import Tooltip from "../shared/Tooltip";
 
 export default function SidebarLive() {
   const today = formatAnchor(new Date());
@@ -54,14 +55,15 @@ export default function SidebarLive() {
         </div>
         <span className="sidebar-live-badge">LIVE · 不随范围变</span>
       </div>
-      <button
-        type="button"
-        className="sidebar-live-quip"
-        onClick={() => setRerollTick((t) => t + 1)}
-        title="点击换一句"
-      >
-        {quip}
-      </button>
+      <Tooltip content="点击换一句">
+        <button
+          type="button"
+          className="sidebar-live-quip"
+          onClick={() => setRerollTick((t) => t + 1)}
+        >
+          {quip}
+        </button>
+      </Tooltip>
     </div>
   );
 }

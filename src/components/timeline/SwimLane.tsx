@@ -8,6 +8,7 @@ import type { CSSProperties, RefObject } from "react";
 import AppIcon from "../AppIcon";
 import type { AppLane, TimeBlock, Tick } from "../../analytics";
 import type { HoveredBlock } from "./TimelineTooltip";
+import Tooltip from "../shared/Tooltip";
 
 type SwimLaneProps = {
   lane: AppLane;
@@ -44,9 +45,9 @@ export default function SwimLane({
           appName={lane.app_name}
           size={16}
         />
-        <span className="swimlane-app-name" title={lane.app_name}>
-          {lane.app_name}
-        </span>
+        <Tooltip content={lane.app_name}>
+          <span className="swimlane-app-name">{lane.app_name}</span>
+        </Tooltip>
       </div>
       <div ref={trackRef} className="swimlane-track">
         {ticks.map((tk) => (

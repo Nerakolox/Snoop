@@ -5,6 +5,7 @@
 import { useMemo } from "react";
 import { MOUSE_PIXELS_PER_METER, intensityVar, bucketSimple } from "../../analytics";
 import type { RawBucket } from "../../data";
+import Tooltip from "../shared/Tooltip";
 
 type MousePanelProps = {
   /** 已按当前筛选过的桶列表 */
@@ -53,45 +54,54 @@ export default function MousePanel({ buckets }: MousePanelProps) {
   );
 
   return (
-    <div className="kb-subsection">
-      <h3 className="kb-subsection-title">鼠标</h3>
+    <div className="kb-aux-block">
+      <h3 className="kb-aux-title">鼠标</h3>
       <div className="mouse-card">
         <div className="mouse-shape" aria-hidden>
-          <div
-            className="mouse-btn mouse-btn--left"
-            style={{
-              background: intensityVar(bucketSimple(mouseData.left, maxMouse)),
-            }}
-            title={`左键 · ${mouseData.left.toLocaleString()} 次`}
-          />
-          <div
-            className="mouse-btn mouse-btn--right"
-            style={{
-              background: intensityVar(bucketSimple(mouseData.right, maxMouse)),
-            }}
-            title={`右键 · ${mouseData.right.toLocaleString()} 次`}
-          />
-          <div
-            className="mouse-wheel"
-            style={{
-              background: intensityVar(bucketSimple(mouseData.wheel, maxMouse)),
-            }}
-            title={`滚轮 · ${mouseData.wheel.toLocaleString()}`}
-          />
-          <div
-            className={`mouse-side mouse-side--back${mouseData.back === 0 ? " mouse-side--unused" : ""}`}
-            style={{
-              background: intensityVar(bucketSimple(mouseData.back, maxMouse)),
-            }}
-            title={mouseData.back > 0 ? `后退侧键 · ${mouseData.back.toLocaleString()} 次` : "后退侧键 · 未使用"}
-          />
-          <div
-            className={`mouse-side mouse-side--forward${mouseData.forward === 0 ? " mouse-side--unused" : ""}`}
-            style={{
-              background: intensityVar(bucketSimple(mouseData.forward, maxMouse)),
-            }}
-            title={mouseData.forward > 0 ? `前进侧键 · ${mouseData.forward.toLocaleString()} 次` : "前进侧键 · 未使用"}
-          />
+          <Tooltip content={`左键 · ${mouseData.left.toLocaleString()} 次`}>
+            <div
+              className="mouse-btn mouse-btn--left"
+              style={{
+                background: intensityVar(bucketSimple(mouseData.left, maxMouse)),
+              }}
+            />
+          </Tooltip>
+          <Tooltip content={`右键 · ${mouseData.right.toLocaleString()} 次`}>
+            <div
+              className="mouse-btn mouse-btn--right"
+              style={{
+                background: intensityVar(bucketSimple(mouseData.right, maxMouse)),
+              }}
+            />
+          </Tooltip>
+          <Tooltip content={`滚轮 · ${mouseData.wheel.toLocaleString()}`}>
+            <div
+              className="mouse-wheel"
+              style={{
+                background: intensityVar(bucketSimple(mouseData.wheel, maxMouse)),
+              }}
+            />
+          </Tooltip>
+          <Tooltip
+            content={mouseData.back > 0 ? `后退侧键 · ${mouseData.back.toLocaleString()} 次` : "后退侧键 · 未使用"}
+          >
+            <div
+              className={`mouse-side mouse-side--back${mouseData.back === 0 ? " mouse-side--unused" : ""}`}
+              style={{
+                background: intensityVar(bucketSimple(mouseData.back, maxMouse)),
+              }}
+            />
+          </Tooltip>
+          <Tooltip
+            content={mouseData.forward > 0 ? `前进侧键 · ${mouseData.forward.toLocaleString()} 次` : "前进侧键 · 未使用"}
+          >
+            <div
+              className={`mouse-side mouse-side--forward${mouseData.forward === 0 ? " mouse-side--unused" : ""}`}
+              style={{
+                background: intensityVar(bucketSimple(mouseData.forward, maxMouse)),
+              }}
+            />
+          </Tooltip>
         </div>
         <dl className="mouse-stats">
           <div className={`mouse-stat${mouseData.left === 0 ? " mouse-stat--unused" : ""}`}>
@@ -128,12 +138,12 @@ export default function MousePanel({ buckets }: MousePanelProps) {
             </dd>
           </div>
         </dl>
-        <p className="mouse-side-note">
-          {mouseData.back + mouseData.forward > 0
-            ? "你是会用侧键的少数人，配列里值得给它们留位置"
-            : "可以在配列里隐藏它们"}
-        </p>
       </div>
+      <p className="mouse-side-note">
+        {mouseData.back + mouseData.forward > 0
+          ? "你是会用侧键的少数人，配列里值得给它们留位置"
+          : "可以在配列里隐藏它们"}
+      </p>
     </div>
   );
 }

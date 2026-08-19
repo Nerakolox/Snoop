@@ -1,5 +1,7 @@
 /**
- * 单键详情 —— 点键盘上某个键后显示：总次数、24 时段分布、跨应用 Top 3。
+ * 单键详情 —— 点键盘上某个键后，在键盘正下方就地展开的一条横幅：
+ * 键名 + 总次数 / 24 时段分布 / 跨应用 Top 3。
+ * 未选中键时本组件不渲染（由 Keyboard.tsx 判空），不占任何纵向空间。
  * 跨应用分布走 fetchKeyAppDistribution，接口本身不接 appId，不受应用筛选影响。
  */
 
@@ -11,12 +13,14 @@ import {
   type RawKeyHourBucket,
   type TimeRange,
 } from "../../data";
+import { getDisplayLabel } from "../../kleParser";
 import AppIcon from "../AppIcon";
+import Tooltip from "../shared/Tooltip";
 
 type KeyDetailPanelProps = {
-  /** KLE 键标签，null = 未选中 */
-  label: string | null;
-  /** 该标签对应的 rdev key_code，label 非空但查不到映射时为 null */
+  /** KLE 键标签 */
+  label: string;
+  /** 该标签对应的 rdev key_code，查不到映射时为 null */
   rdevCode: string | null;
   /** 当前上下文（range × appId）下的总次数，已含左右合并 */
   totalCount: number;
@@ -77,56 +81,64 @@ export default function KeyDetailPanel({
   const topApps = byApp.slice(0, 3);
   const maxAppCount = topApps.length > 0 ? topApps[0].count : 1;
 
-  if (!label) {
-    return (
-      <div className="kb-subsection">
-        <h3 className="kb-subsection-title">单键详情</h3>
-        <p className="kb-key-detail-hint">点键盘上任意一个键，查看它的使用细节</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="kb-subsection">
-      <h3 className="kb-subsection-title">
-        {label}
-        {merged && <span className="kb-key-detail-note"> · 左右合并计数</span>}
-      </h3>
-
-      <div className="kb-key-detail-total">{totalCount.toLocaleString()} 次</div>
-
-      <div className="kb-key-detail-hours" role="img" aria-label="24 小时按压分布">
-        {hourCounts.map((c, h) => (
-          <div key={h} className="kb-key-detail-hour" title={`${h}:00 · ${c} 次`}>
-            <div
-              className="kb-key-detail-hour-bar"
-              style={{ height: `${(c / maxHour) * 100}%` }}
-            />
-          </div>
-        ))}
+    <div className="kb-keydetail">
+      {/* ① 键名 + 总数 */}
+      <div className="kb-keydetail-head">
+        <span className="kb-keydetail-key">{getDisplayLabel(label)}</span>
+        <span className="kb-keydetail-total">
+          {totalCount.toLocaleString()}
+          <span className="kb-keydetail-unit">次</span>
+        </span>
+        {merged && <span className="kb-keydetail-note">左右合并计数</span>}
       </div>
 
-      <div className="kb-key-detail-apps">
-        <div className="kb-key-detail-apps-title">
-          跨应用 Top 3<span className="kb-key-detail-note"> · 不受应用筛选影响</span>
+      {/* ② 24 小时分布 */}
+      <div className="kb-keydetail-block">
+        <div className="kb-keydetail-block-title">24 小时分布</div>
+        <div className="kb-keydetail-hours" role="img" aria-label="24 小时按压分布">
+          {hourCounts.map((c, h) => (
+            <Tooltip key={h} content={`${h}:00 · ${c} 次`}>
+              <div className="kb-keydetail-hour">
+                <div
+                  className="kb-keydetail-hour-bar"
+                  style={{ height: `${(c / maxHour) * 100}%` }}
+                />
+              </div>
+            </Tooltip>
+          ))}
+        </div>
+        <div className="kb-keydetail-hour-ticks" aria-hidden>
+          <span>0</span>
+          <span>6</span>
+          <span>12</span>
+          <span>18</span>
+          <span>24</span>
+        </div>
+      </div>
+
+      {/* ③ 跨应用 Top 3 */}
+      <div className="kb-keydetail-block">
+        <div className="kb-keydetail-block-title">
+          跨应用 Top 3<span className="kb-keydetail-note"> 不受应用筛选影响</span>
         </div>
         {loading ? (
-          <p className="kb-key-detail-hint">加载中...</p>
+          <p className="kb-keydetail-hint">加载中…</p>
         ) : topApps.length === 0 ? (
-          <p className="kb-key-detail-hint">这个键在此范围内没有记录</p>
+          <p className="kb-keydetail-hint">这个键在此范围内没有记录</p>
         ) : (
-          <ul className="kb-key-detail-app-list">
+          <ul className="kb-keydetail-app-list">
             {topApps.map((a) => (
-              <li key={a.app_bundle_id} className="kb-key-detail-app-row">
+              <li key={a.app_bundle_id} className="kb-keydetail-app-row">
                 <AppIcon bundleId={a.app_bundle_id} appName={a.app_name} size={16} />
-                <span className="kb-key-detail-app-name">{a.app_name || a.app_bundle_id}</span>
-                <div className="kb-key-detail-app-bar">
+                <span className="kb-keydetail-app-name">{a.app_name || a.app_bundle_id}</span>
+                <div className="kb-keydetail-app-bar">
                   <div
-                    className="kb-key-detail-app-bar-fill"
+                    className="kb-keydetail-app-bar-fill"
                     style={{ width: `${(a.count / maxAppCount) * 100}%` }}
                   />
                 </div>
-                <span className="kb-key-detail-app-count">{a.count.toLocaleString()}</span>
+                <span className="kb-keydetail-app-count">{a.count.toLocaleString()}</span>
               </li>
             ))}
           </ul>

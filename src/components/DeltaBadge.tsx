@@ -1,5 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { computeDelta, MAX_DELTA_PCT } from "../analytics/delta";
+import Tooltip from "./shared/Tooltip";
 
 interface DeltaBadgeProps {
   /** 当期值，单位分钟 */
@@ -18,26 +19,32 @@ export default function DeltaBadge({ current, previous, vsLabel, baseThreshold }
 
   if (verdict.kind === "na") {
     return (
-      <span className="ins-delta ins-delta--na" title={`基期不足 ${baseThreshold} 分钟`}>
-        <span className="ins-delta-num">—</span>
-      </span>
+      <Tooltip content={`基期不足 ${baseThreshold} 分钟`}>
+        <span className="ins-delta ins-delta--na">
+          <span className="ins-delta-num">—</span>
+        </span>
+      </Tooltip>
     );
   }
 
   if (verdict.kind === "new") {
     return (
-      <span className="ins-delta ins-delta--new" title={`基期不足 ${baseThreshold} 分钟，视为新增`}>
-        <span className="ins-delta-num">新</span>
-      </span>
+      <Tooltip content={`基期不足 ${baseThreshold} 分钟，视为新增`}>
+        <span className="ins-delta ins-delta--new">
+          <span className="ins-delta-num">新</span>
+        </span>
+      </Tooltip>
     );
   }
 
   if (verdict.kind === "flat") {
     return (
-      <span className="ins-delta ins-delta--flat" title={`${vsLabel}基本持平`}>
-        <Minus size={12} />
-        <span className="ins-delta-num">持平 {vsLabel}</span>
-      </span>
+      <Tooltip content={`${vsLabel}基本持平`}>
+        <span className="ins-delta ins-delta--flat">
+          <Minus size={12} />
+          <span className="ins-delta-num">持平 {vsLabel}</span>
+        </span>
+      </Tooltip>
     );
   }
 
@@ -49,10 +56,12 @@ export default function DeltaBadge({ current, previous, vsLabel, baseThreshold }
       ? `${vsLabel} +${pct.toFixed(1)}%（已封顶显示 ${MAX_DELTA_PCT}%+）`
       : `${vsLabel} +${pct.toFixed(1)}%`;
     return (
-      <span className="ins-delta ins-delta--up" title={title}>
-        <ArrowUpRight size={12} />
-        <span className="ins-delta-num">{numText} {vsLabel}</span>
-      </span>
+      <Tooltip content={title}>
+        <span className="ins-delta ins-delta--up">
+          <ArrowUpRight size={12} />
+          <span className="ins-delta-num">{numText} {vsLabel}</span>
+        </span>
+      </Tooltip>
     );
   }
 
@@ -60,9 +69,11 @@ export default function DeltaBadge({ current, previous, vsLabel, baseThreshold }
     ? `${vsLabel} -${pct.toFixed(1)}%（已封顶显示 ${MAX_DELTA_PCT}%+）`
     : `${vsLabel} -${pct.toFixed(1)}%`;
   return (
-    <span className="ins-delta ins-delta--down" title={title}>
-      <ArrowDownRight size={12} />
-      <span className="ins-delta-num">{numText} {vsLabel}</span>
-    </span>
+    <Tooltip content={title}>
+      <span className="ins-delta ins-delta--down">
+        <ArrowDownRight size={12} />
+        <span className="ins-delta-num">{numText} {vsLabel}</span>
+      </span>
+    </Tooltip>
   );
 }

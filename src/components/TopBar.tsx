@@ -17,6 +17,7 @@ import type { RawAppRank } from "../data/types";
 import { anchorLabel, formatDuration } from "../utils/format";
 import AppIcon from "./AppIcon";
 import TopBarTools from "./topbar/TopBarTools";
+import Tooltip from "./shared/Tooltip";
 
 const isWindows =
   typeof navigator !== "undefined" && /Windows/i.test(navigator.userAgent);
@@ -161,43 +162,45 @@ export default function TopBar() {
             ? undefined
             : `「${PAGE_LABEL[page]}」页只支持${cap.map((c) => KIND_LABEL[c]).join("/")}粒度`;
           return (
-            <button
-              key={k}
-              type="button"
-              data-tauri-drag-region="false"
-              className={`topbar__kind-btn ${kind === k ? "is-active" : ""} ${!enabled ? "is-disabled" : ""}`}
-              disabled={!enabled}
-              title={title}
-              onClick={() => actions.setKind(k)}
-            >
-              {KIND_LABEL[k]}
-            </button>
+            <Tooltip key={k} content={title}>
+              <button
+                type="button"
+                data-tauri-drag-region="false"
+                className={`topbar__kind-btn ${kind === k ? "is-active" : ""} ${!enabled ? "is-disabled" : ""}`}
+                disabled={!enabled}
+                onClick={() => actions.setKind(k)}
+              >
+                {KIND_LABEL[k]}
+              </button>
+            </Tooltip>
           );
         })}
       </div>
 
-      <button
-        type="button"
-        data-tauri-drag-region="false"
-        className="topbar__nav-btn"
-        onClick={() => actions.stepAnchor(-1)}
-        aria-label="上一个"
-        title="上一个"
-      >
-        <ChevronLeft size={16} strokeWidth={2} />
-      </button>
+      <Tooltip content="上一个">
+        <button
+          type="button"
+          data-tauri-drag-region="false"
+          className="topbar__nav-btn"
+          onClick={() => actions.stepAnchor(-1)}
+          aria-label="上一个"
+        >
+          <ChevronLeft size={16} strokeWidth={2} />
+        </button>
+      </Tooltip>
       <span className="topbar__anchor-label">{anchorLabel(kind, anchor, now)}</span>
-      <button
-        type="button"
-        data-tauri-drag-region="false"
-        className="topbar__nav-btn"
-        onClick={() => actions.stepAnchor(1)}
-        disabled={atCurrentAnchor}
-        aria-label="下一个"
-        title={atCurrentAnchor ? "没有未来的数据" : "下一个"}
-      >
-        <ChevronRight size={16} strokeWidth={2} />
-      </button>
+      <Tooltip content={atCurrentAnchor ? "没有未来的数据" : "下一个"}>
+        <button
+          type="button"
+          data-tauri-drag-region="false"
+          className="topbar__nav-btn"
+          onClick={() => actions.stepAnchor(1)}
+          disabled={atCurrentAnchor}
+          aria-label="下一个"
+        >
+          <ChevronRight size={16} strokeWidth={2} />
+        </button>
+      </Tooltip>
       <button
         type="button"
         data-tauri-drag-region="false"
@@ -303,17 +306,18 @@ export default function TopBar() {
 
       <div className="topbar__spacer" data-tauri-drag-region />
 
-      <button
-        type="button"
-        data-tauri-drag-region="false"
-        className="topbar__back-btn"
-        onClick={() => actions.back()}
-        disabled={historyDepth === 0}
-        aria-label="返回"
-        title="返回"
-      >
-        <ArrowLeft size={16} />
-      </button>
+      <Tooltip content="返回">
+        <button
+          type="button"
+          data-tauri-drag-region="false"
+          className="topbar__back-btn"
+          onClick={() => actions.back()}
+          disabled={historyDepth === 0}
+          aria-label="返回"
+        >
+          <ArrowLeft size={16} />
+        </button>
+      </Tooltip>
 
       {isWindows && <WindowControls />}
     </div>
@@ -346,33 +350,36 @@ function WindowControls() {
 
   return (
     <div className="topbar__winctrls">
-      <button
-        className="topbar__winbtn"
-        data-tauri-drag-region="false"
-        onClick={() => win.minimize()}
-        aria-label="最小化"
-        title="最小化"
-      >
-        <Minus size={14} strokeWidth={1.5} />
-      </button>
-      <button
-        className="topbar__winbtn"
-        data-tauri-drag-region="false"
-        onClick={() => win.toggleMaximize()}
-        aria-label={maximized ? "还原" : "最大化"}
-        title={maximized ? "还原" : "最大化"}
-      >
-        {maximized ? <Copy size={12} strokeWidth={1.5} /> : <Square size={12} strokeWidth={1.5} />}
-      </button>
-      <button
-        className="topbar__winbtn topbar__winbtn--close"
-        data-tauri-drag-region="false"
-        onClick={() => win.close()}
-        aria-label="关闭"
-        title="关闭"
-      >
-        <X size={14} strokeWidth={1.5} />
-      </button>
+      <Tooltip content="最小化">
+        <button
+          className="topbar__winbtn"
+          data-tauri-drag-region="false"
+          onClick={() => win.minimize()}
+          aria-label="最小化"
+        >
+          <Minus size={14} strokeWidth={1.5} />
+        </button>
+      </Tooltip>
+      <Tooltip content={maximized ? "还原" : "最大化"}>
+        <button
+          className="topbar__winbtn"
+          data-tauri-drag-region="false"
+          onClick={() => win.toggleMaximize()}
+          aria-label={maximized ? "还原" : "最大化"}
+        >
+          {maximized ? <Copy size={12} strokeWidth={1.5} /> : <Square size={12} strokeWidth={1.5} />}
+        </button>
+      </Tooltip>
+      <Tooltip content="关闭">
+        <button
+          className="topbar__winbtn topbar__winbtn--close"
+          data-tauri-drag-region="false"
+          onClick={() => win.close()}
+          aria-label="关闭"
+        >
+          <X size={14} strokeWidth={1.5} />
+        </button>
+      </Tooltip>
     </div>
   );
 }

@@ -116,7 +116,7 @@ export function ratioToSliderPos(ratio: number): number {
   return Math.min(1, Math.max(0, (Math.log10(ratio) + 1.6) / 2.2));
 }
 
-/** 键鼠比判定标签。阈值与 RatioPanel 一致，改这里两页同时生效。 */
+/** 键鼠比判定标签。输入页指标条与规律页共用，改这里两页同时生效。 */
 export function ratioVerdict(ratio: number): "鼠标型" | "键盘型" | "均衡型" {
   return ratio > 0.25 ? "鼠标型" : ratio < 0.08 ? "键盘型" : "均衡型";
 }

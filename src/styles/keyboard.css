@@ -393,17 +393,139 @@
   color: var(--color-on-accent);
 }
 
-/* 键盘主体 —— panel 内自适应铺满宽度 */
-.kb-keyboard-panel {
-  padding: var(--space-6);
+/* ① 指标条 —— 总按键/总点击/里程/键鼠比。
+   刻意不做成 .kpi-card：卡片有边框和 96px 高，会跟键盘抢视觉重量。
+   这里只有内容没有外壳，整条约 52px 高。 */
+.kb-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-6);
 }
 
-/* 统一活动面板 —— 键盘+鼠标+Top按键的整体容器 */
-.kb-unified-panel {
-  padding: var(--space-6);
+@media (max-width: 720px) {
+  .kb-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4) var(--space-6);
+  }
+}
+
+.kb-metric {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: 2px;
+  min-width: 0;
+}
+
+.kb-metric-value {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  color: var(--color-text);
+}
+
+.kb-metric-num {
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.kb-metric-unit {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-2);
+}
+
+.kb-metric-tag {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-full);
+}
+
+.kb-metric-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+/* ② 主角面板 —— 全页唯一带卡片外壳的区块 */
+.kb-hero {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* 键盘舞台：loading 遮罩的定位上下文，只盖键盘、不盖图例与指标条。
+   顶部再加一点内边距——面板本身的 space-6 内边距贴着最上一排键（Esc/F1…），
+   视觉上比底部图例行紧，故单独给键盘顶部补 space-2。 */
+.kb-hero-stage {
+  position: relative;
+  padding-top: var(--space-2);
+}
+
+.kb-hero-placeholder {
+  padding: var(--space-8) 0;
+  text-align: center;
+  color: var(--color-text-3);
+}
+
+/* 加载遮罩 —— 半透明覆盖键盘区，中间一个转圈 */
+.kb-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--color-surface) 70%, transparent);
+  border-radius: var(--radius-md);
+}
+
+.kb-loading-spinner {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  animation: kb-spin 0.8s linear infinite;
+}
+
+/* 图例行 —— 左色阶、右引导语，全页字重最弱的一行 */
+.kb-hero-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.kb-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.kb-legend-cap {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  margin: 0 var(--space-1);
+}
+
+.kb-legend-swatch {
+  width: 18px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.kb-hero-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
 /* 键盘区域容器。真正被 ResizeObserver 观测的是内部的 .kle-viewport
@@ -435,35 +557,42 @@
   overflow-x: auto;
 }
 
-/* 下方分栏区域 —— 鼠标/Top 按键/键鼠比/单键详情四块，自适应换行 */
-.kb-lower-section {
+/* ③ 辅助区 —— 分隔线以下，无卡片外壳。列数写死两栏，
+   不再用 auto-fit：那会在 4/3/2/1 列之间随窗口宽跳档。 */
+.kb-aux {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
 }
 
 @media (max-width: 900px) {
-  .kb-lower-section {
+  .kb-aux {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-/* 子区块 */
-.kb-subsection {
+.kb-aux-block {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   min-width: 0;
 }
 
-.kb-subsection-title {
+/* 辅助区标题比主角低一级：小一号、非纯黑 */
+.kb-aux-title {
   margin: 0;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   font-weight: 600;
-  color: var(--color-text);
-  letter-spacing: -0.01em;
+  color: var(--color-text-2);
+  letter-spacing: 0.02em;
+}
+
+.kb-aux-empty {
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+  padding: var(--space-3) 0;
 }
 
 /* KLE 键盘容器 —— 提升为独立合成层，缩放时避免每帧重新栅格化 */
@@ -498,7 +627,7 @@
 }
 
 .kle-key:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 0 0 2px var(--color-accent);
   z-index: 2;
 }
 
@@ -559,33 +688,98 @@
   z-index: 2;
 }
 
-/* 单键详情面板（KeyDetailPanel.tsx），复用 .kb-subsection 容器 */
-.kb-key-detail-hint {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-text-3);
+/* 单键详情条（KeyDetailPanel.tsx）—— 选中键时在键盘正下方就地展开的一条横幅。
+   未选中时组件根本不渲染，故这里不需要空态样式。 */
+.kb-keydetail {
+  display: grid;
+  grid-template-columns: minmax(130px, auto) minmax(180px, 1fr) minmax(220px, 1.1fr);
+  align-items: start;
+  gap: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  animation: kb-keydetail-in var(--dur-base) var(--ease-smooth);
 }
 
-.kb-key-detail-note {
+@keyframes kb-keydetail-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (max-width: 900px) {
+  .kb-keydetail {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+}
+
+.kb-keydetail-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kb-keydetail-key {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  color: var(--color-text-2);
+  letter-spacing: 0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.kb-keydetail-total {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.kb-keydetail-unit {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-2);
+}
+
+.kb-keydetail-note {
   font-size: var(--text-xs);
   font-weight: 400;
   color: var(--color-text-3);
 }
 
-.kb-key-detail-total {
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  color: var(--color-text);
+.kb-keydetail-block {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.kb-key-detail-hours {
+.kb-keydetail-block-title {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-3);
+  letter-spacing: 0.04em;
+}
+
+.kb-keydetail-hint {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+}
+
+.kb-keydetail-hours {
   display: flex;
   align-items: flex-end;
   gap: 2px;
-  height: 60px;
+  height: 44px;
 }
 
-.kb-key-detail-hour {
+.kb-keydetail-hour {
   flex: 1;
   height: 100%;
   display: flex;
@@ -593,26 +787,22 @@
   min-width: 0;
 }
 
-.kb-key-detail-hour-bar {
+.kb-keydetail-hour-bar {
   width: 100%;
   min-height: 2px;
   border-radius: 2px 2px 0 0;
   background: var(--color-accent);
 }
 
-.kb-key-detail-apps {
+.kb-keydetail-hour-ticks {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+  justify-content: space-between;
+  font-size: 10px;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
 }
 
-.kb-key-detail-apps-title {
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-text-2);
-}
-
-.kb-key-detail-app-list {
+.kb-keydetail-app-list {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -621,25 +811,26 @@
   gap: var(--space-2);
 }
 
-.kb-key-detail-app-row {
-  display: flex;
+/* 三行各自是独立的 flex 容器时，名称列宽随每行文字内容各自撑开，
+   三行的图标/进度条起点对不齐（"不规整"）。改成 grid 后三行共用同一套
+   列宽定义，起点始终对齐；图标列固定 16px，不再受两侧挤压变形。 */
+.kb-keydetail-app-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 100px) minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
-  min-width: 0;
 }
 
-.kb-key-detail-app-name {
+.kb-keydetail-app-name {
   font-size: var(--text-sm);
   color: var(--color-text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  flex-shrink: 0;
-  max-width: 40%;
+  min-width: 0;
 }
 
-.kb-key-detail-app-bar {
-  flex: 1;
+.kb-keydetail-app-bar {
   height: 6px;
   border-radius: var(--radius-full);
   background: var(--color-surface-2);
@@ -647,16 +838,16 @@
   min-width: 0;
 }
 
-.kb-key-detail-app-bar-fill {
+.kb-keydetail-app-bar-fill {
   height: 100%;
   border-radius: var(--radius-full);
   background: var(--color-accent);
 }
 
-.kb-key-detail-app-count {
+.kb-keydetail-app-count {
   font-size: var(--text-xs);
   color: var(--color-text-3);
-  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 击键数 tooltip —— Portal 挂 body，position: fixed，脱离键盘缩放层。
@@ -683,25 +874,13 @@
   opacity: 0.85;
 }
 
-/* 下方两个卡片并排 */
-.kb-lower {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
-  gap: var(--space-4);
-}
-
-@media (max-width: 900px) {
-  .kb-lower {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 /* 鼠标热力卡片 ---------------------------------------------------------- */
 
 .mouse-card {
   display: flex;
   gap: var(--space-6);
   align-items: center;
+  min-width: 0;
 }
 
 /* 鼠标俯视轮廓：顶部大圆角、底部小圆角；上半左右两半是按键区，
@@ -777,13 +956,17 @@
   color: var(--color-text-3);
 }
 
-/* 鼠标右侧统计 —— 2x2 网格 */
+/* 鼠标右侧统计 —— 2x2 网格。裸写 1fr 的轨道最小宽度默认按内容 max-content
+   算，不会缩到容器给的空间以下；子项 .mouse-stat 的 min-width:0 管不到轨道
+   本身。容器一旦被压窄（辅助区两栏变窄），两列内容就会溢出各自轨道、彼此
+   压住画在一起。用 minmax(0, 1fr) 显式把轨道最小宽度降到 0 才会真正跟着
+   容器收缩。 */
 .mouse-stats {
   margin: 0;
   flex: 1;
   min-width: 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: var(--space-3) var(--space-6);
 }
 
@@ -826,7 +1009,13 @@
   font-weight: 500;
 }
 
-/* 键鼠比卡片（RatioPanel.tsx） */
+/* 5 项按 2 列排布会在末行落单（左键/右键/滚轮/侧键 4 项占满两行，
+   移动单独一项）：让它跨满整行，避免右侧空出一个不齐的缺口。 */
+.mouse-stats > .mouse-stat:last-child {
+  grid-column: 1 / -1;
+}
+
+/* 键鼠比卡片 —— 输入页已改用指标条，这套样式现在只剩规律页（Insights.tsx:434）在用 */
 .ratio-card {
   display: flex;
   flex-direction: column;

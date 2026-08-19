@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import DeltaBadge from "../components/DeltaBadge";
+import Tooltip from "../components/shared/Tooltip";
 import {
   fetchBucketsInRange,
   fetchHourlyActivity,
@@ -18,6 +19,7 @@ import {
   bucketSimple,
   daysWithDataOf,
   intensityVar,
+  moodLabelOf,
   ratioToSliderPos,
   ratioVerdict,
   statsByDayFromBuckets,
@@ -420,14 +422,23 @@ export default function Insights() {
             baseThreshold={baseThreshold}
           />
           <div className="ins-card-sub">
-            {daysWithData > 0
-              ? `日均 ${fmtHours(avgActiveMs / (60 * 60 * 1000))} 小时 · 分母 ${daysWithData} 天`
-              : "暂无数据"}
+            {daysWithData > 0 ? (
+              <>
+                日均 {fmtHours(avgActiveMs / (60 * 60 * 1000))} 小时 ·{" "}
+                <Tooltip content="平均值只除以有采集数据的天数，不含缺数据的天，避免被拉低">
+                  <span className="ins-card-sub-hint">分母 {daysWithData} 天</span>
+                </Tooltip>
+              </>
+            ) : (
+              "暂无数据"
+            )}
           </div>
         </div>
 
         <div className="panel ins-card">
-          <h3 className="panel-title">键鼠比</h3>
+          <Tooltip content="鼠标点击次数 ÷ 按键次数。比值 <0.08 判定「键盘型」，>0.25「鼠标型」，中间「均衡型」">
+            <h3 className="panel-title panel-title--hint">键鼠比</h3>
+          </Tooltip>
           {keys === 0 ? (
             <p className="ins-card-empty">无按键数据</p>
           ) : (
@@ -447,20 +458,25 @@ export default function Insights() {
               </div>
             </div>
           )}
-          <div className="ins-trend14" title="近 14 天键鼠比趋势（不随范围变化）">
+          {/* 容器本身不再包 Tooltip：柱子之间只留 3px 缝隙，几乎贴满整个区域，
+             容器级和逐柱两层 hover 同时触发会叠两个提示框，改成只保留信息量更大的逐柱提示 */}
+          <div className="ins-trend14" aria-label="近 14 天键鼠比趋势（不随范围变化）">
             {trend14.map((d) => (
-              <div
+              <Tooltip
                 key={d.dayMs}
-                className="ins-trend14-bar-wrap"
-                title={`${dateLabelOf(d.dayMs)} · ${d.ratio.toFixed(2)}`}
+                content={`${dateLabelOf(d.dayMs)} · ${d.ratio > 0 ? d.ratio.toFixed(2) : "暂无数据"}`}
               >
-                {d.ratio > 0 && (
-                  <div
-                    className="ins-trend14-bar"
-                    style={{ height: `${Math.max((d.ratio / maxTrend14Ratio) * 100, 4)}%` }}
-                  />
-                )}
-              </div>
+                <div className="ins-trend14-bar-wrap">
+                  {d.ratio > 0 ? (
+                    <div
+                      className="ins-trend14-bar"
+                      style={{ height: `${Math.max((d.ratio / maxTrend14Ratio) * 100, 4)}%` }}
+                    />
+                  ) : (
+                    <div className="ins-trend14-bar--empty" />
+                  )}
+                </div>
+              </Tooltip>
             ))}
           </div>
         </div>
@@ -489,25 +505,24 @@ export default function Insights() {
                   ? DAY_LABELS[mondayIndex(d.dayMs)]
                   : String(new Date(d.dayMs).getDate());
               return (
-                <button
+                <Tooltip
                   key={d.dayMs}
-                  type="button"
-                  className="ins-trend-col"
-                  onClick={() => goToDay(d.dayMs)}
-                  title={
+                  content={
                     hasData
                       ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.activeMs / (60 * 60 * 1000))}h`
                       : `${dateLabelOf(d.dayMs)} · 无采集数据`
                   }
                 >
-                  <div className="ins-trend-bar-wrap">
-                    {hasData && <div className="ins-trend-bar" style={barStyle} />}
-                  </div>
-                  {hasData && (
-                    <div className="ins-trend-value">{fmtHours(d.activeMs / (60 * 60 * 1000))}h</div>
-                  )}
-                  <div className="ins-trend-label">{showLabel ? label : ""}</div>
-                </button>
+                  <button type="button" className="ins-trend-col" onClick={() => goToDay(d.dayMs)}>
+                    <div className="ins-trend-bar-wrap">
+                      {hasData && <div className="ins-trend-bar" style={barStyle} />}
+                    </div>
+                    {hasData && (
+                      <div className="ins-trend-value">{fmtHours(d.activeMs / (60 * 60 * 1000))}h</div>
+                    )}
+                    <div className="ins-trend-label">{showLabel ? label : ""}</div>
+                  </button>
+                </Tooltip>
               );
             })}
           </div>
@@ -532,10 +547,12 @@ export default function Insights() {
                   className={`ins-app-row drillable${dim ? " ins-app-row--dim" : ""}`}
                   onClick={() => goToApp(a.bundleId, a.name)}
                 >
-                  <div className="ins-app-name" title={a.name}>
-                    <AppIcon bundleId={a.bundleId} appName={a.name} size={18} />
-                    <span>{a.name}</span>
-                  </div>
+                  <Tooltip content={a.name}>
+                    <div className="ins-app-name">
+                      <AppIcon bundleId={a.bundleId} appName={a.name} size={18} />
+                      <span>{a.name}</span>
+                    </div>
+                  </Tooltip>
                   <div className="app-row-track">
                     <div
                       className="app-row-fill"
@@ -564,12 +581,9 @@ export default function Insights() {
         <h3 className="panel-title">
           作息画像
           {appId !== null && (
-            <span
-              className="ins-rhythm-note"
-              title="此视图基于 get_hourly_heartbeats，与前台 App 无关"
-            >
-              不受应用筛选影响
-            </span>
+            <Tooltip content="此视图基于 get_hourly_heartbeats，与前台 App 无关">
+              <span className="ins-rhythm-note">不受应用筛选影响</span>
+            </Tooltip>
           )}
         </h3>
         <div className="ins-rhythm">
@@ -590,26 +604,29 @@ export default function Insights() {
 
                   if (cell.state === "active") {
                     return (
-                      <button
+                      <Tooltip
                         key={`${ri}-${ci}`}
-                        type="button"
-                        className="ins-rhythm-cell"
-                        style={{ background: intensityVar(cell.intensity) }}
-                        title={`${dayLabel} ${hourLabel} · 强度 ${cell.intensity}${sampleSuffix}`}
-                        onClick={() => goToRhythmCell(ri, ci)}
-                      />
+                        content={`${dayLabel} ${hourLabel} · 强度 ${cell.intensity}（${moodLabelOf(cell.intensity)}）${sampleSuffix}`}
+                      >
+                        <button
+                          type="button"
+                          className="ins-rhythm-cell"
+                          style={{ background: intensityVar(cell.intensity) }}
+                          onClick={() => goToRhythmCell(ri, ci)}
+                        />
+                      </Tooltip>
                     );
                   }
 
                   const bg = cell.state === "idle" ? "#D1D5DB" : "#F3F4F6"; // 挂机=中性灰实心 / 未采集=极浅底色
                   const stateLabel = cell.state === "idle" ? "挂机（无输入）" : "未采集";
                   return (
-                    <div
-                      key={`${ri}-${ci}`}
-                      className={`ins-rhythm-cell ${cell.state === "no_data" ? "ins-rhythm-cell--no-data" : ""}`}
-                      style={{ background: bg }}
-                      title={`${dayLabel} ${hourLabel} · ${stateLabel}${sampleSuffix}`}
-                    />
+                    <Tooltip key={`${ri}-${ci}`} content={`${dayLabel} ${hourLabel} · ${stateLabel}${sampleSuffix}`}>
+                      <div
+                        className={`ins-rhythm-cell ${cell.state === "no_data" ? "ins-rhythm-cell--no-data" : ""}`}
+                        style={{ background: bg }}
+                      />
+                    </Tooltip>
                   );
                 })
               )}
@@ -643,12 +660,14 @@ export default function Insights() {
         {/* 图例 */}
         <div className="ins-rhythm-legend">
           <div className="ins-legend-item">
-            <div className="ins-legend-gradient">
-              <span style={{ background: intensityVar(1) }}></span>
-              <span style={{ background: intensityVar(2) }}></span>
-              <span style={{ background: intensityVar(3) }}></span>
-              <span style={{ background: intensityVar(4) }}></span>
-            </div>
+            <Tooltip content="按每分钟操作次数换算成 4 档：偶尔戳一下 → 摸鱼型输入 → 稳定工作 → 猛敲峰值，颜色越深强度越高">
+              <div className="ins-legend-gradient">
+                <span style={{ background: intensityVar(1) }}></span>
+                <span style={{ background: intensityVar(2) }}></span>
+                <span style={{ background: intensityVar(3) }}></span>
+                <span style={{ background: intensityVar(4) }}></span>
+              </div>
+            </Tooltip>
             <span className="ins-legend-label">活跃</span>
           </div>
           <div className="ins-legend-item">

@@ -16,6 +16,23 @@
   margin-bottom: var(--space-6);
 }
 
+/* 通用页头（标题 + 一行说明），放在 header 槽里。
+   概览页仍用它自己的 .overview-header-*（多一个 note 徽章），两者视觉等价，
+   后续可择机统一到这里。 */
+.page-header-title {
+  margin: 0;
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: -0.01em;
+}
+
+.page-header-subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+}
+
 /* 吸顶：沿用原 .kb-filters--sticky 的层级与背景（不透明 --color-bg），
    顶部内容滚动到此栏下方时被不透明背景挡住，不穿透。 */
 .page-shell__header--sticky {

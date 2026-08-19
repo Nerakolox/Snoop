@@ -28,11 +28,11 @@ export default function TopKeysPanel({
   }, [kleKeyCounts]);
 
   return (
-    <div className="kb-subsection">
-      <h3 className="kb-subsection-title">{title}</h3>
+    <div className="kb-aux-block">
+      <h3 className="kb-aux-title">{title}</h3>
       <div className="topkey-list">
         {topKeys.length === 0 && (
-          <div style={{ color: "var(--color-text-3)", padding: "12px 0" }}>
+          <div className="kb-aux-empty">
             这段范围还没有按键记录，换个时间范围或清除应用筛选试试
           </div>
         )}

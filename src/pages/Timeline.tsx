@@ -28,6 +28,7 @@ import PageShell from "../components/PageShell";
 import TimelineTooltip from "../components/timeline/TimelineTooltip";
 import SwimLane from "../components/timeline/SwimLane";
 import { useToast } from "../components/shared/Toast";
+import Tooltip from "../components/shared/Tooltip";
 import { useTopBarTools } from "../components/topbar/TopBarToolsContext";
 import { adaptKind, useContextActions, useContextState } from "../store/context";
 import { formatTime, formatDuration } from "../utils/format";
@@ -517,16 +518,17 @@ export default function Timeline() {
             {
               key: "reset",
               node: (
-                <button
-                  type="button"
-                  className="topbar__tool-btn"
-                  data-tauri-drag-region="false"
-                  onClick={resetView}
-                  title="重置视图"
-                >
-                  <Maximize2 size={14} />
-                  <span>重置视图</span>
-                </button>
+                <Tooltip content="重置视图">
+                  <button
+                    type="button"
+                    className="topbar__tool-btn"
+                    data-tauri-drag-region="false"
+                    onClick={resetView}
+                  >
+                    <Maximize2 size={14} />
+                    <span>重置视图</span>
+                  </button>
+                </Tooltip>
               ),
             },
           ]
@@ -534,16 +536,17 @@ export default function Timeline() {
       {
         key: "compress",
         node: (
-          <button
-            type="button"
-            className="topbar__tool-btn"
-            data-tauri-drag-region="false"
-            onClick={toggleCompressed}
-            title={compressed ? "切换到完整视图" : "切换到压缩视图"}
-          >
-            {compressed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
-            <span>{compressed ? "展开空白" : "压缩空白"}</span>
-          </button>
+          <Tooltip content={compressed ? "切换到完整视图" : "切换到压缩视图"}>
+            <button
+              type="button"
+              className="topbar__tool-btn"
+              data-tauri-drag-region="false"
+              onClick={toggleCompressed}
+            >
+              {compressed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+              <span>{compressed ? "展开空白" : "压缩空白"}</span>
+            </button>
+          </Tooltip>
         ),
       },
     ],
@@ -598,14 +601,14 @@ export default function Timeline() {
               {spikeHours.map((hour) => {
                 const point = curvePoints[hour];
                 return (
-                  <button
-                    key={hour}
-                    type="button"
-                    className="swimlane-spike-marker"
-                    style={{ left: `${point.x}%` }}
-                    title={`${hour}:00 突变`}
-                    onClick={() => handleSpikeClick(hour, point.level)}
-                  />
+                  <Tooltip key={hour} content={`${hour}:00 突变`}>
+                    <button
+                      type="button"
+                      className="swimlane-spike-marker"
+                      style={{ left: `${point.x}%` }}
+                      onClick={() => handleSpikeClick(hour, point.level)}
+                    />
+                  </Tooltip>
                 );
               })}
               {spikePopover && (
@@ -630,16 +633,19 @@ export default function Timeline() {
             {gapBands.length > 0 && (
               <div className="swimlane-gap-overlay" style={{ height: lanes.length * 48 + Math.max(0, lanes.length - 1) * 8 + 32 }}>
                 {gapBands.map((g) => (
-                  <div
+                  <Tooltip
                     key={g.key}
-                    className="swimlane-gap-band"
-                    style={{ left: `${g.left}%`, width: `${g.width}%` }}
-                    title={`空闲 ${formatDuration(g.durationMs)} · ${formatTime(g.time_start)} – ${formatTime(g.time_end)}`}
+                    content={`空闲 ${formatDuration(g.durationMs)} · ${formatTime(g.time_start)} – ${formatTime(g.time_end)}`}
                   >
-                    <span className="swimlane-gap-label">
-                      空闲 {formatDuration(g.durationMs)}
-                    </span>
-                  </div>
+                    <div
+                      className="swimlane-gap-band"
+                      style={{ left: `${g.left}%`, width: `${g.width}%` }}
+                    >
+                      <span className="swimlane-gap-label">
+                        空闲 {formatDuration(g.durationMs)}
+                      </span>
+                    </div>
+                  </Tooltip>
                 ))}
               </div>
             )}

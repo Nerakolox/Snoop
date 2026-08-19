@@ -1,6 +1,7 @@
 /**
  * 输入 —— 外设活动画像（原「键盘」页）
- * KLE 格式驱动的键盘热力图 + 鼠标热力 + Top 按键排行。
+ * 版式主次：键盘热力图是唯一的主角（唯一有卡片外壳的区块，尽可能放大），
+ * 上方一行指标条、下方分隔线以下的鼠标 / Top 按键都是注脚，视觉降一级。
  * 范围/App 筛选来自全局上下文，顶栏切换即自动重拉。
  */
 
@@ -13,19 +14,42 @@ import {
   type RawKeyDetail,
 } from "../data";
 import { toMs } from "../data/ranges";
-import { MERGED_KEY_GROUPS } from "../analytics";
-import { parseKLE, getLabelRdevCode, type KLEKey, type ParsedLayout } from "../kleParser";
+import {
+  MERGED_KEY_GROUPS,
+  MOUSE_PIXELS_PER_METER,
+  intensityVar,
+  ratioVerdict,
+  type Intensity,
+} from "../analytics";
+import {
+  parseKLE,
+  getDisplayLabel,
+  getLabelRdevCode,
+  type KLEKey,
+  type ParsedLayout,
+} from "../kleParser";
 import { getSavedLayout, loadLayoutJSON } from "../components/KLELayoutPicker";
 import { getLayoutById } from "../layouts";
 import TopKeysPanel from "../components/keyboard/TopKeysPanel";
 import MousePanel from "../components/keyboard/MousePanel";
-import RatioPanel from "../components/keyboard/RatioPanel";
 import KeyboardPanel from "../components/keyboard/KeyboardPanel";
 import KeyDetailPanel from "../components/keyboard/KeyDetailPanel";
 import { KeySelectionProvider } from "../components/keyboard/KeySelectionContext";
 import PageShell from "../components/PageShell";
 import { useTopBarTools } from "../components/topbar/TopBarToolsContext";
+import Tooltip from "../components/shared/Tooltip";
 import { adaptKind, useContextActions, useContextState } from "../store/context";
+import { anchorLabel } from "../utils/format";
+
+/** 热力色阶图例的档位，与 KLEKeyboard 的 bucketByPercentile 输出同域。 */
+const LEGEND_LEVELS: Intensity[] = [0, 1, 2, 3, 4];
+
+/** 鼠标里程：像素 → 米/公里，返回数字与单位两段，便于分别排版。 */
+function formatDistance(pixels: number): { num: string; unit: string } {
+  const meters = pixels / MOUSE_PIXELS_PER_METER;
+  if (meters >= 1000) return { num: (meters / 1000).toFixed(1), unit: "公里" };
+  return { num: String(Math.round(meters)), unit: "米" };
+}
 
 export default function Keyboard() {
   const { kind, anchor, appId, selectedKey } = useContextState();
@@ -85,15 +109,16 @@ export default function Keyboard() {
       {
         key: "layout",
         node: (
-          <button
-            type="button"
-            className="topbar__tool-btn"
-            data-tauri-drag-region="false"
-            title="前往设置页切换配列"
-            onClick={() => actions.navigate({ page: "settings" })}
-          >
-            配列 · {layoutName}
-          </button>
+          <Tooltip content="前往设置页切换配列">
+            <button
+              type="button"
+              className="topbar__tool-btn"
+              data-tauri-drag-region="false"
+              onClick={() => actions.navigate({ page: "settings" })}
+            >
+              配列 · {layoutName}
+            </button>
+          </Tooltip>
         ),
       },
     ],
@@ -147,6 +172,20 @@ export default function Keyboard() {
     () => (appId === null ? allBuckets : allBuckets.filter((b) => b.app_bundle_id === appId)),
     [allBuckets, appId]
   );
+
+  // 指标条的四个数字全部从 filteredBuckets 聚合 —— 与鼠标块同源，四者口径一致，
+  // 不新增任何接口。键鼠比在此一并算出，原来的 RatioPanel 整栏因此取消。
+  const totals = useMemo(() => {
+    let keys = 0;
+    let clicks = 0;
+    let dist = 0;
+    for (const b of filteredBuckets) {
+      keys += b.key_total || 0;
+      clicks += (b.mouse_left || 0) + (b.mouse_right || 0) + (b.mouse_middle || 0);
+      dist += b.mouse_move_dist || 0;
+    }
+    return { keys, clicks, dist, ratio: keys > 0 ? clicks / keys : null };
+  }, [filteredBuckets]);
 
   // 构建 rdevCode → count 的映射（键盘热力）
   const keyCounts = useMemo(() => {
@@ -223,50 +262,98 @@ export default function Keyboard() {
   const topPanelTitle =
     viewKind === "month" ? "本月按得最多" : viewKind === "week" ? "本周按得最多" : isToday ? "今天按得最多" : "当天按得最多";
 
-  return (
-    <PageShell className="kb-page">
-      {/* 统一活动面板：键盘热力图 + 鼠标 + Top 按键 */}
-      <section className="panel kb-unified-panel" style={{ position: "relative" }}>
-        {showLoading && (
-          <div className="kb-loading-overlay">
-            <div className="kb-loading-spinner" />
-          </div>
-        )}
+  const now = useMemo(() => new Date(), []);
+  const appName = appId === null
+    ? undefined
+    : filteredBuckets.find((b) => b.app_bundle_id === appId)?.app_name ?? appId;
+  const subtitleParts = [anchorLabel(viewKind, viewAnchor, now)];
+  if (appId !== null) subtitleParts.push(`已筛选 ${appName}`);
+  if (!loading && filteredBuckets.length === 0) subtitleParts.push("该范围没有采集到数据");
 
+  const distance = formatDistance(totals.dist);
+  const metrics = [
+    { label: "总按键", num: totals.keys.toLocaleString(), unit: "次" },
+    { label: "总点击", num: totals.clicks.toLocaleString(), unit: "次" },
+    { label: "鼠标里程", num: distance.num, unit: distance.unit },
+    {
+      label: "键鼠比",
+      num: totals.ratio === null ? "—" : totals.ratio.toFixed(2),
+      tag: totals.ratio === null ? undefined : ratioVerdict(totals.ratio),
+    },
+  ];
+
+  return (
+    <PageShell
+      className="kb-page"
+      header={
+        <div className="page-header">
+          <h1 className="page-header-title">输入</h1>
+          <p className="page-header-subtitle">{subtitleParts.join(" · ")}</p>
+        </div>
+      }
+    >
+      {/* ① 指标条 —— 无外壳，压在主角上方只占一行 */}
+      <section className="kb-metrics" aria-label="输入概要">
+        {metrics.map((m) => (
+          <div key={m.label} className="kb-metric">
+            <div className="kb-metric-value">
+              <span className="kb-metric-num">{m.num}</span>
+              {m.unit && <span className="kb-metric-unit">{m.unit}</span>}
+              {m.tag && <span className="kb-metric-tag">{m.tag}</span>}
+            </div>
+            <div className="kb-metric-label">{m.label}</div>
+          </div>
+        ))}
+      </section>
+
+      {/* ② 主角：键盘热力图 + 色阶图例 + 选中键时就地展开的详情条 */}
+      <section className="panel kb-hero">
         {kleLoading ? (
-          <div style={{ padding: "var(--space-6)", textAlign: "center", color: "var(--color-text-3)" }}>
-            加载配列中...
-          </div>
+          <div className="kb-hero-placeholder">加载配列中…</div>
         ) : kleKeys.length === 0 ? (
-          <div style={{ padding: "var(--space-6)", textAlign: "center", color: "var(--color-text-3)" }}>
-            配列加载失败
-          </div>
+          <div className="kb-hero-placeholder">配列加载失败</div>
         ) : (
           <>
-            <KeySelectionProvider
-              value={{ onKeyClick: handleKeyClick, selectedIndex, mergedIndices, keyTitles }}
-            >
-              <KeyboardPanel
-                kleKeys={kleKeys}
-                kleKeyCounts={kleKeyCounts}
-                allKeyCounts={allKeyCounts}
-                maxX={layout.maxX}
-                maxY={layout.maxY}
-              />
-            </KeySelectionProvider>
+            {/* 遮罩只盖键盘，指标条与辅助区留在原位不闪 */}
+            <div className="kb-hero-stage">
+              {showLoading && (
+                <div className="kb-loading-overlay">
+                  <div className="kb-loading-spinner" />
+                </div>
+              )}
+              <KeySelectionProvider
+                value={{ onKeyClick: handleKeyClick, selectedIndex, mergedIndices, keyTitles }}
+              >
+                <KeyboardPanel
+                  kleKeys={kleKeys}
+                  kleKeyCounts={kleKeyCounts}
+                  allKeyCounts={allKeyCounts}
+                  maxX={layout.maxX}
+                  maxY={layout.maxY}
+                />
+              </KeySelectionProvider>
+            </div>
 
-            {/* 下方分栏：鼠标 + Top 按键 + 单键详情 + 键鼠比 */}
-            <div className="kb-lower-section">
-              <MousePanel buckets={filteredBuckets} />
+            <div className="kb-hero-foot">
+              <div className="kb-legend" aria-label="按键次数色阶">
+                <span className="kb-legend-cap">少</span>
+                {LEGEND_LEVELS.map((level) => (
+                  <span
+                    key={level}
+                    className="kb-legend-swatch"
+                    style={{ background: intensityVar(level) }}
+                  />
+                ))}
+                <span className="kb-legend-cap">多</span>
+              </div>
+              <span className="kb-hero-hint">
+                {selectedKey === null
+                  ? "点任意键查看它的使用细节"
+                  : `已选 ${getDisplayLabel(selectedKey)} · 再点一次取消`}
+              </span>
+            </div>
 
-              <TopKeysPanel
-                kleKeyCounts={kleKeyCounts}
-                allKeyCounts={allKeyCounts}
-                title={topPanelTitle}
-              />
-
-              <RatioPanel buckets={filteredBuckets} />
-
+            {selectedKey !== null && (
               <KeyDetailPanel
                 label={selectedKey}
                 rdevCode={selectedRdevCode}
@@ -275,9 +362,19 @@ export default function Keyboard() {
                 range={range}
                 appId={appId}
               />
-            </div>
+            )}
           </>
         )}
+      </section>
+
+      {/* ③ 辅助区 —— 分隔线以下，无卡片外壳，固定两栏 */}
+      <section className="kb-aux">
+        <MousePanel buckets={filteredBuckets} />
+        <TopKeysPanel
+          kleKeyCounts={kleKeyCounts}
+          allKeyCounts={allKeyCounts}
+          title={topPanelTitle}
+        />
       </section>
     </PageShell>
   );

@@ -196,7 +196,9 @@
   color: inherit;
   cursor: pointer;
   display: grid;
-  grid-template-columns: 100px 1fr auto auto;
+  /* 图标+名称 · 横条 · 时长 · 环比胶囊；时长/环比列固定宽度，避免各行内容长短不一时
+     横条（1fr）在每一行各自计算出不同的实际像素宽度，导致占比视觉失真 */
+  grid-template-columns: 100px minmax(0, 1fr) 60px 72px;
   align-items: center;
   gap: var(--space-4);
   transition:
@@ -235,6 +237,7 @@
 
 .app-row-track {
   height: 10px;
+  min-width: 0;
   background: var(--color-surface-2);
   border-radius: var(--radius-full);
   overflow: hidden;
@@ -251,8 +254,10 @@
   color: var(--color-text);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  min-width: 48px;
   text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ④ 24h 热力条 ---------------------------------------------------------- */
@@ -274,7 +279,13 @@
 }
 
 .heat-cell:hover {
-  transform: scaleY(1.15);
+  transform: scale(1.15);
+}
+
+.heat-cell:hover,
+.heat-cell:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }
 
 /* 刻度带跟热力条共用同一份 24 列网格（含 gap），每个 tick 显式 grid-column

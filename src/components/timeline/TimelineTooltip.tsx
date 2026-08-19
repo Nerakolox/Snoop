@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import AppIcon from "../AppIcon";
 import { formatTime, formatDuration } from "../../utils/format";
 import type { TimeBlock } from "../../analytics";
+import { positionTooltip } from "../shared/tooltipPosition";
 
 export type HoveredBlock = {
   app: string;
@@ -19,7 +20,6 @@ type TimelineTooltipProps = {
   onClose: () => void;
 };
 
-const GAP = 8;
 const OFFSET = 8;
 
 export default function TimelineTooltip({ hoveredBlock, onClose }: TimelineTooltipProps) {
@@ -37,18 +37,7 @@ export default function TimelineTooltip({ hoveredBlock, onClose }: TimelineToolt
   useLayoutEffect(() => {
     const tip = tooltipRef.current;
     if (!tip) return;
-    const tipW = tip.offsetWidth;
-    const tipH = tip.offsetHeight;
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-
-    let left = hoveredBlock.anchorX - tipW / 2;
-    left = Math.max(GAP, Math.min(W - tipW - GAP, left));
-
-    let top = hoveredBlock.anchorY - OFFSET - tipH;
-    if (top < GAP) top = hoveredBlock.anchorY + OFFSET;
-    top = Math.max(GAP, Math.min(H - tipH - GAP, top));
-
+    const { left, top } = positionTooltip(tip, hoveredBlock.anchorX, hoveredBlock.anchorY, OFFSET);
     tip.style.left = `${left}px`;
     tip.style.top = `${top}px`;
     tip.style.visibility = "visible";
