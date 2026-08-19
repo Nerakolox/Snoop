@@ -461,6 +461,43 @@
 /* 内建上下文芯片（定位 / 单键）：与应用筛选芯片同语言，恒为已筛选态 */
 .topbar__chip--context { max-width: 160px; }
 
+/* 页面注册的操作按钮：与 .topbar__today-btn 同语言，无边框、更轻量 */
+.topbar__tool-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: none;
+  background: transparent;
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease-smooth), color var(--dur-fast) var(--ease-smooth);
+}
+
+.topbar__tool-btn:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+/* 只读提示芯片（如 adaptKind 降级 note）：无点击行为，不需要悬停反馈 */
+.topbar__chip--readonly {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* 弹层与 .topbar__app-menu 同层同视觉 */
 .topbar__tools-menu {
   position: absolute;

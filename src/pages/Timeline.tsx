@@ -13,7 +13,7 @@
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
 import type { CSSProperties } from "react";
-import { Calendar } from "lucide-react";
+import { Calendar, Maximize2, Minimize2 } from "lucide-react";
 import { fetchBucketsInRange } from "../data";
 import { formatAnchor, toMs } from "../data/ranges";
 import type { RawBucket } from "../data/types";
@@ -25,10 +25,10 @@ import {
   type TimeBlock,
 } from "../analytics";
 import PageShell from "../components/PageShell";
-import TimelineHeader from "../components/timeline/TimelineHeader";
 import TimelineTooltip from "../components/timeline/TimelineTooltip";
 import SwimLane from "../components/timeline/SwimLane";
 import { useToast } from "../components/shared/Toast";
+import { useTopBarTools } from "../components/topbar/TopBarToolsContext";
 import { adaptKind, useContextActions, useContextState } from "../store/context";
 import { formatTime, formatDuration } from "../utils/format";
 
@@ -501,26 +501,57 @@ export default function Timeline() {
   // 现有时间线是 viewport 虚拟坐标模型（无 scrollLeft），自动定位需要
   // 与 viewport 安全带、压缩开关同步，等样式重构定稿后再实现。
 
-  const appName =
-    appId === null
-      ? undefined
-      : lanes.find((l) => l.app_bundle_id === appId)?.app_name ?? appId;
+  useTopBarTools(
+    [
+      ...(note !== null
+        ? [
+            {
+              key: "note",
+              priority: "high" as const,
+              node: <span className="topbar__chip topbar__chip--readonly">{note}</span>,
+            },
+          ]
+        : []),
+      ...(viewport !== null
+        ? [
+            {
+              key: "reset",
+              node: (
+                <button
+                  type="button"
+                  className="topbar__tool-btn"
+                  data-tauri-drag-region="false"
+                  onClick={resetView}
+                  title="重置视图"
+                >
+                  <Maximize2 size={14} />
+                  <span>重置视图</span>
+                </button>
+              ),
+            },
+          ]
+        : []),
+      {
+        key: "compress",
+        node: (
+          <button
+            type="button"
+            className="topbar__tool-btn"
+            data-tauri-drag-region="false"
+            onClick={toggleCompressed}
+            title={compressed ? "切换到完整视图" : "切换到压缩视图"}
+          >
+            {compressed ? <Maximize2 size={14} /> : <Minimize2 size={14} />}
+            <span>{compressed ? "展开空白" : "压缩空白"}</span>
+          </button>
+        ),
+      },
+    ],
+    [note, viewport !== null, compressed]
+  );
 
   return (
-    <PageShell
-      className="swimlane-page"
-      fill
-      header={
-        <TimelineHeader
-          note={note}
-          appName={appName}
-          hasCustomViewport={viewport !== null}
-          compressed={compressed}
-          onResetView={resetView}
-          onToggleCompressed={toggleCompressed}
-        />
-      }
-    >
+    <PageShell className="swimlane-page" fill>
       {lanes.length === 0 && !loading && (
         <div className="swimlane-empty">
           <Calendar size={48} strokeWidth={1.5} />
