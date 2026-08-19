@@ -42,7 +42,8 @@ export default function TopBar() {
 
   const atCurrentAnchor = normalizeAnchor(kind, formatAnchor(new Date())) === anchor;
 
-  const [selectedApp, setSelectedApp] = useState<{ bundleId: string; name: string } | null>(null);
+  // store 只存 bundleId，展示名从这里查。来源：应用列表拉取结果 + 用户主动选择。
+  const [appNames, setAppNames] = useState<Record<string, string>>({});
   const [menuOpen, setMenuOpen] = useState(false);
   const [rank, setRank] = useState<RawAppRank[]>([]);
   const [rankLoading, setRankLoading] = useState(false);
@@ -71,7 +72,16 @@ export default function TopBar() {
     setRankLoading(true);
     fetchAppRankingInRange(toMs(kind, anchor))
       .then((list) => {
-        if (!cancelled) setRank(list);
+        if (cancelled) return;
+        setRank(list);
+        // 顺带缓存展示名：外部（概览/规律/时间线）下钻设置 appId 时，芯片靠它显示人话而非 bundle id
+        setAppNames((prev) => {
+          const next = { ...prev };
+          for (const r of list) {
+            if (r.app_bundle_id && r.app_name) next[r.app_bundle_id] = r.app_name;
+          }
+          return next;
+        });
       })
       .catch((e) => console.error("获取应用排行失败:", e))
       .finally(() => {
@@ -100,17 +110,14 @@ export default function TopBar() {
     };
   }, [menuOpen]);
 
-  useEffect(() => {
-    if (appId === null) setSelectedApp(null);
-  }, [appId]);
-
   function pickApp(item: RawAppRank | null) {
     if (item === null) {
       actions.setApp(null);
-      setSelectedApp(null);
     } else {
+      if (item.app_name) {
+        setAppNames((prev) => ({ ...prev, [item.app_bundle_id]: item.app_name }));
+      }
       actions.setApp(item.app_bundle_id);
-      setSelectedApp({ bundleId: item.app_bundle_id, name: item.app_name || item.app_bundle_id });
     }
     setMenuOpen(false);
   }
@@ -118,6 +125,10 @@ export default function TopBar() {
   const filteredRank = rank.filter(
     (r) => r.app_bundle_id && r.app_bundle_id !== "unknown"
   );
+
+  // 芯片显示状态完全由全局 appId 派生，不再有本地副本。
+  // 这样从概览/规律/时间线点 App 下钻（actions.navigate({ appId })）时芯片也会正确更新。
+  const selectedApp = appId ? { bundleId: appId, name: appNames[appId] ?? appId } : null;
 
   useLayoutEffect(() => {
     if (!menuOpen) return;
