@@ -147,12 +147,28 @@
   border-radius: var(--radius-sm);
   cursor: pointer;
   max-width: 220px;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
 }
 
 .topbar__chip.is-filtered {
   background: var(--color-accent-soft);
   color: var(--color-accent);
   border-color: transparent;
+}
+
+.topbar__chip:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+/* 已筛选态：底色已是 accent-soft、文字已是 accent，悬停只补一圈边框，
+   不改文字色（改了会和未筛选态的悬停混淆） */
+.topbar__chip.is-filtered:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 /* 切换脉冲：App 筛选值发生变化时播一次，把用户视线拉回顶栏，
