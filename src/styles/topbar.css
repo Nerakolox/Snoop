@@ -155,6 +155,32 @@
   border-color: transparent;
 }
 
+/* 切换脉冲：App 筛选值发生变化时播一次，把用户视线拉回顶栏，
+   告诉他「刚才那一点改的是这里的全局筛选」。复刻自 snoop-v1-prototype.html 的 .chip.flash。
+   光环色就近定义在这里，不进 tokens.css——只此一处用。 */
+.topbar__chip {
+  --chip-flash-ring: rgba(108, 92, 231, 0.22);
+}
+
+[data-theme="dark"] .topbar__chip {
+  --chip-flash-ring: rgba(139, 124, 240, 0.28);
+}
+
+.topbar__chip.is-flash {
+  animation: topbar-chip-flash 700ms var(--ease-smooth);
+}
+
+/* 18% ≈ 126ms 冲到峰值，剩下 82% 缓慢平复——「弹出去再落回来」，不是对称呼吸 */
+@keyframes topbar-chip-flash {
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 var(--chip-flash-ring); }
+  18%  { transform: scale(1.09); box-shadow: 0 0 0 5px var(--chip-flash-ring); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 var(--chip-flash-ring); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar__chip.is-flash { animation: none; }
+}
+
 .topbar__chip .topbar__label {
   overflow: hidden;
   text-overflow: ellipsis;

@@ -49,6 +49,8 @@ export default function TopBar() {
   const [rankLoading, setRankLoading] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuScrollRef = useRef<HTMLDivElement>(null);
+  const chipRef = useRef<HTMLButtonElement>(null);
+  const prevAppIdRef = useRef(appId);
   const [menuThumb, setMenuThumb] = useState<{ top: number; height: number } | null>(null);
 
   const updateMenuThumb = useCallback(() => {
@@ -109,6 +111,20 @@ export default function TopBar() {
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [menuOpen]);
+
+  // App 筛选值真的变了才闪——不是「点了芯片」才闪。
+  // 所以从概览/规律/时间线点 App 下钻（actions.navigate({ appId })）同样会触发，
+  // 这正是这个动效的用途：把视线拉回顶栏，说明刚才那一点改的是全局筛选。
+  // 切回「全部应用」（appId → null）也算变化，同样闪。
+  useLayoutEffect(() => {
+    if (prevAppIdRef.current === appId) return;   // 首次挂载不闪
+    prevAppIdRef.current = appId;
+    const el = chipRef.current;
+    if (!el) return;
+    el.classList.remove("is-flash");
+    void el.offsetWidth;   // 强制同步重排：不读这一下，remove→add 会被合并成「没变化」，动画不会重播
+    el.classList.add("is-flash");
+  }, [appId]);
 
   function pickApp(item: RawAppRank | null) {
     if (item === null) {
@@ -195,10 +211,17 @@ export default function TopBar() {
 
       <div className="topbar__app-filter" ref={menuRef}>
         <button
+          ref={chipRef}
           type="button"
           data-tauri-drag-region="false"
           className={`topbar__chip ${selectedApp ? "is-filtered" : ""}`}
           onClick={() => setMenuOpen((v) => !v)}
+          onAnimationEnd={(e) => {
+            // 只清自己的动画——animationend 会从子元素冒泡上来
+            if (e.target === e.currentTarget) {
+              e.currentTarget.classList.remove("is-flash");
+            }
+          }}
         >
           {selectedApp ? (
             <>
