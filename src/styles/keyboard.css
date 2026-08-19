@@ -11,43 +11,6 @@
   max-width: 100%;
 }
 
-/* 顶部筛选栏 —— 三行结构：App / 日期 / 配列，全部左对齐 */
-.kb-filters {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-3);
-}
-
-/* 单行容器：左对齐，行内元素之间留出合理间距，允许应用行按需换行 */
-.kb-filter-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: var(--space-3);
-  flex-wrap: wrap;
-  min-width: 0;
-}
-
-.kb-filter-row--date {
-  gap: var(--space-4);
-}
-
-.kb-header-note {
-  font-size: var(--text-xs);
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
-  padding: 2px var(--space-2);
-  border-radius: var(--radius-full);
-  align-self: flex-start;
-}
-
-.kb-filter-group {
-  display: inline-flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
 .kb-filter-btn {
   padding: 6px var(--space-3);
   border-radius: var(--radius-full);

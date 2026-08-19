@@ -13,13 +13,10 @@ import {
   type RawKeyDetail,
 } from "../data";
 import { toMs } from "../data/ranges";
-import { aggregateByApp, MERGED_KEY_GROUPS } from "../analytics";
+import { MERGED_KEY_GROUPS } from "../analytics";
 import { parseKLE, getLabelRdevCode, type KLEKey, type ParsedLayout } from "../kleParser";
-import KLELayoutPicker, {
-  getSavedLayout,
-  saveLayout,
-  loadLayoutJSON,
-} from "../components/KLELayoutPicker";
+import { getSavedLayout, loadLayoutJSON } from "../components/KLELayoutPicker";
+import { getLayoutById } from "../layouts";
 import TopKeysPanel from "../components/keyboard/TopKeysPanel";
 import MousePanel from "../components/keyboard/MousePanel";
 import RatioPanel from "../components/keyboard/RatioPanel";
@@ -27,19 +24,20 @@ import KeyboardPanel from "../components/keyboard/KeyboardPanel";
 import KeyDetailPanel from "../components/keyboard/KeyDetailPanel";
 import { KeySelectionProvider } from "../components/keyboard/KeySelectionContext";
 import PageShell from "../components/PageShell";
-import ContextChips from "../components/shared/ContextChips";
+import { useTopBarTools } from "../components/topbar/TopBarToolsContext";
 import { adaptKind, useContextActions, useContextState } from "../store/context";
 
 export default function Keyboard() {
   const { kind, anchor, appId, selectedKey } = useContextState();
   const actions = useContextActions();
-  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("input", { kind, anchor });
+  const { kind: viewKind, anchor: viewAnchor } = adaptKind("input", { kind, anchor });
   const range = useMemo(() => toMs(viewKind, viewAnchor), [viewKind, viewAnchor]);
 
   const [loading, setLoading] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
 
-  // KLE 配列状态（从 localStorage 读取，默认 104 全尺寸）
+  // KLE 配列状态（从 localStorage 读取，默认 104 全尺寸；设置页可改，靠
+  // kle-layout-change 事件同步——配列选择器已移到设置页，本页只读展示+跳转）
   const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
   const [layout, setLayout] = useState<ParsedLayout>({
     keys: [],
@@ -49,13 +47,6 @@ export default function Keyboard() {
   });
   const kleKeys = layout.keys;
   const [kleLoading, setKleLoading] = useState(false);
-
-  // 保存配列选择并加载新配列
-  const handleLayoutChange = async (id: string) => {
-    setLayoutId(id);
-    saveLayout(id);
-    await loadKLELayout(id);
-  };
 
   // 加载 KLE 配列 JSON 并解析
   const loadKLELayout = async (id: string) => {
@@ -75,6 +66,39 @@ export default function Keyboard() {
   useEffect(() => {
     loadKLELayout(layoutId);
   }, []);
+
+  // 设置页切换配列时跨页同步
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      setLayoutId(id);
+      loadKLELayout(id);
+    };
+    window.addEventListener("kle-layout-change", handler);
+    return () => window.removeEventListener("kle-layout-change", handler);
+  }, []);
+
+  const layoutName = getLayoutById(layoutId)?.name ?? layoutId;
+
+  useTopBarTools(
+    [
+      {
+        key: "layout",
+        node: (
+          <button
+            type="button"
+            className="topbar__tool-btn"
+            data-tauri-drag-region="false"
+            title="前往设置页切换配列"
+            onClick={() => actions.navigate({ page: "settings" })}
+          >
+            配列 · {layoutName}
+          </button>
+        ),
+      },
+    ],
+    [layoutName]
+  );
 
   // 全量桶（未筛选，鼠标面板/键鼠比要用来做分 App 对比）+ 按键明细（后端按 appId 过滤）
   const [allBuckets, setAllBuckets] = useState<RawBucket[]>([]);
@@ -199,27 +223,8 @@ export default function Keyboard() {
   const topPanelTitle =
     viewKind === "month" ? "本月按得最多" : viewKind === "week" ? "本周按得最多" : isToday ? "今天按得最多" : "当天按得最多";
 
-  const appName =
-    appId === null
-      ? undefined
-      : aggregateByApp(allBuckets).find((a) => a.app_bundle_id === appId)?.app_name ?? appId;
-
   return (
-    <PageShell
-      className="kb-page"
-      stickyHeader
-      header={
-        <div className="kb-filters">
-          {note !== null && <div className="kb-filter-row kb-header-note">{note}</div>}
-          <ContextChips show={["app", "selectedKey"]} appName={appName} />
-
-          {/* KLE 配列选择——展示配置，不是数据筛选 */}
-          <div className="kb-filter-row kb-filter-row--layout">
-            <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
-          </div>
-        </div>
-      }
-    >
+    <PageShell className="kb-page">
       {/* 统一活动面板：键盘热力图 + 鼠标 + Top 按键 */}
       <section className="panel kb-unified-panel" style={{ position: "relative" }}>
         {showLoading && (

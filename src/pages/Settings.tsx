@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { resetAppIconCache } from "../components/AppIcon";
 import PageShell from "../components/PageShell";
+import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELayoutPicker";
 
 type UpdateState =
   | { status: "idle" }
@@ -126,6 +127,13 @@ export default function Settings() {
   >({ status: "idle" });
   const [version, setVersion] = useState<string>("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
+  const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
+
+  function handleLayoutChange(id: string) {
+    setLayoutId(id);
+    saveLayout(id);
+    window.dispatchEvent(new CustomEvent("kle-layout-change", { detail: id }));
+  }
 
   useEffect(() => {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
@@ -429,6 +437,14 @@ export default function Settings() {
               </button>
             </div>
           </div>
+        </SettingRow>
+      </div>
+
+      <div className="settings-group">
+        <div className="settings-group-title">键盘配列</div>
+
+        <SettingRow label="配列" desc="影响「输入」页热力图的键位排布">
+          <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
         </SettingRow>
       </div>
 
