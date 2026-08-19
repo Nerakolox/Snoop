@@ -17,7 +17,6 @@ import {
 import AppIcon from "../components/AppIcon";
 import DeltaBadge from "../components/DeltaBadge";
 import PageShell from "../components/PageShell";
-import ContextChips from "../components/shared/ContextChips";
 import { useToast } from "../components/shared/Toast";
 import type { NavKey } from "../components/Sidebar";
 import { useRangeData } from "../data/useRangeData";
@@ -146,7 +145,6 @@ function OverviewHeader({
         {anchorLabel(kind, anchor, now)} · {daysWithData} 天数据
         {appId ? ` · 已筛选 ${appName ?? appId}` : ""}
       </p>
-      <ContextChips show={["app"]} appName={appName} />
     </div>
   );
 }

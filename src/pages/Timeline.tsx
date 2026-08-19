@@ -497,7 +497,7 @@ export default function Timeline() {
     };
   }, [spikePopover]);
 
-  // TODO(样式大改): focusHour 目前只经 ContextChips 展示，不驱动视口。
+  // TODO(样式大改): focusHour 目前只经顶栏内建芯片展示，不驱动视口。
   // 现有时间线是 viewport 虚拟坐标模型（无 scrollLeft），自动定位需要
   // 与 viewport 安全带、压缩开关同步，等样式重构定稿后再实现。
 
