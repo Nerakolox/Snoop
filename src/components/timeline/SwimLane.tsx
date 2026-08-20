@@ -32,9 +32,8 @@ type SwimLaneProps = {
   dimmed?: boolean;
   /** 真：按真实 block 渲染；假：量化渲染 */
   renderBlocks: boolean;
-  /** startMs：真实 block 用 block.start_ms，量化段用该段起点换算的真实时间 —— 两种模式统一传"点击处的起始时间"，不传整个 block */
-  onBlockClick: (e: React.MouseEvent, bundleId: string, appName: string, startMs: number) => void;
-  onBlockKeyDown: (e: React.KeyboardEvent, bundleId: string, appName: string, startMs: number) => void;
+  onBlockClick: (e: React.MouseEvent, bundleId: string, appName: string) => void;
+  onBlockKeyDown: (e: React.KeyboardEvent, bundleId: string, appName: string) => void;
   /** 本 lane 的行头身份标识副文本是否展开 */
   expanded: boolean;
   /** 点击行头切换展开/收起 */
@@ -154,8 +153,8 @@ export default function SwimLane({
                   });
                 }}
                 onMouseLeave={() => onHover(null)}
-                onClick={(e) => onBlockClick(e, lane.app_bundle_id, lane.app_name, block.start_ms)}
-                onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name, block.start_ms)}
+                onClick={(e) => onBlockClick(e, lane.app_bundle_id, lane.app_name)}
+                onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name)}
               />
             ))
           : segmentsRender!.map((s) => (
@@ -184,8 +183,8 @@ export default function SwimLane({
                   });
                 }}
                 onMouseLeave={() => onHover(null)}
-                onClick={(e) => onBlockClick(e, lane.app_bundle_id, lane.app_name, scale.pctToTime(s.startPct))}
-                onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name, scale.pctToTime(s.startPct))}
+                onClick={(e) => onBlockClick(e, lane.app_bundle_id, lane.app_name)}
+                onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name)}
               />
             ))}
       </div>

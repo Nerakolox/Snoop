@@ -39,7 +39,7 @@ import { formatTime, formatDuration } from "../utils/format";
 // ---- 主组件 -----------------------------------------------------------------
 
 export default function Timeline() {
-  const { kind, anchor, appId } = useContextState();
+  const { kind, anchor, appId, focusHour } = useContextState();
   const actions = useContextActions();
   const toast = useToast();
   const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("timeline", { kind, anchor });
@@ -207,6 +207,24 @@ export default function Timeline() {
   useEffect(() => {
     setViewport(null);
   }, [viewAnchor]);
+
+  // 跨页定位消费：其他页面（如"规律"/概览）通过全局 focusHour 带第几小时跳转到本页，
+  // 本页收到后定位一次即清空，避免顶栏定位芯片常驻。定位窗口/是否连带缩放等细节本轮从简，
+  // 取目标小时前后各 1 小时的窗口居中；本页内部点击色块不再写 focusHour（见 selectApp）。
+  useEffect(() => {
+    if (focusHour === null) return;
+    if (segmentsData.totalVirt <= 0) return;
+    const targetTime = range.start_ms + focusHour * 60 * 60 * 1000;
+    const targetVirt = timeToVirt(targetTime, segmentsData.segments);
+    const halfWindow = 60 * 60 * 1000;
+    const start = Math.max(0, targetVirt - halfWindow);
+    const end = Math.min(segmentsData.totalVirt, targetVirt + halfWindow);
+    if (end - start >= 30 * 60 * 1000) {
+      setViewport({ start, end });
+    }
+    actions.setFocusHour(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusHour, segmentsData, range.start_ms]);
 
   // 切换压缩：保留当前视口的真实时间范围
   const toggleCompressed = useCallback(() => {
@@ -430,24 +448,25 @@ export default function Timeline() {
     return Math.abs(e.clientX - s.x) < 4 && Math.abs(e.clientY - s.y) < 4;
   }
 
-  function selectApp(bundleId: string, name: string, startMs: number) {
-    const hour = new Date(startMs).getHours();
-    actions.navigate({ appId: bundleId, focusHour: hour });
+  function selectApp(bundleId: string, name: string) {
+    // 不写 focusHour：用户正在看时间线，点一个块再被告知"已定位到 HH:00"没有信息量——
+    // 他本来就在那个位置。focusHour 只用于跨页跳转定位（见下方 4b 的消费逻辑）。
+    actions.navigate({ appId: bundleId });
     // 点击色块顺带展开该 lane 的身份标识；强制置为该 bundleId（不 toggle），
     // 避免和"筛选"这个主动作的语义冲突——再点一次同一色块应该还是"选中"，不该被理解成"收起"。
     setExpandedLane(bundleId);
     toast.show({ message: `已筛选 ${name}，全站生效`, undoLabel: "取消筛选" });
   }
 
-  function handleBlockClick(e: React.MouseEvent, bundleId: string, name: string, startMs: number) {
+  function handleBlockClick(e: React.MouseEvent, bundleId: string, name: string) {
     if (!isClickNotDrag(e)) return;
-    selectApp(bundleId, name, startMs);
+    selectApp(bundleId, name);
   }
 
-  function handleBlockKeyDown(e: React.KeyboardEvent, bundleId: string, name: string, startMs: number) {
+  function handleBlockKeyDown(e: React.KeyboardEvent, bundleId: string, name: string) {
     if (e.key !== "Enter" && e.key !== " ") return;
     e.preventDefault();
-    selectApp(bundleId, name, startMs);
+    selectApp(bundleId, name);
   }
 
   const gapBands = useMemo(() => {
@@ -534,10 +553,6 @@ export default function Timeline() {
       window.removeEventListener("mousedown", handleClickOutside);
     };
   }, [spikePopover]);
-
-  // TODO(样式大改): focusHour 目前只经顶栏内建芯片展示，不驱动视口。
-  // 现有时间线是 viewport 虚拟坐标模型（无 scrollLeft），自动定位需要
-  // 与 viewport 安全带、压缩开关同步，等样式重构定稿后再实现。
 
   useTopBarTools(
     [
