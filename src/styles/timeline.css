@@ -112,12 +112,10 @@
   overflow: hidden;
 }
 
-/* 泳道主体 */
+/* 泳道主体 —— 只是滚动视口：overflow-y:auto，高度锁定可视区(height:100%)。
+   不再兼任定位上下文/flex 布局容器，那是 .swimlane-content 的职责——
+   见下方注释，两者职责分离是这层滚动错位 bug 的修复关键。 */
 .swimlane-body {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: var(--lane-gap);
   overflow-y: auto; /* 容器内部纵向滚动 */
   flex: 1; /* 占满剩余空间 */
   height: 100%;
@@ -131,6 +129,19 @@
 
 .swimlane-body::-webkit-scrollbar {
   display: none; /* Chrome/Safari/Opera */
+}
+
+/* 滚动内容层 —— 高度由内部泳道行自然撑开（无显式 height，非 100%）。
+   网格线层 / 空白压缩遮罩必须挂在这一层里才能：
+   ①作为 .swimlane-body 的子孙，随它一起滚动；
+   ②inset:0 撑满的是内容总高而不是 .swimlane-body 的可视区高度(height:100%)。
+   之前网格线层/遮罩挂在 .swimlane-body 或更外层的 .swimlane-body-wrap 上，
+   两者高度都锁定成可视区，一滚动内容超出首屏就露空/错位。 */
+.swimlane-content {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lane-gap);
 }
 
 /* 常驻"+N 个应用"行 —— 取代渐隐遮罩：遮罩是半透明色块叠加在色块轨道上会污染强度色彩，
@@ -319,7 +330,7 @@
   margin-top: var(--space-1);
 }
 
-/* 空白压缩：灰色空闲板 —— 单层覆盖，横跨所有泳道 */
+/* 空白压缩：灰色空闲板 —— 单层覆盖，横跨所有泳道，随 .swimlane-content 一起滚动 */
 .swimlane-gap-overlay {
   position: absolute;
   top: 0;
@@ -328,7 +339,8 @@
   right: 0;
   pointer-events: none; /* 让内部的 band 通过 auto 单独接收事件 */
   overflow: hidden; /* 严格限制在时间轴区域内，防止负偏移的 band 溢出到左侧标签列 */
-  z-index: 5; /* 位于色块之下、拖拽层之上 */
+  z-index: 1; /* 必须低于色块(2)：不能盖住色块的 hover 命中，也不能给色块颜色叠一层色调——
+                 颜色在这个设计里是语义。之前误写成 5(比色块还高)，与本条注释原意矛盾，已改正。 */
 }
 
 .swimlane-gap-band {

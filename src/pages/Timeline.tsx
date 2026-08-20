@@ -657,55 +657,58 @@ export default function Timeline() {
 
           {/* 泳道列表容器 */}
           <div className="swimlane-body-wrap">
-            {/* 空白压缩：灰色空闲板 —— 单层覆盖，不随泳道滚动 */}
-            {gapBands.length > 0 && (
-              <div className="swimlane-gap-overlay">
-                {gapBands.map((g) => (
-                  <Tooltip
-                    key={g.key}
-                    content={`空闲 ${formatDuration(g.durationMs)} · ${formatTime(g.time_start)} – ${formatTime(g.time_end)}`}
-                  >
-                    <div
-                      className="swimlane-gap-band"
-                      style={{ left: g.left, width: g.width }}
-                    >
-                      <span className="swimlane-gap-label">
-                        ⋯ {formatDuration(g.durationMs)} 无活动
-                      </span>
-                    </div>
-                  </Tooltip>
-                ))}
-              </div>
-            )}
-
-            {/* 泳道列表 */}
+            {/* 泳道列表：滚动视口，本身只负责 overflow-y:auto，不参与内容布局 */}
             <div ref={bodyRef} className="swimlane-body">
-              <div className="swimlane-grid-layer" aria-hidden>
-                {ticks.map((tk) => (
-                  <div
-                    key={tk.time_ms}
-                    className="swimlane-grid-line"
-                    style={{ left: `${scale.toPct(tk.virt)}%` }}
+              {/* 滚动内容层：position:relative + 高度随泳道行自然撑开（而非贴视口的 100%）。
+                  网格线层、空白压缩遮罩都挂在这里而不是挂在 .swimlane-body / .swimlane-body-wrap
+                  上 —— 后两者高度都锁定成可视区，其内 inset:0 的子层只够盖首屏，一滚动就露空。 */}
+              <div className="swimlane-content">
+                <div className="swimlane-grid-layer" aria-hidden>
+                  {ticks.map((tk) => (
+                    <div
+                      key={tk.time_ms}
+                      className="swimlane-grid-line"
+                      style={{ left: `${scale.toPct(tk.virt)}%` }}
+                    />
+                  ))}
+                </div>
+                {gapBands.length > 0 && (
+                  <div className="swimlane-gap-overlay">
+                    {gapBands.map((g) => (
+                      <Tooltip
+                        key={g.key}
+                        content={`空闲 ${formatDuration(g.durationMs)} · ${formatTime(g.time_start)} – ${formatTime(g.time_end)}`}
+                      >
+                        <div
+                          className="swimlane-gap-band"
+                          style={{ left: g.left, width: g.width }}
+                        >
+                          <span className="swimlane-gap-label">
+                            ⋯ {formatDuration(g.durationMs)} 无活动
+                          </span>
+                        </div>
+                      </Tooltip>
+                    ))}
+                  </div>
+                )}
+                {lanes.map((lane) => (
+                  <SwimLane
+                    key={lane.app_bundle_id}
+                    lane={lane}
+                    scale={scale}
+                    segments={segmentsData.segments}
+                    totalVirt={segmentsData.totalVirt}
+                    viewRange={viewRange}
+                    cellWidthVirt={cellWidthVirt}
+                    trackRef={trackRef}
+                    onHover={setHovered}
+                    dimmed={appId !== null && lane.app_bundle_id !== appId}
+                    renderBlocks={renderBlocks}
+                    onBlockClick={handleBlockClick}
+                    onBlockKeyDown={handleBlockKeyDown}
                   />
                 ))}
               </div>
-              {lanes.map((lane) => (
-                <SwimLane
-                  key={lane.app_bundle_id}
-                  lane={lane}
-                  scale={scale}
-                  segments={segmentsData.segments}
-                  totalVirt={segmentsData.totalVirt}
-                  viewRange={viewRange}
-                  cellWidthVirt={cellWidthVirt}
-                  trackRef={trackRef}
-                  onHover={setHovered}
-                  dimmed={appId !== null && lane.app_bundle_id !== appId}
-                  renderBlocks={renderBlocks}
-                  onBlockClick={handleBlockClick}
-                  onBlockKeyDown={handleBlockKeyDown}
-                />
-              ))}
             </div>
             {hiddenLaneCount > 0 && (
               <button type="button" className="swimlane-more-row" onClick={scrollToMore}>
