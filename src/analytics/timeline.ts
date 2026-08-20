@@ -1,5 +1,5 @@
 import type { RawBucket } from "../data/types";
-import { computeBucketIntensity } from "./intensity";
+import { computeIntensity } from "./intensity";
 
 export type TimeBlock = {
   start_ms: number;
@@ -70,6 +70,7 @@ export function buildAppLanes(buckets: RawBucket[]): AppLane[] {
   if (buckets.length === 0) return [];
   const sorted = [...buckets].sort((a, b) => a.bucket_start - b.bucket_start);
   const laneMap = new Map<string, AppLane>();
+  const blockBuckets = new Map<TimeBlock, RawBucket[]>();
 
   for (const b of sorted) {
     const key = b.app_bundle_id;
@@ -83,7 +84,6 @@ export function buildAppLanes(buckets: RawBucket[]): AppLane[] {
       });
     }
     const lane = laneMap.get(key)!;
-    const intensity = computeBucketIntensity(b);
     const mouse_total = b.mouse_left + b.mouse_right + b.mouse_middle;
     const lastBlock = lane.blocks[lane.blocks.length - 1];
     const gap = lastBlock ? b.bucket_start - lastBlock.end_ms : Infinity;
@@ -93,21 +93,28 @@ export function buildAppLanes(buckets: RawBucket[]): AppLane[] {
       lastBlock.duration_ms = lastBlock.end_ms - lastBlock.start_ms;
       lastBlock.key_total += b.key_total;
       lastBlock.mouse_total += mouse_total;
-      lastBlock.intensity = Math.max(lastBlock.intensity, intensity) as 0 | 1 | 2 | 3 | 4;
+      blockBuckets.get(lastBlock)!.push(b);
     } else {
-      lane.blocks.push({
+      const block: TimeBlock = {
         start_ms: b.bucket_start,
         end_ms: b.bucket_start + b.duration_ms,
         duration_ms: b.duration_ms,
-        intensity,
+        intensity: 0,
         key_total: b.key_total,
         mouse_total,
-      });
+      };
+      lane.blocks.push(block);
+      blockBuckets.set(block, [b]);
     }
     lane.total_duration_ms += b.duration_ms;
   }
 
   const lanes = Array.from(laneMap.values());
+  for (const lane of lanes) {
+    for (const block of lane.blocks) {
+      block.intensity = computeIntensity(blockBuckets.get(block)!);
+    }
+  }
   lanes.sort((a, b) => b.total_duration_ms - a.total_duration_ms);
   return lanes;
 }
