@@ -632,7 +632,7 @@ export default function Timeline() {
                       style={{ left: g.left, width: g.width }}
                     >
                       <span className="swimlane-gap-label">
-                        空闲 {formatDuration(g.durationMs)}
+                        ⋯ {formatDuration(g.durationMs)} 无活动
                       </span>
                     </div>
                   </Tooltip>

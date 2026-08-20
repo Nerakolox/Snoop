@@ -568,6 +568,8 @@
   max-width: calc(100% - var(--space-2));
   overflow: hidden;
   text-overflow: ellipsis;
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 /* ---------- Batch 3 · 全局上下文接入 ---------- */
