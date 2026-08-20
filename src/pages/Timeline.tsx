@@ -11,7 +11,7 @@
  *  缩放和平移直接操作虚拟坐标，避免坐标系混用。
  */
 
-import { useEffect, useMemo, useState, useRef, useCallback } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Calendar, ChevronDown, Maximize2, Minimize2 } from "lucide-react";
 import { fetchBucketsInRange } from "../data";
 import { formatAnchor, toMs } from "../data/ranges";
@@ -462,12 +462,21 @@ export default function Timeline() {
 
   const gapBands = useMemo(() => {
     return segmentsData.virtGaps.map((g) => {
-      const { left, width } = scale.bandStyle(g.virt_start, g.virt_end);
+      const left = scale.toPct(g.virt_start);
+      const right = scale.toPct(g.virt_end);
       const durationMs = g.time_end - g.time_start;
+      // 斜纹带在轨道百分比坐标系里可能延伸到视口外(left<0 / right>100)，
+      // 标签要居中在「斜纹带 ∩ 视口」=[max(left,0), min(right,100)] 上，而非整条带。
+      const intersectLeft = Math.max(left, 0);
+      const intersectRight = Math.min(right, 100);
       return {
         key: `${g.time_start}-${g.time_end}`,
-        left,
-        width,
+        left: `${left}%`,
+        width: `${right - left}%`,
+        intersectLeft,
+        intersectRight,
+        center: (intersectLeft + intersectRight) / 2,
+        intersectWidth: intersectRight - intersectLeft,
         durationMs,
         time_start: g.time_start,
         time_end: g.time_end,
@@ -475,6 +484,38 @@ export default function Timeline() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentsData, scale]);
+
+  // 空白带标签宽度(占轨道宽的百分比)——每个空隙文本固定，只在首帧/窗口 resize 时量一次，
+  // 缓存到 labelPcts，不在拖拽 mousemove 里每帧测 DOM。渲染层用它判断交集是否窄到放不下标签。
+  const [labelPcts, setLabelPcts] = useState<Record<string, number>>({});
+
+  // 标签集合的稳定签名：key 由空隙起止时间戳决定，拖拽/缩放不改变它，只有数据或压缩开关变化才变。
+  const gapLabelKeys = useMemo(() => gapBands.map((g) => g.key).join("|"), [gapBands]);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      const trackPx = trackRef.current?.getBoundingClientRect().width ?? 0;
+      const pcts: Record<string, number> = {};
+      if (trackPx > 0) {
+        document.querySelectorAll<HTMLElement>(".swimlane-gap-label").forEach((el) => {
+          const k = el.dataset.key;
+          if (k) pcts[k] = (el.offsetWidth / trackPx) * 100;
+        });
+      }
+      setLabelPcts((prev) => {
+        // 合并而非替换：被隐藏(未渲染)的标签这次量不到，但其宽度已缓存且文本不变，必须保留，
+        // 否则 resize 后会把隐藏标签的缓存冲掉，造成一次闪烁。
+        const merged = { ...prev, ...pcts };
+        const same =
+          Object.keys(merged).length === Object.keys(prev).length &&
+          Object.keys(merged).every((k) => merged[k] === prev[k]);
+        return same ? prev : merged;
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [gapLabelKeys]);
 
   // "全部"聚合条：合并所有 lane 的 block，走与普通泳道完全相同的量化管线
   // (同一个 quantizeLaneVirtual + sliceQuantized，同一个 cellWidthVirt)，不写第二套量化逻辑。
@@ -682,13 +723,31 @@ export default function Timeline() {
                         <div
                           className="swimlane-gap-band"
                           style={{ left: g.left, width: g.width }}
+                        />
+                      </Tooltip>
+                    ))}
+                  </div>
+                )}
+                {/* 空白带标签：独立于遮罩层，sticky 垂直居中 + 交集水平居中，见 .swimlane-gap-labels */}
+                {gapBands.length > 0 && (
+                  <div className="swimlane-gap-labels" aria-hidden>
+                    {gapBands.map((g) => {
+                      const pct = labelPcts[g.key];
+                      const fits =
+                        g.intersectWidth > 0 && (pct === undefined ? true : g.intersectWidth >= pct);
+                      if (!fits) return null;
+                      return (
+                        <div
+                          key={g.key}
+                          className="swimlane-gap-label-slot"
+                          style={{ left: `${g.center}%` }}
                         >
-                          <span className="swimlane-gap-label">
+                          <span className="swimlane-gap-label" data-key={g.key}>
                             ⋯ {formatDuration(g.durationMs)} 无活动
                           </span>
                         </div>
-                      </Tooltip>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {lanes.map((lane) => (

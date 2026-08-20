@@ -120,7 +120,6 @@
   flex: 1; /* 占满剩余空间 */
   height: 100%;
   min-height: 0; /* 允许缩小 */
-  padding: var(--space-4) 0;
 
   /* 隐藏滚动条但保留滚动能力 */
   scrollbar-width: none; /* Firefox */
@@ -142,6 +141,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--lane-gap);
+  /* 上下留白从 .swimlane-body 挪到这里：泳道行是它的 flex 子项，padding 让首尾泳道
+     离滚动区上下沿各留一个 --space-4 的呼吸区；同时网格线层/遮罩/标签层的 inset:0
+     锚定的是这一层的 padding box，把这段留白也纳入覆盖，不再露白。 */
+  padding: var(--space-4) 0;
 }
 
 /* 常驻"+N 个应用"行 —— 取代渐隐遮罩：遮罩是半透明色块叠加在色块轨道上会污染强度色彩，
@@ -345,11 +348,8 @@
 
 .swimlane-gap-band {
   position: absolute;
-  top: var(--space-4);
-  bottom: var(--space-4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  top: 0;
+  bottom: 0;
   background: repeating-linear-gradient(
     45deg,
     color-mix(in oklab, var(--color-text-3) 18%, transparent),
@@ -361,10 +361,36 @@
   border-right: 1px dashed color-mix(in oklab, var(--color-text-3) 40%, transparent);
   border-radius: var(--radius-sm);
   pointer-events: auto;
-  overflow: hidden;
 }
 
+/* 空白压缩标签层 —— 与条纹遮罩(.swimlane-gap-overlay)分离的独立层。
+   遮罩层带 overflow:hidden，会把 sticky 的滚动容器链切断；标签必须挂在这个无 overflow 的
+   层里，才能用 position:sticky 在 .swimlane-body 视口内垂直居中。 */
+.swimlane-gap-labels {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--lane-label-w);
+  right: 0;
+  pointer-events: none; /* 标签不拦截鼠标，hover 穿透到下面的 band */
+  z-index: 2; /* 高于条纹(1)、与色块(2)同层；标签只在空隙里出现，不会压到色块 */
+}
+
+/* 每根标签的水平定位槽：零宽、全高，锚定「斜纹带 ∩ 视口」交集的水平中心(内联 left) */
+.swimlane-gap-label-slot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+}
+
+/* 标签本体：sticky 在视口内垂直居中；水平用 translateX(-50%) 在槽位(交集中心)居中。
+   不再 max-width/ellipsis 裁剪 —— 交集窄到放不下时由渲染层直接不输出，不压扁也不溢出。 */
 .swimlane-gap-label {
+  position: sticky;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-block;
   font-size: var(--text-xs);
   color: var(--color-text-2);
   background: color-mix(in oklab, var(--color-bg) 70%, transparent);
@@ -372,9 +398,6 @@
   border-radius: var(--radius-sm);
   white-space: nowrap;
   pointer-events: none;
-  max-width: calc(100% - var(--space-2));
-  overflow: hidden;
-  text-overflow: ellipsis;
   font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
 }
