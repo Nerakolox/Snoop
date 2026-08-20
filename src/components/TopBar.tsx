@@ -71,14 +71,15 @@ export default function TopBar() {
   }, []);
 
   useEffect(() => {
-    if (!menuOpen) return;
+    // appId !== null 时也要拉：外部（概览/规律/时间线）下钻设置 appId 时菜单并未打开，
+    // 但芯片仍要靠这份排行数据把 bundle id 解析成人话名，否则芯片会一直显示原始 bundle id。
+    if (!menuOpen && appId === null) return;
     let cancelled = false;
     setRankLoading(true);
     fetchAppRankingInRange(toMs(kind, anchor))
       .then((list) => {
         if (cancelled) return;
         setRank(list);
-        // 顺带缓存展示名：外部（概览/规律/时间线）下钻设置 appId 时，芯片靠它显示人话而非 bundle id
         setAppNames((prev) => {
           const next = { ...prev };
           for (const r of list) {
@@ -94,7 +95,7 @@ export default function TopBar() {
     return () => {
       cancelled = true;
     };
-  }, [menuOpen, kind, anchor]);
+  }, [menuOpen, kind, anchor, appId]);
 
   useEffect(() => {
     if (!menuOpen) return;
