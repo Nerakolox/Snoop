@@ -429,9 +429,21 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hourlyIntensity, range.start_ms, scale]);
 
+  // 压缩模式下相邻整点可能跨越被压缩的 gap，直线会横穿挤压区。
+  // 对每个 gap 的 virt 起止各补一个 level=0 的采样点，让曲线在 gap 处下探到底（无活动）。
+  const curvePathPoints = useMemo(() => {
+    const bottomY = CURVE_VB_H - 2; // level 0 → 底部
+    const gapPoints = segmentsData.virtGaps.flatMap((g) => [
+      { x: scale.toPct(g.virt_start), y: bottomY },
+      { x: scale.toPct(g.virt_end), y: bottomY },
+    ]);
+    return [...curvePoints, ...gapPoints].sort((a, b) => a.x - b.x);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [curvePoints, segmentsData.virtGaps, scale]);
+
   const curvePathD = useMemo(
-    () => curvePoints.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" "),
-    [curvePoints]
+    () => curvePathPoints.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" "),
+    [curvePathPoints]
   );
 
   // 突变检测：v > prev*1.8 且 v > 当日峰值*0.45（照抄工单公式，不改阈值）
@@ -574,7 +586,7 @@ export default function Timeline() {
                 preserveAspectRatio="none"
                 className="swimlane-intensity-svg"
               >
-                <path d={curvePathD} className="swimlane-intensity-line" />
+                <path d={curvePathD} className="swimlane-intensity-line" vector-effect="non-scaling-stroke" />
               </svg>
               {spikeHours.map((hour) => {
                 const point = curvePoints[hour];
