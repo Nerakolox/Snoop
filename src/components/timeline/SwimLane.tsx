@@ -5,15 +5,13 @@
  * 双模式：renderBlocks 为真渲染真实 block；为假渲染量化段（仅 hover，不点击/键盘）。
  */
 
-import { useMemo, useState, type RefObject } from "react";
-import { Copy, Check } from "lucide-react";
+import { useMemo, type RefObject } from "react";
 import AppIcon from "../AppIcon";
 import type { AppLane, Segment } from "../../analytics";
 import { quantizeLaneVirtual, sliceQuantized } from "../../analytics/quantize";
 import type { HoverTarget } from "./TimelineTooltip";
 import type { TimeScale } from "../../hooks/useTimeScale";
 import Tooltip from "../shared/Tooltip";
-import { formatIdentity } from "../../utils/format";
 
 type SwimLaneProps = {
   lane: AppLane;
@@ -34,10 +32,6 @@ type SwimLaneProps = {
   renderBlocks: boolean;
   onBlockClick: (e: React.MouseEvent, bundleId: string, appName: string) => void;
   onBlockKeyDown: (e: React.KeyboardEvent, bundleId: string, appName: string) => void;
-  /** 本 lane 的行头身份标识副文本是否展开 */
-  expanded: boolean;
-  /** 点击行头切换展开/收起 */
-  onToggleIdentity: (bundleId: string) => void;
 };
 
 export default function SwimLane({
@@ -53,8 +47,6 @@ export default function SwimLane({
   renderBlocks,
   onBlockClick,
   onBlockKeyDown,
-  expanded,
-  onToggleIdentity,
 }: SwimLaneProps) {
   // 第一阶段：对整条虚拟时间轴量化并缓存，只在数据版本/格宽档位变化时重算，
   // 拖拽平移(仅 viewRange 变化)不会让这一层失效。
@@ -80,54 +72,17 @@ export default function SwimLane({
     () => (visibleFull ? sliceQuantized(visibleFull, viewRange, scale.toPct) : null),
     [visibleFull, viewRange.start, viewRange.end, scale]
   );
-  const [copied, setCopied] = useState(false);
-
-  function handleCopy(e: React.MouseEvent) {
-    e.stopPropagation();
-    navigator.clipboard.writeText(lane.app_bundle_id).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
-    });
-  }
-
   return (
     <div className={`swimlane-row${dimmed ? " swimlane-row--dim" : ""}`}>
-      <div
-        className="swimlane-label"
-        role="button"
-        tabIndex={0}
-        onClick={() => onToggleIdentity(lane.app_bundle_id)}
-        onKeyDown={(e) => {
-          if (e.key !== "Enter" && e.key !== " ") return;
-          e.preventDefault();
-          onToggleIdentity(lane.app_bundle_id);
-        }}
-      >
-        <div className="swimlane-label-main">
-          <AppIcon
-            bundleId={lane.app_bundle_id}
-            appName={lane.app_name}
-            size={16}
-          />
-          <Tooltip content={lane.app_name}>
-            <span className="swimlane-app-name">{lane.app_name}</span>
-          </Tooltip>
-        </div>
-        {expanded && (
-          <div className="swimlane-identity-row" onClick={(e) => e.stopPropagation()}>
-            <span className="swimlane-identity-text" title={lane.app_bundle_id}>
-              {formatIdentity(lane.app_bundle_id)}
-            </span>
-            <button
-              type="button"
-              className="swimlane-identity-copy"
-              aria-label="复制应用标识"
-              onClick={handleCopy}
-            >
-              {copied ? <Check size={12} /> : <Copy size={12} />}
-            </button>
-          </div>
-        )}
+      <div className="swimlane-label">
+        <AppIcon
+          bundleId={lane.app_bundle_id}
+          appName={lane.app_name}
+          size={16}
+        />
+        <Tooltip content={lane.app_name}>
+          <span className="swimlane-app-name">{lane.app_name}</span>
+        </Tooltip>
       </div>
       <div ref={trackRef} className="swimlane-track">
         {renderBlocks

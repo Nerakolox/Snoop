@@ -51,33 +51,3 @@ export function fmtHours(h: number): string {
   return Number.isInteger(h) ? `${h}` : h.toFixed(1);
 }
 
-/** 应用系统标识的展示形式：Windows exe 路径中段省略(保留盘符/头部+文件名)，
- *  macOS bundle id 原样返回。用值本身是否含路径分隔符判断，而不是猜运行平台。 */
-export function formatIdentity(raw: string, maxLen = 42): string {
-  if (raw.length <= maxLen) return raw;
-  const isPath = raw.includes("\\") || raw.includes("/");
-  if (!isPath) return raw;
-
-  const sep = raw.includes("\\") ? "\\" : "/";
-  const parts = raw.split(sep).filter(Boolean);
-  if (parts.length < 2) {
-    const keep = Math.floor((maxLen - 1) / 2);
-    return `${raw.slice(0, keep)}…${raw.slice(raw.length - keep)}`;
-  }
-
-  const head = parts[0];
-  const filename = parts[parts.length - 1];
-  const isWinDrive = /^[a-zA-Z]:$/.test(head);
-  const headDisplay = isWinDrive ? `${head}${sep}` : `${sep}${head}`;
-
-  const result = `${headDisplay}…${sep}${filename}`;
-  if (result.length <= maxLen) return result;
-
-  const budget = Math.max(8, maxLen - headDisplay.length - 2);
-  const half = Math.floor(budget / 2);
-  const shortFilename =
-    filename.length > budget
-      ? `${filename.slice(0, half)}…${filename.slice(filename.length - half)}`
-      : filename;
-  return `${headDisplay}…${sep}${shortFilename}`;
-}
