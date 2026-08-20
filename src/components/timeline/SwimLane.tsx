@@ -8,8 +8,8 @@
 import { useMemo, useState, type RefObject } from "react";
 import { Copy, Check } from "lucide-react";
 import AppIcon from "../AppIcon";
-import type { AppLane } from "../../analytics";
-import { quantizeLane } from "../../analytics/quantize";
+import type { AppLane, Segment } from "../../analytics";
+import { quantizeLaneVirtual, sliceQuantized } from "../../analytics/quantize";
 import type { HoverTarget } from "./TimelineTooltip";
 import type { TimeScale } from "../../hooks/useTimeScale";
 import Tooltip from "../shared/Tooltip";
@@ -18,6 +18,13 @@ import { formatIdentity } from "../../utils/format";
 type SwimLaneProps = {
   lane: AppLane;
   scale: TimeScale;
+  /** 时间<->虚拟坐标映射，量化网格锚定在这条虚拟时间轴上，与视口无关 */
+  segments: Segment[];
+  totalVirt: number;
+  /** 当前视口的虚拟坐标范围，仅用于从缓存的全量结果里切出可见格 */
+  viewRange: { start: number; end: number };
+  /** 量化格宽（虚拟毫秒），随缩放取离散档位 */
+  cellWidthVirt: number;
   /** 轨道 DOM ref —— 主组件用它做视口 rect 测量，用于滚轮缩放和拖拽 */
   trackRef: RefObject<HTMLDivElement | null>;
   onHover: (hovered: HoverTarget | null) => void;
@@ -25,8 +32,6 @@ type SwimLaneProps = {
   dimmed?: boolean;
   /** 真：按真实 block 渲染；假：量化渲染 */
   renderBlocks: boolean;
-  /** 量化渲染时的像素格数 */
-  cellCount: number;
   /** startMs：真实 block 用 block.start_ms，量化段用该段起点换算的真实时间 —— 两种模式统一传"点击处的起始时间"，不传整个 block */
   onBlockClick: (e: React.MouseEvent, bundleId: string, appName: string, startMs: number) => void;
   onBlockKeyDown: (e: React.KeyboardEvent, bundleId: string, appName: string, startMs: number) => void;
@@ -39,19 +44,42 @@ type SwimLaneProps = {
 export default function SwimLane({
   lane,
   scale,
+  segments,
+  totalVirt,
+  viewRange,
+  cellWidthVirt,
   trackRef,
   onHover,
   dimmed,
   renderBlocks,
-  cellCount,
   onBlockClick,
   onBlockKeyDown,
   expanded,
   onToggleIdentity,
 }: SwimLaneProps) {
-  const segments = useMemo(
-    () => (renderBlocks ? null : quantizeLane(lane.blocks, scale, cellCount)),
-    [renderBlocks, lane.blocks, scale, cellCount]
+  // 第一阶段：对整条虚拟时间轴量化并缓存，只在数据版本/格宽档位变化时重算，
+  // 拖拽平移(仅 viewRange 变化)不会让这一层失效。
+  const fullQuantized = useMemo(
+    () => (renderBlocks ? null : quantizeLaneVirtual(lane.blocks, segments, totalVirt, cellWidthVirt)),
+    [renderBlocks, lane.blocks, segments, totalVirt, cellWidthVirt]
+  );
+
+  // 第二阶段：按可见格区间（整数格索引，而非连续像素值）过滤，视口在同一格宽度内小幅移动时不重算。
+  const visibleCellRange = useMemo(() => {
+    if (cellWidthVirt <= 0) return [0, 0] as const;
+    return [Math.floor(viewRange.start / cellWidthVirt), Math.ceil(viewRange.end / cellWidthVirt)] as const;
+  }, [viewRange.start, viewRange.end, cellWidthVirt]);
+
+  const visibleFull = useMemo(() => {
+    if (!fullQuantized) return null;
+    const [lo, hi] = visibleCellRange;
+    return fullQuantized.filter((s) => s.startCell + s.cellSpan > lo && s.startCell < hi);
+  }, [fullQuantized, visibleCellRange]);
+
+  // 第三阶段：纯位置换算(每帧都可能变化)，只做 pct 映射，不重新分档。
+  const segmentsRender = useMemo(
+    () => (visibleFull ? sliceQuantized(visibleFull, viewRange, scale.toPct) : null),
+    [visibleFull, viewRange.start, viewRange.end, scale]
   );
   const [copied, setCopied] = useState(false);
 
@@ -104,9 +132,9 @@ export default function SwimLane({
       </div>
       <div ref={trackRef} className="swimlane-track">
         {renderBlocks
-          ? lane.blocks.filter((b) => scale.isVisible(b.start_ms, b.end_ms)).map((block, i) => (
+          ? lane.blocks.filter((b) => scale.isVisible(b.start_ms, b.end_ms)).map((block) => (
               <div
-                key={i}
+                key={block.start_ms}
                 className="swimlane-block"
                 role="button"
                 tabIndex={0}
@@ -130,9 +158,9 @@ export default function SwimLane({
                 onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name, block.start_ms)}
               />
             ))
-          : segments!.map((s, i) => (
+          : segmentsRender!.map((s) => (
               <div
-                key={i}
+                key={s.startCell}
                 className={`swimlane-quant-seg${s.level === 0 ? " swimlane-quant-seg--idle" : ""}`}
                 role="button"
                 tabIndex={0}

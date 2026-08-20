@@ -20,7 +20,9 @@ import {
   buildAppLanes, computeGlobalGaps, buildSegments, timeToVirt, virtToTime, buildTicks,
   COMPRESS_THRESHOLD_MS,
   pickSpikeQuip,
-  quantizeLane,
+  pickCellWidthVirt,
+  quantizeLaneVirtual,
+  sliceQuantized,
   segmentsToCellLevels,
 } from "../analytics";
 import PageShell from "../components/PageShell";
@@ -169,7 +171,8 @@ export default function Timeline() {
   // 推导:5000ms 需 ≥ 3px,而 3px = 3/940 的轨道 = (3/940×100)%;故 msPerPct ≤ 5000×940/(3×100) ≈ 15667。
   const LOD_REAL_BLOCK_MS_PER_PCT = (5000 * 940) / (3 * 100);
   const renderBlocks = scale.msPerPct <= LOD_REAL_BLOCK_MS_PER_PCT;
-  const cellCount = Math.max(80, Math.min(420, Math.round((viewRange.end - viewRange.start) / (2 * 60_000))));
+  // 格宽锚定虚拟时间轴、按视口跨度取离散档位(2min/30s/5s)，与视口位置无关 —— 见 quantize.ts 顶部说明。
+  const cellWidthVirt = pickCellWidthVirt(viewRange.end - viewRange.start);
 
   const ticks = useMemo(
     () => buildTicks(segmentsData.segments, viewRange.start, viewRange.end),
@@ -303,6 +306,26 @@ export default function Timeline() {
     [viewport, segmentsData.totalVirt]
   );
 
+  // rAF 节流：一帧最多提交一次视口/滚动更新，原生 mousemove 触发频率可能远高于刷新率。
+  const dragRafRef = useRef<number | null>(null);
+  const pendingMoveRef = useRef<{ start: number; end: number; scrollTop: number } | null>(null);
+
+  const cancelPendingMove = useCallback(() => {
+    if (dragRafRef.current !== null) {
+      cancelAnimationFrame(dragRafRef.current);
+      dragRafRef.current = null;
+    }
+    pendingMoveRef.current = null;
+  }, []);
+
+  const flushPendingMove = useCallback(() => {
+    dragRafRef.current = null;
+    const pending = pendingMoveRef.current;
+    if (!pending) return;
+    setViewport({ start: pending.start, end: pending.end });
+    if (bodyRef.current) bodyRef.current.scrollTop = pending.scrollTop;
+  }, []);
+
   const handleMouseMove = useCallback(
     (e: React.MouseEvent) => {
       if (
@@ -334,36 +357,47 @@ export default function Timeline() {
         newEnd = total;
         newStart = newEnd - span;
       }
-      setViewport({ start: newStart, end: newEnd });
 
       // 纵向：滚动泳道列表
       const deltaY = e.clientY - dragStartRef.current.y;
-      const newScrollTop = dragStartRef.current.scrollTop - deltaY;
-      bodyRef.current.scrollTop = Math.max(
+      const newScrollTop = Math.max(
         0,
         Math.min(
-          newScrollTop,
+          dragStartRef.current.scrollTop - deltaY,
           bodyRef.current.scrollHeight - bodyRef.current.clientHeight
         )
       );
+
+      pendingMoveRef.current = { start: newStart, end: newEnd, scrollTop: newScrollTop };
+      if (dragRafRef.current === null) {
+        dragRafRef.current = requestAnimationFrame(flushPendingMove);
+      }
     },
-    [isDragging, segmentsData.totalVirt]
+    [isDragging, segmentsData.totalVirt, flushPendingMove]
   );
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
+    cancelPendingMove();
     // 注意：这里不清 dragStartRef —— click 事件在浏览器里晚于 mouseup 触发，
     // 若此处置 null，色块的 onClick 里就再也读不到本次拖拽的起点，
     // 拖拽/点击判定会失效。dragStartRef 留到下一次 mousedown 时自然覆盖。
-  }, []);
+  }, [cancelPendingMove]);
+
+  useEffect(() => {
+    return cancelPendingMove;
+  }, [cancelPendingMove]);
 
   useEffect(() => {
     if (isDragging) {
-      const handleGlobalMouseUp = () => setIsDragging(false);
+      const handleGlobalMouseUp = () => {
+        setIsDragging(false);
+        cancelPendingMove();
+      };
       window.addEventListener("mouseup", handleGlobalMouseUp);
       return () => window.removeEventListener("mouseup", handleGlobalMouseUp);
     }
-  }, [isDragging]);
+  }, [isDragging, cancelPendingMove]);
 
   useEffect(() => {
     updateHiddenLaneCount();
@@ -413,23 +447,30 @@ export default function Timeline() {
   }, [segmentsData, scale]);
 
   // "全部"聚合条：合并所有 lane 的 block，走与普通泳道完全相同的量化管线
-  // (同一个 quantizeLane，同一个 scale/cellCount)，不写第二套量化逻辑。
+  // (同一个 quantizeLaneVirtual + sliceQuantized，同一个 cellWidthVirt)，不写第二套量化逻辑。
   // 现实里同一时刻只有一个前台 App，各 lane 的 block 天然不重叠，直接拼接即是"时间区间的并集"。
   const allBlocks = useMemo(() => lanes.flatMap((l) => l.blocks), [lanes]);
+  // 全量缓存：只在数据版本/格宽档位变化时重算，拖拽平移不触发。
+  const aggFull = useMemo(
+    () => quantizeLaneVirtual(allBlocks, segmentsData.segments, segmentsData.totalVirt, cellWidthVirt),
+    [allBlocks, segmentsData.segments, segmentsData.totalVirt, cellWidthVirt]
+  );
   const aggSegments = useMemo(
-    () => quantizeLane(allBlocks, scale, cellCount),
-    [allBlocks, scale, cellCount]
+    () => sliceQuantized(aggFull, viewRange, scale.toPct),
+    [aggFull, viewRange.start, viewRange.end, scale]
   );
 
   // 突变检测：v > prev*1.8 且 v > 当日峰值*0.45（照抄工单公式，不改阈值）。
   // 原来挂在 24 个整点采样点上；现在改成挂在聚合条的量化格上，随当前视图缩放联动，
   // 无数据的格按 0 处理，与原来"无数据小时强度记 0"的约定一致。
+  const viewportCellCount = Math.max(1, Math.round((viewRange.end - viewRange.start) / cellWidthVirt));
   const aggCellLevels = useMemo(
-    () => segmentsToCellLevels(aggSegments, cellCount),
-    [aggSegments, cellCount]
+    () => segmentsToCellLevels(aggSegments, viewportCellCount),
+    [aggSegments, viewportCellCount]
   );
 
   const spikes = useMemo(() => {
+    const cellCount = viewportCellCount;
     const W = 100 / cellCount;
     const maxLevel = Math.max(...aggCellLevels, 0);
     const result: { cellIndex: number; x: number; hour: number; level: number }[] = [];
@@ -444,7 +485,7 @@ export default function Timeline() {
     }
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aggCellLevels, cellCount, scale]);
+  }, [aggCellLevels, viewportCellCount, scale]);
 
   const [spikePopover, setSpikePopover] = useState<{ cellIndex: number; x: number; text: string } | null>(null);
 
@@ -627,11 +668,14 @@ export default function Timeline() {
                   key={lane.app_bundle_id}
                   lane={lane}
                   scale={scale}
+                  segments={segmentsData.segments}
+                  totalVirt={segmentsData.totalVirt}
+                  viewRange={viewRange}
+                  cellWidthVirt={cellWidthVirt}
                   trackRef={trackRef}
                   onHover={setHovered}
                   dimmed={appId !== null && lane.app_bundle_id !== appId}
                   renderBlocks={renderBlocks}
-                  cellCount={cellCount}
                   onBlockClick={handleBlockClick}
                   onBlockKeyDown={handleBlockKeyDown}
                   expanded={expandedLane === lane.app_bundle_id}
