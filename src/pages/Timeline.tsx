@@ -19,12 +19,14 @@ import type { RawBucket } from "../data/types";
 import {
   buildAppLanes, computeGlobalGaps, buildSegments, timeToVirt, virtToTime, buildTicks,
   COMPRESS_THRESHOLD_MS,
-  intensityByHourFromBuckets,
   pickSpikeQuip,
+  quantizeLane,
+  segmentsToCellLevels,
 } from "../analytics";
 import PageShell from "../components/PageShell";
 import TimelineTooltip, { type HoverTarget } from "../components/timeline/TimelineTooltip";
 import SwimLane from "../components/timeline/SwimLane";
+import AggregateLane from "../components/timeline/AggregateLane";
 import { useTimeScale } from "../hooks/useTimeScale";
 import { useToast } from "../components/shared/Toast";
 import Tooltip from "../components/shared/Tooltip";
@@ -420,59 +422,45 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentsData, scale]);
 
-  // 强度曲线：SVG viewBox 高度，与 CSS 里 .swimlane-intensity-track 的高度对应
-  const CURVE_VB_H = 32;
-
-  // 按小时的活跃强度 —— 复用 Batch 2 的 intensityByHourFromBuckets，不新写聚合
-  const hourlyIntensity = useMemo(() => intensityByHourFromBuckets(buckets), [buckets]);
-
-  // x 坐标统一走 scale.timeToPct，与刻度尺/色块共用同一套映射
-  const curvePoints = useMemo(() => {
-    return hourlyIntensity.map((level, hour) => {
-      const t = range.start_ms + hour * 3_600_000;
-      const x = scale.timeToPct(t);
-      const y = CURVE_VB_H - 2 - (level / 4) * (CURVE_VB_H - 4);
-      return { hour, level, x, y };
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hourlyIntensity, range.start_ms, scale]);
-
-  // 压缩模式下相邻整点可能跨越被压缩的 gap，直线会横穿挤压区。
-  // 对每个 gap 的 virt 起止各补一个 level=0 的采样点，让曲线在 gap 处下探到底（无活动）。
-  const curvePathPoints = useMemo(() => {
-    const bottomY = CURVE_VB_H - 2; // level 0 → 底部
-    const gapPoints = segmentsData.virtGaps.flatMap((g) => [
-      { x: scale.toPct(g.virt_start), y: bottomY },
-      { x: scale.toPct(g.virt_end), y: bottomY },
-    ]);
-    return [...curvePoints, ...gapPoints].sort((a, b) => a.x - b.x);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [curvePoints, segmentsData.virtGaps, scale]);
-
-  const curvePathD = useMemo(
-    () => curvePathPoints.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" "),
-    [curvePathPoints]
+  // "全部"聚合条：合并所有 lane 的 block，走与普通泳道完全相同的量化管线
+  // (同一个 quantizeLane，同一个 scale/cellCount)，不写第二套量化逻辑。
+  // 现实里同一时刻只有一个前台 App，各 lane 的 block 天然不重叠，直接拼接即是"时间区间的并集"。
+  const allBlocks = useMemo(() => lanes.flatMap((l) => l.blocks), [lanes]);
+  const aggSegments = useMemo(
+    () => quantizeLane(allBlocks, scale, cellCount),
+    [allBlocks, scale, cellCount]
   );
 
-  // 突变检测：v > prev*1.8 且 v > 当日峰值*0.45（照抄工单公式，不改阈值）
-  const spikeHours = useMemo(() => {
-    const maxLevel = Math.max(...hourlyIntensity, 0);
-    const spikes: number[] = [];
-    for (let h = 1; h < 24; h++) {
-      const v = hourlyIntensity[h];
-      const prev = hourlyIntensity[h - 1];
+  // 突变检测：v > prev*1.8 且 v > 当日峰值*0.45（照抄工单公式，不改阈值）。
+  // 原来挂在 24 个整点采样点上；现在改成挂在聚合条的量化格上，随当前视图缩放联动，
+  // 无数据的格按 0 处理，与原来"无数据小时强度记 0"的约定一致。
+  const aggCellLevels = useMemo(
+    () => segmentsToCellLevels(aggSegments, cellCount),
+    [aggSegments, cellCount]
+  );
+
+  const spikes = useMemo(() => {
+    const W = 100 / cellCount;
+    const maxLevel = Math.max(...aggCellLevels, 0);
+    const result: { cellIndex: number; x: number; hour: number; level: number }[] = [];
+    for (let i = 1; i < cellCount; i++) {
+      const v = aggCellLevels[i];
+      const prev = aggCellLevels[i - 1];
       if (v > prev * 1.8 && v > maxLevel * 0.45) {
-        spikes.push(h);
+        const x = i * W;
+        const hour = new Date(scale.pctToTime(x)).getHours();
+        result.push({ cellIndex: i, x, hour, level: v });
       }
     }
-    return spikes;
-  }, [hourlyIntensity]);
+    return result;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aggCellLevels, cellCount, scale]);
 
-  const [spikePopover, setSpikePopover] = useState<{ hour: number; text: string } | null>(null);
+  const [spikePopover, setSpikePopover] = useState<{ cellIndex: number; x: number; text: string } | null>(null);
 
-  function handleSpikeClick(hour: number, level: number) {
+  function handleSpikeClick(cellIndex: number, x: number, hour: number, level: number) {
     setSpikePopover((cur) =>
-      cur?.hour === hour ? null : { hour, text: pickSpikeQuip(hour, level as 0 | 1 | 2 | 3 | 4) }
+      cur?.cellIndex === cellIndex ? null : { cellIndex, x, text: pickSpikeQuip(hour, level as 0 | 1 | 2 | 3 | 4) }
     );
   }
 
@@ -585,39 +573,29 @@ export default function Timeline() {
             </div>
           </div>
 
-          {/* 活跃强度曲线 + 突变标记 */}
-          <div className="swimlane-intensity-row">
-            <div className="swimlane-axis-label" aria-hidden />
-            <div className="swimlane-intensity-track">
-              <svg
-                viewBox={`0 0 100 ${CURVE_VB_H}`}
-                preserveAspectRatio="none"
-                className="swimlane-intensity-svg"
-              >
-                <path d={curvePathD} className="swimlane-intensity-line" vector-effect="non-scaling-stroke" />
-              </svg>
-              {spikeHours.map((hour) => {
-                const point = curvePoints[hour];
-                return (
-                  <Tooltip key={hour} content={`${hour}:00 突变`}>
+          {/* "全部"聚合条 + 突变标记（挪到聚合条上方），与下方泳道用细分隔线隔开 */}
+          <div className="swimlane-agg-section">
+            <div className="swimlane-spike-row">
+              <div className="swimlane-axis-label" aria-hidden />
+              <div className="swimlane-spike-track">
+                {spikes.map((sp) => (
+                  <Tooltip key={sp.cellIndex} content={`${sp.hour}:00 突变`}>
                     <button
                       type="button"
                       className="swimlane-spike-marker"
-                      style={{ left: `${point.x}%` }}
-                      onClick={() => handleSpikeClick(hour, point.level)}
+                      style={{ left: `${sp.x}%` }}
+                      onClick={() => handleSpikeClick(sp.cellIndex, sp.x, sp.hour, sp.level)}
                     />
                   </Tooltip>
-                );
-              })}
-              {spikePopover && (
-                <div
-                  className="swimlane-spike-popover"
-                  style={{ left: `${curvePoints[spikePopover.hour].x}%` }}
-                >
-                  {spikePopover.text}
-                </div>
-              )}
+                ))}
+                {spikePopover && (
+                  <div className="swimlane-spike-popover" style={{ left: `${spikePopover.x}%` }}>
+                    {spikePopover.text}
+                  </div>
+                )}
+              </div>
             </div>
+            <AggregateLane segments={aggSegments} />
           </div>
 
           {/* 泳道列表容器（带渐隐遮罩） */}

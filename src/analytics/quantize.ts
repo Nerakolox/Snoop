@@ -124,3 +124,18 @@ export function quantizeLane(
   flush(cellCount);
   return segments;
 }
+
+/** 把 RLE 合并后的 segments 展开回逐格强度数组（长度 cellCount，无覆盖的格记 0）。
+ *  供需要"相邻格比较"的场景使用（如聚合条的突变检测），不改变 quantizeLane 本身的定档逻辑。 */
+export function segmentsToCellLevels(segments: QuantizedSegment[], cellCount: number): number[] {
+  const W = 100 / cellCount;
+  const levels = new Array<number>(cellCount).fill(0);
+  for (const s of segments) {
+    const i0 = Math.round(s.startPct / W);
+    const span = Math.max(1, Math.round(s.widthPct / W));
+    for (let i = i0; i < i0 + span && i < cellCount; i++) {
+      if (i >= 0) levels[i] = s.level;
+    }
+  }
+  return levels;
+}

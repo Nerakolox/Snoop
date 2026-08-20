@@ -58,7 +58,7 @@
   --lane-h: 48px;
   --lane-gap: 8px;
   --lane-label-w: 200px;
-  --intensity-h: 32px;
+  --agg-lane-h: calc(var(--lane-h) * 1.25);
 
   display: flex;
   flex-direction: column;
@@ -466,33 +466,49 @@
   opacity: 0.18;
 }
 
-/* 活跃强度曲线 + 突变标记 —— 结构/数据正确即可，视觉从简（样式大改时再打磨） */
-.swimlane-intensity-row {
+/* "全部"聚合条区块 —— 与下方可滚动泳道列表用细分隔线隔开 */
+.swimlane-agg-section {
+  flex-shrink: 0;
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* 突变标记行 —— 挪到聚合条上方的一条细长条，左侧留出与 .swimlane-label 等宽的空档对齐 */
+.swimlane-spike-row {
   display: flex;
   align-items: stretch;
   flex-shrink: 0;
 }
 
-.swimlane-intensity-track {
+.swimlane-spike-track {
   flex: 1;
   position: relative;
-  height: var(--intensity-h);
-  overflow: hidden;
+  height: 14px;
 }
 
-.swimlane-intensity-svg {
-  width: 100%;
-  height: 100%;
-  display: block;
-  overflow: visible;
+/* 聚合条本身 —— 复用 .swimlane-row/.swimlane-label/.swimlane-track/.swimlane-quant-seg，
+   仅用这几个修饰类调高度、去掉交互态(没有单一 App 身份可点/可展开)。 */
+.swimlane-agg-row {
+  min-height: var(--agg-lane-h);
 }
 
-.swimlane-intensity-line {
-  fill: none;
-  stroke: var(--color-accent);
-  stroke-width: 1.5;
-  vector-effect: non-scaling-stroke;
-  opacity: 0.7;
+.swimlane-label--static {
+  cursor: default;
+  font-weight: 600;
+}
+
+.swimlane-label--static:hover {
+  background: none;
+}
+
+.swimlane-agg-track {
+  height: var(--agg-lane-h);
+}
+
+.swimlane-quant-seg--static {
+  cursor: default;
+  pointer-events: none;
 }
 
 .swimlane-spike-marker {
