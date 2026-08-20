@@ -1,5 +1,19 @@
 /* ---------- AI 设置区块 ---------- */
 
+/* 降级契约的非侵入标记：AI 不可用、走本地模板时贴在内容旁的小徽标 */
+.ai-local-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-3);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  vertical-align: middle;
+}
+
 /* 与 .setting-row 同构的 AI 专用行（自带分组内边框逻辑） */
 .ai-row {
   display: flex;
