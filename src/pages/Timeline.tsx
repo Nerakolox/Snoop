@@ -73,8 +73,8 @@ export default function Timeline() {
   const trackRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  /** 滚动区底部常驻的"+N 个应用"行需要的隐藏行数 —— 用 clientHeight / 单行高度估算，
-   *  不用 ResizeObserver，只在 lanes 变化和窗口 resize 时重算。 */
+  /** 滚动区底部常驻的"+N 个应用"行需要的隐藏行数 —— 行高是常量，用 scrollTop / clientHeight /
+   *  总行数解析计算，不逐行测量、不用 ResizeObserver。随滚动实时更新，滚动到底时数字应归零。 */
   const [hiddenLaneCount, setHiddenLaneCount] = useState(0);
   const updateHiddenLaneCount = useCallback(() => {
     const body = bodyRef.current;
@@ -83,9 +83,10 @@ export default function Timeline() {
     const cs = getComputedStyle(chart);
     const laneH = parseFloat(cs.getPropertyValue("--lane-h")) || 48;
     const laneGap = parseFloat(cs.getPropertyValue("--lane-gap")) || 8;
-    const visibleRows = Math.max(0, Math.floor(body.clientHeight / (laneH + laneGap)));
+    const rowH = laneH + laneGap;
+    const rowsShown = Math.max(0, Math.floor((body.scrollTop + body.clientHeight) / rowH));
     setHiddenLaneCount((cur) => {
-      const next = Math.max(0, lanes.length - visibleRows);
+      const next = Math.max(0, lanes.length - rowsShown);
       return next === cur ? cur : next;
     });
   }, [lanes.length]);
@@ -94,6 +95,25 @@ export default function Timeline() {
     updateHiddenLaneCount();
     window.addEventListener("resize", updateHiddenLaneCount);
     return () => window.removeEventListener("resize", updateHiddenLaneCount);
+  }, [updateHiddenLaneCount]);
+
+  // 滚动实时更新隐藏行数：rAF 节流，一帧最多算一次。
+  useEffect(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    let raf: number | null = null;
+    const onScroll = () => {
+      if (raf !== null) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        updateHiddenLaneCount();
+      });
+    };
+    body.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      body.removeEventListener("scroll", onScroll);
+      if (raf !== null) cancelAnimationFrame(raf);
+    };
   }, [updateHiddenLaneCount]);
 
   const scrollToMore = useCallback(() => {
