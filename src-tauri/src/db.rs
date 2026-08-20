@@ -56,6 +56,26 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_heartbeat_timestamp
             ON heartbeats(timestamp);
+
+            -- AI 调用审计日志（隐私承诺的兑现方式，也是调试主要手段）
+            CREATE TABLE IF NOT EXISTS ai_audit_log (
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at_ms     INTEGER NOT NULL,
+                feature_id        TEXT NOT NULL,
+                tier              TEXT NOT NULL,
+                sent              INTEGER NOT NULL,
+                request_json      TEXT,
+                response_len      INTEGER,
+                success           INTEGER NOT NULL,
+                error_kind        TEXT,
+                prompt_tokens     INTEGER,
+                completion_tokens INTEGER,
+                total_tokens      INTEGER,
+                duration_ms       INTEGER
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_ai_audit_created
+            ON ai_audit_log(created_at_ms);
             ",
         )?;
 

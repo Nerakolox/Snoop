@@ -81,6 +81,9 @@ pub fn run() {
             commands::get_update_state,
             commands::install_pending_update,
             commands::get_app_version,
+            ai::commands::query_ai_audit,
+            ai::commands::export_ai_audit,
+            ai::commands::clear_ai_audit,
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
