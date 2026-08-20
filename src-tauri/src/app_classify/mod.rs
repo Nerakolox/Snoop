@@ -16,9 +16,11 @@ pub mod store;
 
 use serde::{Deserialize, Serialize};
 
-/// 应用分类枚举。**固定 10 类，不允许模型自创**——历史数据都按它存，改一次代价极高。
+/// 应用分类枚举。**固定 11 类，到顶**——历史数据都按它存，改一次代价极高。
 ///
 /// 声明顺序即规范展示顺序，新增只允许追加到 `Other` 之前。
+/// **这是最后一次扩展**：11 类封顶，后续再有归不进去的一律进 `Other`，
+/// 或改做二级分类，不再加新枚举值。
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Category {
@@ -40,6 +42,14 @@ pub enum Category {
     /// 定位：它是**伪活跃**——程序挂在前台但人可能不在，前台时长会严重虚高。
     /// 单独成类之后，统计/报告才能选择性地排除或折算这一段。
     Download,
+    /// AI 助手（ChatGPT / Claude / Gemini / Copilot 等**独立桌面客户端**）。
+    ///
+    /// 定位：不并入 development——Snoop 的用户本身就是开发者，把「和模型聊天」混进
+    /// 「开发」会让开发时长虚高、报告失真。两者性质差别足够大，且这类应用的时长
+    /// 占比未来只会上升，现在混进去以后要拆就得重算历史数据。
+    ///
+    /// 边界：只有**独立客户端**算；编辑器里的 Copilot 插件等不算（那是宿主编辑器）。
+    AiAssistant,
     Other,
 }
 
@@ -56,6 +66,7 @@ impl Category {
             Category::System => "system",
             Category::Remote => "remote",
             Category::Download => "download",
+            Category::AiAssistant => "ai_assistant",
             Category::Other => "other",
         }
     }
@@ -72,6 +83,7 @@ impl Category {
             "system" => Category::System,
             "remote" => Category::Remote,
             "download" => Category::Download,
+            "ai_assistant" => Category::AiAssistant,
             "other" => Category::Other,
             _ => return None,
         })
@@ -89,12 +101,13 @@ impl Category {
             Category::System => "系统",
             Category::Remote => "远程控制",
             Category::Download => "下载工具",
+            Category::AiAssistant => "AI 助手",
             Category::Other => "其他",
         }
     }
 
     /// 全部类别，规范顺序。
-    pub const ALL: [Category; 10] = [
+    pub const ALL: [Category; 11] = [
         Category::Development,
         Category::Communication,
         Category::Browsing,
@@ -104,6 +117,7 @@ impl Category {
         Category::System,
         Category::Remote,
         Category::Download,
+        Category::AiAssistant,
         Category::Other,
     ];
 }

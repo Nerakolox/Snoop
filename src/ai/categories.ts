@@ -19,6 +19,7 @@ export const CATEGORIES: CategoryMeta[] = [
   { value: "system", label: "系统", color: "#64748b" },
   { value: "remote", label: "远程控制", color: "#6366f1" },
   { value: "download", label: "下载工具", color: "#eab308" },
+  { value: "ai_assistant", label: "AI 助手", color: "#14b8a6" },
   { value: "other", label: "其他", color: "#94a3b8" },
 ];
 

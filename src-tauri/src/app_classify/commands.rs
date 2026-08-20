@@ -32,7 +32,10 @@ pub async fn classify_apps(
     drop(state);
     drop(db);
 
-    Ok(engine::classify_if_due(&ai.config, &ai.code_map, &db_path, force.unwrap_or(false)).await)
+    let outcome =
+        engine::classify_if_due(&ai.config, &ai.code_map, &db_path, force.unwrap_or(false)).await;
+    engine::refresh_pending(&db_path);
+    Ok(outcome)
 }
 
 /// 分类队列状态：待分类数量 / 上次分类时间 / 是否正在运行。
@@ -124,6 +127,7 @@ pub fn set_app_category(
     let cat = Category::from_str(&category).ok_or_else(|| format!("未知类别：{category}"))?;
     store::set_category(&conn, &app_id, &app_name, &app_id, cat, Source::Manual, None)
         .map_err(|e| e.to_string())?;
+    engine::refresh_pending_conn(&conn);
     let resolved = store::resolve(&conn, &app_id, &app_name, &app_id).map_err(|e| e.to_string())?;
     Ok(to_row(&app_id, &app_name, resolved))
 }
@@ -137,6 +141,7 @@ pub fn reset_app_category(
 ) -> Result<AppCategoryRow, String> {
     let conn = open_db(&db)?;
     store::delete(&conn, &app_id).map_err(|e| e.to_string())?;
+    engine::refresh_pending_conn(&conn);
     let resolved = store::resolve(&conn, &app_id, &app_name, &app_id).map_err(|e| e.to_string())?;
     Ok(to_row(&app_id, &app_name, resolved))
 }

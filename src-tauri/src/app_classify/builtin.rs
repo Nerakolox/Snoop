@@ -68,6 +68,10 @@ pub static BUILTIN_RULES: &[(&str, Category)] = &[
     ("obs studio", Category::Design),
     ("jianying", Category::Design),
     ("剪映", Category::Design),
+    ("premiere", Category::Design),
+    ("after effects", Category::Design),
+    ("afterfx", Category::Design),
+    ("davinci", Category::Design),
     // ── 文档 document ──
     ("excel", Category::Document),
     ("winword", Category::Document),
@@ -84,10 +88,22 @@ pub static BUILTIN_RULES: &[(&str, Category)] = &[
     ("taskmgr", Category::System),
     ("任务管理器", Category::System),
     ("onedrive", Category::System),
+    ("dropbox", Category::System),
+    ("nextcloud", Category::System),
     ("winrar", Category::System),
     ("clash", Category::System),
     ("leigod", Category::System),
     ("雷神", Category::System),
+    // 虚拟机
+    ("vmware", Category::System),
+    ("parallels", Category::System),
+    ("virtualbox", Category::System),
+    ("hyper-v", Category::System),
+    ("utm", Category::System),
+    // 密码管理器
+    ("1password", Category::System),
+    ("bitwarden", Category::System),
+    ("keepass", Category::System),
     // ── 远程控制 remote ──
     ("todesk", Category::Remote),
     ("anydesk", Category::Remote),
@@ -95,6 +111,10 @@ pub static BUILTIN_RULES: &[(&str, Category)] = &[
     ("teamviewer", Category::Remote),
     ("向日葵", Category::Remote),
     ("mstsc", Category::Remote),
+    // ── AI 助手 ai_assistant ──
+    ("chatgpt", Category::AiAssistant),
+    ("claude", Category::AiAssistant),
+    ("gemini", Category::AiAssistant),
     // ── 下载工具 download ──
     ("internet download manager", Category::Download),
     ("idm", Category::Download),

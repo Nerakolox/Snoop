@@ -13,9 +13,10 @@
 //! 必须与 apps 一致、顺序一一对应。结构不符（非 JSON / 缺字段 / 长度不一致）
 //! 整批丢弃；单条 category 不在固定枚举内则跳过该条、留队下次再分。
 
+use std::collections::HashSet;
 use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -54,32 +55,57 @@ fn acquire() -> Option<RunningGuard> {
     }
 }
 
+// ── 待分类队列的轻量内存缓存 ──
+// 后台每 10 分钟轮询，不能每次都跑 collect_pending（全表 GROUP BY + 逐 app resolve）。
+// 改为：队列变化时更新这里的计数，轮询只读计数，达标（或 24h 过期）才真正查库分类。
+//
+// 队列变化的两类来源：
+//   - 写桶线程见到「新 app」→ note_apps_seen 把缓存标脏；
+//   - 分类 / 手改 / 重置 → 调用方（poll_once / 命令）里 refresh_pending 重算。
+// 轮询路径 poll_once 先消费脏标记（重算一次），再只读原子判断是否触发。
+
+/// 待分类应用数量（refresh_pending 后有效；启动时填一次初值）。
+static PENDING_QUEUE: AtomicUsize = AtomicUsize::new(0);
+/// 最近一次 AI 分类时间（ms）；0 = 从未分类。
+static LAST_CLASSIFIED_AT_MS: AtomicI64 = AtomicI64::new(0);
+/// 有新 app 出现、缓存计数待重算时为 true。
+static PENDING_DIRTY: AtomicBool = AtomicBool::new(false);
+
+fn seen_apps() -> &'static Mutex<HashSet<String>> {
+    static SEEN: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    SEEN.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
 /// 一个待分类应用（`app_id` 即 activity_buckets.app_bundle_id）。
 struct AppInfo {
     app_id: String,
     name: String,
 }
 
+/// 全部出现过（activity_buckets 里有记录）的应用，按使用时长降序。
+fn collect_all_apps(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AppInfo>> {
+    let mut raw: Vec<AppInfo> = Vec::new();
+    let mut stmt = conn.prepare(
+        "SELECT app_bundle_id, MAX(app_name) AS name
+         FROM activity_buckets
+         GROUP BY app_bundle_id
+         ORDER BY SUM(duration_ms) DESC",
+    )?;
+    let rows = stmt.query_map([], |r| {
+        Ok(AppInfo {
+            app_id: r.get(0)?,
+            name: r.get(1)?,
+        })
+    })?;
+    for r in rows {
+        raw.push(r?);
+    }
+    Ok(raw)
+}
+
 /// 收集**全部**待分类应用，按使用时长降序（优先分类用得最多的）。
 fn collect_pending(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AppInfo>> {
-    let mut raw: Vec<AppInfo> = Vec::new();
-    {
-        let mut stmt = conn.prepare(
-            "SELECT app_bundle_id, MAX(app_name) AS name
-             FROM activity_buckets
-             GROUP BY app_bundle_id
-             ORDER BY SUM(duration_ms) DESC",
-        )?;
-        let rows = stmt.query_map([], |r| {
-            Ok(AppInfo {
-                app_id: r.get(0)?,
-                name: r.get(1)?,
-            })
-        })?;
-        for r in rows {
-            raw.push(r?);
-        }
-    }
+    let raw = collect_all_apps(conn)?;
     // 已分类（manual/builtin/ai）的不再进队列。
     let mut pending = Vec::new();
     for info in raw {
@@ -99,14 +125,15 @@ fn last_classified_at(conn: &rusqlite::Connection) -> rusqlite::Result<Option<i6
     )
 }
 
-/// 分类系统提示：固定 10 类 + 输出契约。模型不得自创新类别。
-const SYSTEM_PROMPT: &str = "你是 Snoop 的应用分类器。根据应用名，把每个应用归入以下固定类别之一：\n\
+/// 分类系统提示：固定 11 类 + 输出契约。模型不得自创新类别。
+const SYSTEM_PROMPT: &str = "你是 Snoop 的应用分类器。根据应用名，把每个应用归入以下固定 11 个类别之一：\n\
 development（开发：IDE、终端、版本控制、数据库）\n\
 communication（沟通：微信、QQ、邮件、Slack、会议）\n\
 browsing（浏览：浏览器）\n\
 entertainment（娱乐：游戏、视频播放器、音乐）\n\
 design（设计：Figma、Photoshop、剪辑、录屏）\n\
 document（文档：Office、笔记、PDF）\n\
+ai_assistant（AI 助手：ChatGPT、Claude、Gemini、Copilot 等独立桌面客户端；编辑器/IDE 里的 Copilot 插件不算，那是宿主开发工具）\n\
 system（系统：资源管理器、任务管理器、系统工具、代理）\n\
 remote（远程控制：ToDesk、向日葵、RDP、TeamViewer）\n\
 download（下载工具：IDM、迅雷、BT）\n\
@@ -286,4 +313,80 @@ pub fn classify_status(db_path: &Path) -> ClassifyStatus {
         last_classified_at_ms: last,
         running: RUNNING.load(Ordering::SeqCst),
     }
+}
+
+// ── 队列缓存维护 + 后台轮询入口 ──────────────────────────────────────────────
+
+/// 用已打开的连接重算待分类计数与最近分类时间，写入内存缓存。
+/// 只在队列**可能变化**时调用（启动 / 分类后 / 手改后），不进轮询热路径。
+pub(crate) fn refresh_pending_conn(conn: &rusqlite::Connection) {
+    let mut seen = HashSet::new();
+    let mut pending = 0usize;
+    if let Ok(all) = collect_all_apps(conn) {
+        for info in &all {
+            seen.insert(info.app_id.clone());
+            let resolved = store::resolve(conn, &info.app_id, &info.name, &info.app_id)
+                .ok()
+                .flatten();
+            if resolved.is_none() {
+                pending += 1;
+            }
+        }
+    }
+    PENDING_QUEUE.store(pending, Ordering::SeqCst);
+    LAST_CLASSIFIED_AT_MS.store(
+        last_classified_at(conn).ok().flatten().unwrap_or(0),
+        Ordering::SeqCst,
+    );
+    *seen_apps().lock().unwrap() = seen;
+    PENDING_DIRTY.store(false, Ordering::SeqCst);
+}
+
+/// 同上，但自行打开连接（供 lib.rs 启动时与轮询路径使用）。
+pub fn refresh_pending(db_path: &Path) {
+    if let Ok(conn) = rusqlite::Connection::open(db_path) {
+        refresh_pending_conn(&conn);
+    }
+}
+
+/// 写桶线程在每个桶落库后调用：把出现的 app_id 记进内存「已见」集合。
+/// 只有**新** app 才会把缓存标脏（触发一次重算），老 app 的桶写入是零开销的。
+pub(crate) fn note_apps_seen(ids: &[String]) {
+    let mut seen = seen_apps().lock().unwrap();
+    let mut dirty = false;
+    for id in ids {
+        if seen.insert(id.clone()) {
+            dirty = true;
+        }
+    }
+    if dirty {
+        PENDING_DIRTY.store(true, Ordering::SeqCst);
+    }
+}
+
+/// 后台轮询单次入口：只读内存计数，达标才查库分类。返回是否真正触发了分类流程。
+pub async fn poll_once(
+    config: &AiConfigState,
+    code_map: &Mutex<AiCodeMap>,
+    db_path: &Path,
+) -> bool {
+    // 1) 有新 app → 先重算一次缓存（消费脏标记，清掉后再读才准确）。
+    if PENDING_DIRTY.swap(false, Ordering::SeqCst) {
+        refresh_pending(db_path);
+    }
+    // 2) 只读内存计数与上次分类时间，不碰库。
+    let pending = PENDING_QUEUE.load(Ordering::SeqCst);
+    if pending == 0 {
+        return false;
+    }
+    let last = LAST_CLASSIFIED_AT_MS.load(Ordering::SeqCst);
+    let stale = last == 0 || store::now_ms() - last > STALE_MS;
+    if pending < QUEUE_TRIGGER && !stale {
+        return false;
+    }
+    // 3) 达标才碰库：走原有完整分类流程（内部会再精确核一次门）。
+    classify_if_due(config, code_map, db_path, false).await;
+    // 4) 分类后队列变了（或精确门判定为 skip，缓存可能虚高），刷新缓存对齐真实值。
+    refresh_pending(db_path);
+    true
 }

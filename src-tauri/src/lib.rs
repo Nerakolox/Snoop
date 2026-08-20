@@ -220,16 +220,19 @@ pub fn run() {
 
             // 后台轮询触发 AI 应用分类（攒批 / 24h 过期；手动「立即分类」走前端命令）。
             {
+                // 启动即算一次待分类计数，此后后台轮询只读内存计数，
+                // 达标（队列≥8 / >24h）才真正查库分类。
+                app_classify::engine::refresh_pending(&classify_db_path);
+
                 let bg_ai = ai_state.clone();
                 let bg_db = classify_db_path.clone();
                 tauri::async_runtime::spawn(async move {
                     loop {
                         tokio::time::sleep(Duration::from_secs(10 * 60)).await;
-                        let _ = app_classify::engine::classify_if_due(
+                        let _ = app_classify::engine::poll_once(
                             &bg_ai.config,
                             &bg_ai.code_map,
                             &bg_db,
-                            false,
                         )
                         .await;
                     }

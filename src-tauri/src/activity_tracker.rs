@@ -505,6 +505,11 @@ fn flush_batch(conn: &Connection, batch: &mut Vec<PendingBucket>) {
     } else {
         let elapsed = now_ms() - flush_start;
         println!("[Writer] 批量落库完成 | {} 条 | 耗时 {}ms", batch_len, elapsed);
+
+        // 通知分类引擎：这批 app 已出现。若其中有新 app，引擎会把待分类队列
+        // 标脏，供后台轮询在下一个周期重算计数（这里只做内存 set 判重，不查库）。
+        let ids: Vec<String> = batch.iter().map(|b| b.app.bundle_id.clone()).collect();
+        crate::app_classify::engine::note_apps_seen(&ids);
     }
 
     batch.clear();
