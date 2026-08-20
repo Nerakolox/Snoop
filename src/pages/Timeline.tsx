@@ -24,7 +24,7 @@ import {
   type TimeBlock,
 } from "../analytics";
 import PageShell from "../components/PageShell";
-import TimelineTooltip from "../components/timeline/TimelineTooltip";
+import TimelineTooltip, { type HoverTarget } from "../components/timeline/TimelineTooltip";
 import SwimLane from "../components/timeline/SwimLane";
 import { useTimeScale } from "../hooks/useTimeScale";
 import { useToast } from "../components/shared/Toast";
@@ -44,13 +44,7 @@ export default function Timeline() {
   const [buckets, setBuckets] = useState<RawBucket[]>([]);
   const lanes = useMemo(() => buildAppLanes(buckets), [buckets]);
   const [loading, setLoading] = useState(false);
-  const [hoveredBlock, setHoveredBlock] = useState<{
-    app: string;
-    bundleId: string;
-    block: TimeBlock;
-    anchorX: number;
-    anchorY: number;
-  } | null>(null);
+  const [hovered, setHovered] = useState<HoverTarget | null>(null);
 
   /** 压缩开关：默认开启 */
   const [compressed, setCompressed] = useState(true);
@@ -140,6 +134,13 @@ export default function Timeline() {
 
   // 时间 → 横向百分比换算统一入口（供刻度/色块/强度曲线/空白带共享）
   const scale = useTimeScale(segmentsData.segments, viewRange);
+
+  // LOD 判据:单个 5 秒原始桶在屏幕上 ≥ 3px 宽时,量化格(≈2min/格)已比真实 block 更粗,切回真实 block 渲染。
+  // 3px 是人眼可辨/可点击的最小宽度;参考轨道宽 940px(审计 §2.2:窗口宽 − 侧栏 240px − 标签 200px − padding)。
+  // 推导:5000ms 需 ≥ 3px,而 3px = 3/940 的轨道 = (3/940×100)%;故 msPerPct ≤ 5000×940/(3×100) ≈ 15667。
+  const LOD_REAL_BLOCK_MS_PER_PCT = (5000 * 940) / (3 * 100);
+  const renderBlocks = scale.msPerPct <= LOD_REAL_BLOCK_MS_PER_PCT;
+  const cellCount = Math.max(80, Math.min(420, Math.round((viewRange.end - viewRange.start) / (2 * 60_000))));
 
   const ticks = useMemo(
     () => buildTicks(segmentsData.segments, viewRange.start, viewRange.end),
@@ -644,8 +645,10 @@ export default function Timeline() {
                   lane={lane}
                   scale={scale}
                   trackRef={trackRef}
-                  onHoverBlock={setHoveredBlock}
+                  onHover={setHovered}
                   dimmed={appId !== null && lane.app_bundle_id !== appId}
+                  renderBlocks={renderBlocks}
+                  cellCount={cellCount}
                   onBlockClick={handleBlockClick}
                   onBlockKeyDown={handleBlockKeyDown}
                 />
@@ -672,8 +675,8 @@ export default function Timeline() {
         </div>
       )}
 
-      {hoveredBlock && (
-        <TimelineTooltip hoveredBlock={hoveredBlock} onClose={() => setHoveredBlock(null)} />
+      {hovered && (
+        <TimelineTooltip hovered={hovered} onClose={() => setHovered(null)} />
       )}
     </PageShell>
   );

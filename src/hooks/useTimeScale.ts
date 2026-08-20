@@ -27,12 +27,12 @@ export function useTimeScale(
     const pctToTime = (pct: number): number =>
       virtToTime(viewRange.start + (pct / 100) * viewSpan, segments);
 
-    // 注意：min-width 0.3% 下限原样保留（Task 4 会替换它，本步不要动）
+    // min-width 下限已移除：放大到真实 block 后不再需要撑宽，下限只会谎报。
     const blockStyle = (startMs: number, endMs: number) => {
       const vs = timeToVirt(startMs, segments);
       const ve = timeToVirt(endMs, segments);
       const left = toPct(vs);
-      const width = Math.max(toPct(ve) - left, 0.3);
+      const width = toPct(ve) - left;
       return { left: `${left}%`, width: `${width}%` };
     };
     const bandStyle = (virtStart: number, virtEnd: number) => {

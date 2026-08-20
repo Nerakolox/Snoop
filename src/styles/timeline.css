@@ -467,6 +467,17 @@
   z-index: 10;
 }
 
+/* 量化段 —— 日视图缩小时用，仅 hover 不点击/键盘。
+   背景色由内联 var(--intensity-N) 给；无 margin/gap，相邻段紧贴。 */
+.swimlane-quant-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 0;
+  pointer-events: auto; /* 响应 hover */
+  z-index: 2; /* 与 .swimlane-block 一致，压在网格线之上 */
+}
+
 /* 工具提示 */
 .swimlane-tooltip {
   position: fixed;
