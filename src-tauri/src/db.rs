@@ -76,6 +76,19 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_ai_audit_created
             ON ai_audit_log(created_at_ms);
+
+            -- 应用分类（F4）。只落 manual/ai 两类持久化来源，builtin 由内置表计算。
+            -- 优先级 hard 规则 manual > builtin > ai 在 store 层读写两处强制。
+            CREATE TABLE IF NOT EXISTS app_categories (
+                app_id           TEXT PRIMARY KEY,
+                category         TEXT NOT NULL,
+                source           TEXT NOT NULL,
+                confidence       REAL,
+                classified_at_ms INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_app_categories_source
+            ON app_categories(source);
             ",
         )?;
 

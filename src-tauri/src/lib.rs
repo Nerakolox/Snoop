@@ -12,6 +12,7 @@ const REPO_URL: &str = "https://github.com/Nerakolox/Snoop";
 
 mod activity_tracker;
 mod ai;
+mod app_classify;
 mod commands;
 mod db;
 mod platform;
