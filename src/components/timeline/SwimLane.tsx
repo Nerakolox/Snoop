@@ -7,7 +7,7 @@
 
 import { useMemo, type RefObject } from "react";
 import AppIcon from "../AppIcon";
-import type { AppLane, TimeBlock } from "../../analytics";
+import type { AppLane } from "../../analytics";
 import { quantizeLane } from "../../analytics/quantize";
 import type { HoverTarget } from "./TimelineTooltip";
 import type { TimeScale } from "../../hooks/useTimeScale";
@@ -25,8 +25,9 @@ type SwimLaneProps = {
   renderBlocks: boolean;
   /** 量化渲染时的像素格数 */
   cellCount: number;
-  onBlockClick: (e: React.MouseEvent, bundleId: string, appName: string, block: TimeBlock) => void;
-  onBlockKeyDown: (e: React.KeyboardEvent, bundleId: string, appName: string, block: TimeBlock) => void;
+  /** startMs：真实 block 用 block.start_ms，量化段用该段起点换算的真实时间 —— 两种模式统一传"点击处的起始时间"，不传整个 block */
+  onBlockClick: (e: React.MouseEvent, bundleId: string, appName: string, startMs: number) => void;
+  onBlockKeyDown: (e: React.KeyboardEvent, bundleId: string, appName: string, startMs: number) => void;
 };
 
 export default function SwimLane({
@@ -81,14 +82,16 @@ export default function SwimLane({
                   });
                 }}
                 onMouseLeave={() => onHover(null)}
-                onClick={(e) => onBlockClick(e, lane.app_bundle_id, lane.app_name, block)}
-                onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name, block)}
+                onClick={(e) => onBlockClick(e, lane.app_bundle_id, lane.app_name, block.start_ms)}
+                onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name, block.start_ms)}
               />
             ))
           : segments!.map((s, i) => (
               <div
                 key={i}
                 className={`swimlane-quant-seg${s.level === 0 ? " swimlane-quant-seg--idle" : ""}`}
+                role="button"
+                tabIndex={0}
                 style={{
                   left: `${s.startPct}%`,
                   width: `${s.widthPct}%`,
@@ -109,6 +112,8 @@ export default function SwimLane({
                   });
                 }}
                 onMouseLeave={() => onHover(null)}
+                onClick={(e) => onBlockClick(e, lane.app_bundle_id, lane.app_name, scale.pctToTime(s.startPct))}
+                onKeyDown={(e) => onBlockKeyDown(e, lane.app_bundle_id, lane.app_name, scale.pctToTime(s.startPct))}
               />
             ))}
       </div>

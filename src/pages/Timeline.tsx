@@ -21,7 +21,6 @@ import {
   COMPRESS_THRESHOLD_MS,
   intensityByHourFromBuckets,
   pickSpikeQuip,
-  type TimeBlock,
 } from "../analytics";
 import PageShell from "../components/PageShell";
 import TimelineTooltip, { type HoverTarget } from "../components/timeline/TimelineTooltip";
@@ -379,21 +378,21 @@ export default function Timeline() {
     return Math.abs(e.clientX - s.x) < 4 && Math.abs(e.clientY - s.y) < 4;
   }
 
-  function selectApp(bundleId: string, name: string, block: TimeBlock) {
-    const hour = new Date(block.start_ms).getHours();
+  function selectApp(bundleId: string, name: string, startMs: number) {
+    const hour = new Date(startMs).getHours();
     actions.navigate({ appId: bundleId, focusHour: hour });
     toast.show({ message: `已筛选 ${name}，全站生效`, undoLabel: "取消筛选" });
   }
 
-  function handleBlockClick(e: React.MouseEvent, bundleId: string, name: string, block: TimeBlock) {
+  function handleBlockClick(e: React.MouseEvent, bundleId: string, name: string, startMs: number) {
     if (!isClickNotDrag(e)) return;
-    selectApp(bundleId, name, block);
+    selectApp(bundleId, name, startMs);
   }
 
-  function handleBlockKeyDown(e: React.KeyboardEvent, bundleId: string, name: string, block: TimeBlock) {
+  function handleBlockKeyDown(e: React.KeyboardEvent, bundleId: string, name: string, startMs: number) {
     if (e.key !== "Enter" && e.key !== " ") return;
     e.preventDefault();
-    selectApp(bundleId, name, block);
+    selectApp(bundleId, name, startMs);
   }
 
   const gapBands = useMemo(() => {

@@ -283,14 +283,22 @@
   z-index: 10;
 }
 
-/* 量化段 —— 日视图缩小时用，仅 hover 不点击/键盘。
+.swimlane-block:focus-visible,
+.swimlane-quant-seg:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  z-index: 10;
+}
+
+/* 量化段 —— 日视图缩小时用；与真实 block 一样可点击/可键盘操作(role=button)。
    背景色由内联 var(--intensity-N) 给；无 margin/gap，相邻段紧贴。 */
 .swimlane-quant-seg {
   position: absolute;
   top: 0;
   bottom: 0;
   border-radius: 0;
-  pointer-events: auto; /* 响应 hover */
+  cursor: pointer;
+  pointer-events: auto; /* 响应 hover/点击 */
   z-index: 2; /* 与 .swimlane-block 一致，压在网格线之上 */
 }
 
