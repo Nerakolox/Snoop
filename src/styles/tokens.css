@@ -18,12 +18,15 @@
   --color-text-2:        #6B6670;
   --color-text-3:        #9B96A0;
 
-  /* 强度色阶（数据表达：活跃强度低→高） */
+  /* 强度色阶（数据表达：活跃强度低→高，浅色主题：level1 最浅 → level4 最深） */
   --intensity-0: #E7E4DE;  /* 挂机：极淡中性色，不进暖色 ramp */
-  --intensity-1: #F7D3A4;  /* 暖色 ramp 浅端（peach） */
+  --intensity-1: #F3C88F;  /* 暖色 ramp 浅端（peach），与 --color-track 对比度 ≥1.4:1 */
   --intensity-2: #F0B77A;
   --intensity-3: #E68A3C;
   --intensity-4: #D1602C;
+
+  /* 泳道空轨道底色 —— 与 --color-surface 区分开的极淡暖白，肉眼可辨「无数据空轨道」vs「渲染失败」 */
+  --color-track: #FCFCFD;
 
   /* 圆角 */
   --radius-sm: 8px;
@@ -78,11 +81,15 @@
   --color-text:          #F0EDE8;
   --color-text-2:        #A8A2AE;
   --color-text-3:        #726C78;
-  --intensity-0:         #3A3640;
-  --intensity-1:         #C9A94E;
-  --intensity-2:         #E0A63A;
-  --intensity-3:         #E88238;
-  --intensity-4:         #E15A4C;
+  /* 泳道空轨道底色 —— 比 --color-bg 略亮的暖灰面板，绝不能用浅色主题的白底 */
+  --color-track:         #282430;
+  /* 强度色阶：深色主题下对比方向与浅色相反 —— level1 最暗(但仍可辨暖色) → level4 最亮(发光感)，
+     因为深色背景上「更亮」才读作「更强」。数值直接手写，不走 filter/invert/opacity 派生。 */
+  --intensity-0:         #453E4E;
+  --intensity-1:         #7A4A3A;
+  --intensity-2:         #B36A38;
+  --intensity-3:         #E08A3C;
+  --intensity-4:         #FF9670;
   --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
   --shadow-md: 0 4px 16px rgba(0,0,0,.4);
 }
@@ -99,8 +106,9 @@
   --color-text:          #1A1820;
   --color-text-2:        #5C5868;
   --color-text-3:        #9B96A4;
+  --color-track: #FCFCFD;
   --intensity-0: #E7E4DE;  /* 挂机：极淡中性色，不进暖色 ramp */
-  --intensity-1: #F7D3A4;  /* 暖色 ramp 浅端（peach） */
+  --intensity-1: #F3C88F;  /* 暖色 ramp 浅端（peach），与 --color-track 对比度 ≥1.4:1 */
   --intensity-2: #F0B77A;
   --intensity-3: #E68A3C;
   --intensity-4: #D1602C;

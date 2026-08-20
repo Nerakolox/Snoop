@@ -213,11 +213,11 @@
 
 .setting-btn-danger {
   color: var(--intensity-4);
-  border-color: rgba(225, 90, 76, 0.3);
+  border-color: color-mix(in oklab, var(--intensity-4) 30%, transparent);
 }
 
 .setting-btn-danger:hover:not(:disabled) {
-  background: rgba(225, 90, 76, 0.08);
+  background: color-mix(in oklab, var(--intensity-4) 8%, transparent);
   border-color: var(--intensity-4);
   color: var(--intensity-4);
 }
@@ -299,7 +299,7 @@
 
 .setting-ignore-remove:hover {
   color: var(--intensity-4);
-  background: rgba(225, 90, 76, 0.1);
+  background: color-mix(in oklab, var(--intensity-4) 10%, transparent);
 }
 
 .setting-ignore-add {

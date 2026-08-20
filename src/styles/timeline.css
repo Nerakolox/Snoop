@@ -266,8 +266,7 @@
   flex: 1;
   position: relative;
   height: var(--lane-h);
-  /* #FCFCFD 极淡底色：与空轨道的白色 surface 区分开，肉眼即可分辨「无数据空轨道」与「渲染失败」 */
-  background: #FCFCFD;
+  background: var(--color-track);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   overflow: hidden;

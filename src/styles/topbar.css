@@ -378,7 +378,7 @@
 }
 
 .topbar__winbtn--close:active {
-  background: rgba(225, 90, 76, 0.85);
+  background: color-mix(in oklab, var(--intensity-4) 85%, transparent);
   color: #fff;
 }
 

@@ -253,7 +253,7 @@ export default function KeymapTest() {
             <div key={i} style={{
               display: "grid", gridTemplateColumns: "90px 40px 90px 1fr 1fr",
               gap: 8, padding: "3px 6px", borderRadius: 4,
-              background: entry.unmatched ? "rgba(225,90,76,0.12)" : "var(--color-surface-2)",
+              background: entry.unmatched ? "color-mix(in oklab, var(--intensity-4) 12%, transparent)" : "var(--color-surface-2)",
               color: entry.unmatched ? "var(--intensity-4)" : "var(--color-text)",
             }}>
               <span style={{ color: "var(--color-text-3)" }}>{fmtTime(entry.ts)}</span>

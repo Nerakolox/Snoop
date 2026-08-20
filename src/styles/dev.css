@@ -65,7 +65,7 @@
   margin: var(--space-2) 0 var(--space-4);
   font-size: var(--text-sm);
   padding: var(--space-3) var(--space-4);
-  background: rgba(225, 90, 76, 0.1);
+  background: color-mix(in oklab, var(--intensity-4) 10%, transparent);
   border-radius: var(--radius-sm);
   border: 1px solid var(--intensity-4);
 }
