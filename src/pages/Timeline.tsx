@@ -608,7 +608,7 @@ export default function Timeline() {
 
             {/* 空白压缩：灰色空闲板 —— 单层覆盖，不随泳道滚动 */}
             {gapBands.length > 0 && (
-              <div className="swimlane-gap-overlay" style={{ height: lanes.length * 48 + Math.max(0, lanes.length - 1) * 8 + 32 }}>
+              <div className="swimlane-gap-overlay">
                 {gapBands.map((g) => (
                   <Tooltip
                     key={g.key}
@@ -629,11 +629,19 @@ export default function Timeline() {
 
             {/* 泳道列表 */}
             <div ref={bodyRef} className="swimlane-body">
+              <div className="swimlane-grid-layer" aria-hidden>
+                {ticks.map((tk) => (
+                  <div
+                    key={tk.time_ms}
+                    className="swimlane-grid-line"
+                    style={{ left: `${scale.toPct(tk.virt)}%` }}
+                  />
+                ))}
+              </div>
               {lanes.map((lane) => (
                 <SwimLane
                   key={lane.app_bundle_id}
                   lane={lane}
-                  ticks={ticks}
                   scale={scale}
                   trackRef={trackRef}
                   onHoverBlock={setHoveredBlock}

@@ -240,6 +240,11 @@
 }
 
 .swimlane-chart {
+  --lane-h: 48px;
+  --lane-gap: 8px;
+  --lane-label-w: 200px;
+  --intensity-h: 32px;
+
   display: flex;
   flex-direction: column;
   flex: 1; /* 占满剩余空间 */
@@ -261,7 +266,7 @@
 }
 
 .swimlane-axis-label {
-  width: 200px;
+  width: var(--lane-label-w);
   flex-shrink: 0;
   font-size: var(--text-sm);
   font-weight: 600;
@@ -294,9 +299,10 @@
 
 /* 泳道主体 */
 .swimlane-body {
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--lane-gap);
   overflow-y: auto; /* 容器内部纵向滚动 */
   flex: 1; /* 占满剩余空间 */
   height: 100%;
@@ -379,11 +385,11 @@
 .swimlane-row {
   display: flex;
   align-items: center;
-  min-height: 48px;
+  min-height: var(--lane-h);
 }
 
 .swimlane-label {
-  width: 200px;
+  width: var(--lane-label-w);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -410,12 +416,23 @@
 .swimlane-track {
   flex: 1;
   position: relative;
-  height: 48px;
+  height: var(--lane-h);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
   pointer-events: none; /* 轨道本身不响应鼠标，让 body 统一处理拖拽 */
+}
+
+/* 网格线单层 —— 贯穿所有泳道的连续竖线。
+   层级阶梯：泳道底色(0) < 网格层(1) < 色块(2)。
+   若不抬到 1，会被 .swimlane-track 的不透明 background 盖住（两者同层按树序绘制）。 */
+.swimlane-grid-layer {
+  position: absolute;
+  inset: 0;
+  left: var(--lane-label-w);
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* 背景网格线 */
@@ -441,6 +458,7 @@
     transform var(--dur-fast) var(--ease-smooth);
   opacity: 0.85;
   pointer-events: auto; /* 色块响应 hover */
+  z-index: 2; /* 高于网格层(1)，保证色块压在网格线之上 */
 }
 
 .swimlane-block:hover {
@@ -494,7 +512,7 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 200px; /* 与 .swimlane-label 宽度一致，避开 App 名称列 */
+  left: var(--lane-label-w); /* 与 .swimlane-label 宽度一致，避开 App 名称列 */
   right: 0;
   pointer-events: none; /* 让内部的 band 通过 auto 单独接收事件 */
   overflow: hidden; /* 严格限制在时间轴区域内，防止负偏移的 band 溢出到左侧标签列 */
@@ -553,7 +571,7 @@
 .swimlane-intensity-track {
   flex: 1;
   position: relative;
-  height: 32px;
+  height: var(--intensity-h);
   overflow: hidden;
 }
 

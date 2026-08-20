@@ -6,14 +6,13 @@
 
 import type { RefObject } from "react";
 import AppIcon from "../AppIcon";
-import type { AppLane, TimeBlock, Tick } from "../../analytics";
+import type { AppLane, TimeBlock } from "../../analytics";
 import type { HoveredBlock } from "./TimelineTooltip";
 import type { TimeScale } from "../../hooks/useTimeScale";
 import Tooltip from "../shared/Tooltip";
 
 type SwimLaneProps = {
   lane: AppLane;
-  ticks: Tick[];
   scale: TimeScale;
   /** 轨道 DOM ref —— 主组件用它做视口 rect 测量，用于滚轮缩放和拖拽 */
   trackRef: RefObject<HTMLDivElement | null>;
@@ -26,7 +25,6 @@ type SwimLaneProps = {
 
 export default function SwimLane({
   lane,
-  ticks,
   scale,
   trackRef,
   onHoverBlock,
@@ -47,13 +45,6 @@ export default function SwimLane({
         </Tooltip>
       </div>
       <div ref={trackRef} className="swimlane-track">
-        {ticks.map((tk) => (
-          <div
-            key={tk.time_ms}
-            className="swimlane-grid-line"
-            style={{ left: `${scale.toPct(tk.virt)}%` }}
-          />
-        ))}
         {lane.blocks.filter((b) => scale.isVisible(b.start_ms, b.end_ms)).map((block, i) => (
           <div
             key={i}
