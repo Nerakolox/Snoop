@@ -45,6 +45,12 @@ export default function Timeline() {
   const [loading, setLoading] = useState(false);
   const [hovered, setHovered] = useState<HoverTarget | null>(null);
 
+  /** 当前展开身份标识副文本的 lane（bundleId）；同一时刻只展开一行 */
+  const [expandedLane, setExpandedLane] = useState<string | null>(null);
+  const toggleIdentity = useCallback((bundleId: string) => {
+    setExpandedLane((cur) => (cur === bundleId ? null : bundleId));
+  }, []);
+
   /** 压缩开关：默认开启 */
   const [compressed, setCompressed] = useState(true);
 
@@ -381,6 +387,9 @@ export default function Timeline() {
   function selectApp(bundleId: string, name: string, startMs: number) {
     const hour = new Date(startMs).getHours();
     actions.navigate({ appId: bundleId, focusHour: hour });
+    // 点击色块顺带展开该 lane 的身份标识；强制置为该 bundleId（不 toggle），
+    // 避免和"筛选"这个主动作的语义冲突——再点一次同一色块应该还是"选中"，不该被理解成"收起"。
+    setExpandedLane(bundleId);
     toast.show({ message: `已筛选 ${name}，全站生效`, undoLabel: "取消筛选" });
   }
 
@@ -662,6 +671,8 @@ export default function Timeline() {
                   cellCount={cellCount}
                   onBlockClick={handleBlockClick}
                   onBlockKeyDown={handleBlockKeyDown}
+                  expanded={expandedLane === lane.app_bundle_id}
+                  onToggleIdentity={toggleIdentity}
                 />
               ))}
             </div>
