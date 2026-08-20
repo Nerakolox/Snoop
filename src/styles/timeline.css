@@ -104,12 +104,12 @@
   white-space: nowrap;
 }
 
-/* 泳道主体容器（带渐隐遮罩） */
+/* 泳道主体容器（贴底叠着常驻的"+N 个应用"行，见 .swimlane-more-row） */
 .swimlane-body-wrap {
   position: relative;
   flex: 1;
   min-height: 0;
-  overflow: hidden; /* 遮罩层需要容器 overflow: hidden */
+  overflow: hidden;
 }
 
 /* 泳道主体 */
@@ -133,68 +133,39 @@
   display: none; /* Chrome/Safari/Opera */
 }
 
-/* 渐隐遮罩 */
-.swimlane-fade-mask {
+/* 常驻"+N 个应用"行 —— 取代渐隐遮罩：遮罩是半透明色块叠加在色块轨道上会污染强度色彩，
+   这里改成不透明实底、和普通泳道同高同左对齐的一行，点击滚到底部。四条边都删（不止上下），
+   因为"半透明层污染强度色"这条道理对左右两侧同样成立。
+   .swimlane-body 是 height:100% 的滚动容器，占满 .swimlane-body-wrap；这一行必须绝对定位
+   贴底叠在它上面（而不是普通流的兄弟节点——那样会被 100% 高度的滚动区挤到容器外，
+   被 wrap 的 overflow:hidden 裁没）。 */
+.swimlane-more-row {
   position: absolute;
-  pointer-events: none; /* 不阻挡鼠标交互 */
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--lane-h);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-3);
+  font-size: var(--text-sm);
+  cursor: pointer;
   z-index: 20;
-  transition: opacity var(--dur-normal) var(--ease-smooth);
 }
 
-/* 上边缘渐隐 */
-.swimlane-fade-top {
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 60px;
-  background: linear-gradient(
-    to bottom,
-    #FAF8F5 0%,
-    rgba(250, 248, 245, 0.8) 30%,
-    transparent 100%
-  );
+.swimlane-more-row:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text-2);
 }
 
-/* 下边缘渐隐 */
-.swimlane-fade-bottom {
-  bottom: 0;
-  left: 0;
-  right: 0;
-  height: 60px;
-  background: linear-gradient(
-    to top,
-    #FAF8F5 0%,
-    rgba(250, 248, 245, 0.8) 30%,
-    transparent 100%
-  );
-}
-
-/* 左边缘渐隐 */
-.swimlane-fade-left {
-  top: 0;
-  bottom: 0;
-  left: 0;
-  width: 80px;
-  background: linear-gradient(
-    to right,
-    #FAF8F5 0%,
-    rgba(250, 248, 245, 0.6) 40%,
-    transparent 100%
-  );
-}
-
-/* 右边缘渐隐 */
-.swimlane-fade-right {
-  top: 0;
-  bottom: 0;
-  right: 0;
-  width: 80px;
-  background: linear-gradient(
-    to left,
-    #FAF8F5 0%,
-    rgba(250, 248, 245, 0.6) 40%,
-    transparent 100%
-  );
+.swimlane-more-label {
+  flex: 1;
+  text-align: left;
 }
 
 .swimlane-row {

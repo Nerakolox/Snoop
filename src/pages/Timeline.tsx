@@ -12,7 +12,7 @@
  */
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import { Calendar, Maximize2, Minimize2 } from "lucide-react";
+import { Calendar, ChevronDown, Maximize2, Minimize2 } from "lucide-react";
 import { fetchBucketsInRange } from "../data";
 import { formatAnchor, toMs } from "../data/ranges";
 import type { RawBucket } from "../data/types";
@@ -71,12 +71,34 @@ export default function Timeline() {
   const trackRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const [fadeMasks, setFadeMasks] = useState({
-    top: false,
-    bottom: false,
-    left: false,
-    right: false,
-  });
+  /** 滚动区底部常驻的"+N 个应用"行需要的隐藏行数 —— 用 clientHeight / 单行高度估算，
+   *  不用 ResizeObserver，只在 lanes 变化和窗口 resize 时重算。 */
+  const [hiddenLaneCount, setHiddenLaneCount] = useState(0);
+  const updateHiddenLaneCount = useCallback(() => {
+    const body = bodyRef.current;
+    const chart = chartRef.current;
+    if (!body || !chart) return;
+    const cs = getComputedStyle(chart);
+    const laneH = parseFloat(cs.getPropertyValue("--lane-h")) || 48;
+    const laneGap = parseFloat(cs.getPropertyValue("--lane-gap")) || 8;
+    const visibleRows = Math.max(0, Math.floor(body.clientHeight / (laneH + laneGap)));
+    setHiddenLaneCount((cur) => {
+      const next = Math.max(0, lanes.length - visibleRows);
+      return next === cur ? cur : next;
+    });
+  }, [lanes.length]);
+
+  useEffect(() => {
+    updateHiddenLaneCount();
+    window.addEventListener("resize", updateHiddenLaneCount);
+    return () => window.removeEventListener("resize", updateHiddenLaneCount);
+  }, [updateHiddenLaneCount]);
+
+  const scrollToMore = useCallback(() => {
+    const body = bodyRef.current;
+    if (!body) return;
+    body.scrollTo({ top: body.scrollHeight, behavior: "smooth" });
+  }, []);
 
   // 当前时刻：仅在查看今天时按分钟推进（历史查看不需要）
   const isTodayView = viewAnchor === formatAnchor(new Date());
@@ -343,41 +365,9 @@ export default function Timeline() {
     }
   }, [isDragging]);
 
-  // 渐隐遮罩：都在虚拟坐标空间判断
-  const updateFadeMasks = useCallback(() => {
-    const body = bodyRef.current;
-    if (!body) return;
-    const scrollTop = body.scrollTop;
-    const scrollHeight = body.scrollHeight;
-    const clientHeight = body.clientHeight;
-    const scrollBottom = scrollHeight - scrollTop - clientHeight;
-    const hasTop = scrollTop > 10;
-    const hasBottom = scrollBottom > 10;
-    const total = segmentsData.totalVirt;
-    const curStart = viewport?.start ?? 0;
-    const curEnd = viewport?.end ?? total;
-    const hasLeft = curStart > 0;
-    const hasRight = curEnd < total;
-    setFadeMasks({
-      top: hasTop,
-      bottom: hasBottom,
-      left: hasLeft,
-      right: hasRight,
-    });
-  }, [viewport, segmentsData.totalVirt]);
-
   useEffect(() => {
-    const body = bodyRef.current;
-    if (!body) return;
-    updateFadeMasks();
-    const handleScroll = () => updateFadeMasks();
-    body.addEventListener("scroll", handleScroll, { passive: true });
-    return () => body.removeEventListener("scroll", handleScroll);
-  }, [updateFadeMasks]);
-
-  useEffect(() => {
-    updateFadeMasks();
-  }, [viewport, lanes, updateFadeMasks]);
+    updateHiddenLaneCount();
+  }, [lanes, updateHiddenLaneCount]);
 
   // 拖拽平移松手时会在同一位置触发 click，需按位移量区分「点击」与「拖拽后松手」
   function isClickNotDrag(e: React.MouseEvent): boolean {
@@ -598,13 +588,8 @@ export default function Timeline() {
             <AggregateLane segments={aggSegments} />
           </div>
 
-          {/* 泳道列表容器（带渐隐遮罩） */}
+          {/* 泳道列表容器 */}
           <div className="swimlane-body-wrap">
-            {fadeMasks.top && <div className="swimlane-fade-mask swimlane-fade-top" />}
-            {fadeMasks.bottom && <div className="swimlane-fade-mask swimlane-fade-bottom" />}
-            {fadeMasks.left && <div className="swimlane-fade-mask swimlane-fade-left" />}
-            {fadeMasks.right && <div className="swimlane-fade-mask swimlane-fade-right" />}
-
             {/* 空白压缩：灰色空闲板 —— 单层覆盖，不随泳道滚动 */}
             {gapBands.length > 0 && (
               <div className="swimlane-gap-overlay">
@@ -654,6 +639,12 @@ export default function Timeline() {
                 />
               ))}
             </div>
+            {hiddenLaneCount > 0 && (
+              <button type="button" className="swimlane-more-row" onClick={scrollToMore}>
+                <span className="swimlane-more-label">+{hiddenLaneCount} 个应用</span>
+                <ChevronDown size={14} />
+              </button>
+            )}
           </div>
         </div>
       )}
