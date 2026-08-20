@@ -84,6 +84,12 @@ pub fn run() {
             ai::commands::query_ai_audit,
             ai::commands::export_ai_audit,
             ai::commands::clear_ai_audit,
+            ai::commands::get_ai_config,
+            ai::commands::save_ai_config,
+            ai::commands::set_ai_api_key,
+            ai::commands::get_ai_features,
+            ai::commands::test_ai_connection,
+            ai::commands::call_ai,
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -194,6 +200,14 @@ pub fn run() {
             app.manage(settings);
             app.manage(icon_cache);
             app.manage(updater::UpdaterState::new());
+
+            // AI 子系统状态：配置 / Key / 代号映射。以 Arc 托管，供异步命令跨 await 持有。
+            let ai_state = ai::AiState::load(
+                app_data_dir.join("ai_config.json"),
+                app_data_dir.join("ai_key.dat"),
+                app_data_dir.join("ai_code_map.json"),
+            );
+            app.manage(std::sync::Arc::new(ai_state));
 
             // Windows release 自启自愈:若注册表里已有自启项,用当前 exe 路径覆盖一次。
             // 用途是修 dev 期开过自启、后来装了正式版的老用户 —— 注册表里那条 Run 项

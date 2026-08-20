@@ -87,6 +87,21 @@ impl AiFailure {
     }
 }
 
+impl AiErrorKind {
+    /// snake_case 稳定标识，审计日志 / 前端分支共用。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            AiErrorKind::NotConfigured => "not_configured",
+            AiErrorKind::Network => "network",
+            AiErrorKind::Auth => "auth",
+            AiErrorKind::RateLimit => "rate_limit",
+            AiErrorKind::InsufficientBalance => "insufficient_balance",
+            AiErrorKind::ModelNotFound => "model_not_found",
+            AiErrorKind::Other => "other",
+        }
+    }
+}
+
 pub type AiResult<T> = Result<T, AiFailure>;
 
 /// 把 HTTP 状态码 + 响应体文本归到某一类错误。
