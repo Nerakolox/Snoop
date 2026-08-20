@@ -6,6 +6,7 @@ import type {
   AiCallResult,
   AiConfig,
   AiConfigView,
+  AppCategoryRow,
   AuditRecord,
   ClassifyOutcome,
   ClassifyStatus,
@@ -62,4 +63,23 @@ export function classifyApps(force = false): Promise<ClassifyOutcome> {
 /** 应用分类队列状态。 */
 export function getClassifyStatus(): Promise<ClassifyStatus> {
   return invoke<ClassifyStatus>("get_classify_status");
+}
+
+/** 列出全部应用及其生效分类。 */
+export function listClassifiedApps(): Promise<AppCategoryRow[]> {
+  return invoke<AppCategoryRow[]>("list_classified_apps");
+}
+
+/** 手动指定某应用分类（source=manual）。 */
+export function setAppCategory(
+  appId: string,
+  appName: string,
+  category: string,
+): Promise<AppCategoryRow> {
+  return invoke<AppCategoryRow>("set_app_category", { appId, appName, category });
+}
+
+/** 重置某应用为自动分类。 */
+export function resetAppCategory(appId: string, appName: string): Promise<AppCategoryRow> {
+  return invoke<AppCategoryRow>("reset_app_category", { appId, appName });
 }

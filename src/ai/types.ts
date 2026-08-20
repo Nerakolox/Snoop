@@ -71,3 +71,14 @@ export interface ClassifyStatus {
   last_classified_at_ms: number | null;
   running: boolean;
 }
+
+/** 设置页分类列表的一行（list_classified_apps 返回）。 */
+export interface AppCategoryRow {
+  app_id: string;
+  app_name: string;
+  category: string | null;
+  source: string | null;
+  confidence: number | null;
+  classified_at_ms: number | null;
+  needs_confirmation: boolean;
+}
