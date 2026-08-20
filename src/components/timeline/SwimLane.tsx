@@ -88,7 +88,7 @@ export default function SwimLane({
           : segments!.map((s, i) => (
               <div
                 key={i}
-                className="swimlane-quant-seg"
+                className={`swimlane-quant-seg${s.level === 0 ? " swimlane-quant-seg--idle" : ""}`}
                 style={{
                   left: `${s.startPct}%`,
                   width: `${s.widthPct}%`,

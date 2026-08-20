@@ -417,7 +417,8 @@
   flex: 1;
   position: relative;
   height: var(--lane-h);
-  background: var(--color-surface);
+  /* #FCFCFD 极淡底色：与空轨道的白色 surface 区分开，肉眼即可分辨「无数据空轨道」与「渲染失败」 */
+  background: #FCFCFD;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   overflow: hidden;
@@ -476,6 +477,11 @@
   border-radius: 0;
   pointer-events: auto; /* 响应 hover */
   z-index: 2; /* 与 .swimlane-block 一致，压在网格线之上 */
+}
+
+/* 挂机量化段的内描边 —— 与「挂机」图例的浅底+细边框语言对齐 */
+.swimlane-quant-seg--idle {
+  box-shadow: inset 0 0 0 1px var(--color-border);
 }
 
 /* 工具提示 */
@@ -654,17 +660,19 @@
   flex-shrink: 0;
 }
 
-.swimlane-legend-swatch--idle {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+.swimlane-legend-ramp {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
-.swimlane-legend-swatch--gap {
-  background: var(--color-text-3);
-  opacity: 0.4;
+.swimlane-legend-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
-.swimlane-legend-swatch--curve {
-  background: var(--color-accent);
+.swimlane-legend-title {
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
 }
 

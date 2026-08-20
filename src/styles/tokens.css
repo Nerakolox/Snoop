@@ -18,12 +18,12 @@
   --color-text-2:        #6B6670;
   --color-text-3:        #9B96A0;
 
-  /* 强度色阶（数据表达：键鼠活跃度低→高） */
-  --intensity-0:         #D9D5CE;
-  --intensity-1:         #F2D98C;
-  --intensity-2:         #F5B841;
-  --intensity-3:         #EE8B3D;
-  --intensity-4:         #E15A4C;
+  /* 强度色阶（数据表达：活跃强度低→高） */
+  --intensity-0: #E7E4DE;  /* 挂机：极淡中性色，不进暖色 ramp */
+  --intensity-1: #F7D3A4;  /* 暖色 ramp 浅端（peach） */
+  --intensity-2: #F0B77A;
+  --intensity-3: #E68A3C;
+  --intensity-4: #D1602C;
 
   /* 圆角 */
   --radius-sm: 8px;
@@ -99,11 +99,11 @@
   --color-text:          #1A1820;
   --color-text-2:        #5C5868;
   --color-text-3:        #9B96A4;
-  --intensity-0:         #E8E5EE;
-  --intensity-1:         #D4A843;
-  --intensity-2:         #E09030;
-  --intensity-3:         #E07030;
-  --intensity-4:         #D94438;
+  --intensity-0: #E7E4DE;  /* 挂机：极淡中性色，不进暖色 ramp */
+  --intensity-1: #F7D3A4;  /* 暖色 ramp 浅端（peach） */
+  --intensity-2: #F0B77A;
+  --intensity-3: #E68A3C;
+  --intensity-4: #D1602C;
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
   --shadow-md: 0 4px 16px rgba(0,0,0,.12);
 }

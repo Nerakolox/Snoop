@@ -660,18 +660,18 @@ export default function Timeline() {
 
       {lanes.length > 0 && (
         <div className="swimlane-legend">
-          <span className="swimlane-legend-item">
-            <span className="swimlane-legend-swatch swimlane-legend-swatch--idle" />
-            挂机（有心跳无输入）
+          <span className="swimlane-legend-item swimlane-legend-ramp">
+            <span className="swimlane-legend-label">低</span>
+            {[0, 1, 2, 3, 4].map((lv) => (
+              <span
+                key={lv}
+                className="swimlane-legend-swatch"
+                style={{ background: `var(--intensity-${lv})` }}
+              />
+            ))}
+            <span className="swimlane-legend-label">高</span>
           </span>
-          <span className="swimlane-legend-item">
-            <span className="swimlane-legend-swatch swimlane-legend-swatch--gap" />
-            压缩空白 (&gt;2h)
-          </span>
-          <span className="swimlane-legend-item">
-            <span className="swimlane-legend-swatch swimlane-legend-swatch--curve" />
-            活跃强度曲线
-          </span>
+          <span className="swimlane-legend-title">活跃强度</span>
         </div>
       )}
 
