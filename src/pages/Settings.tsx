@@ -14,6 +14,8 @@ import { resetAppIconCache } from "../components/AppIcon";
 import PageShell from "../components/PageShell";
 import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELayoutPicker";
 import { useAiEnabled } from "../ai/master";
+import { getAiConfig } from "../ai/client";
+import { useContextActions } from "../store/context";
 
 type UpdateState =
   | { status: "idle" }
@@ -123,6 +125,9 @@ export default function Settings() {
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
   const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
   const [aiEnabled, setAiEnabled] = useAiEnabled();
+  const actions = useContextActions();
+  // AI 配置状态：只用于在开关开启时显示「已配置 · T2 / 未配置服务」一行状态。
+  const [aiStatus, setAiStatus] = useState<{ configured: boolean; tier: string } | null>(null);
 
   function handleLayoutChange(id: string) {
     setLayoutId(id);
@@ -138,6 +143,10 @@ export default function Settings() {
     invoke<UpdateState>("get_update_state").then(setUpdateState).catch(console.error);
     // 以系统实际注册状态为准显示开关初始值，避免本地布尔和真实注册项漂移
     isAutostartEnabled().then(setAutostart).catch(console.error);
+    // 读 AI 配置，供开关开启时显示「已配置 · T2 / 未配置服务」状态
+    getAiConfig()
+      .then((c) => setAiStatus({ configured: c.has_key && !!c.model.trim(), tier: c.tier }))
+      .catch(console.error);
 
     // 订阅后端 updater 状态推送(后台静默检查/下载完成后前端立刻切到 ready)
     const unlistenPromise = listen<UpdateState>("updater://state", (e) => {
@@ -440,7 +449,21 @@ export default function Settings() {
           label="AI 功能"
           desc="启用后侧栏会出现「AI」页。AI 功能需要将部分使用数据发送到你配置的服务商，具体范围由你在 AI 页选择，可随时查看完整发送记录。"
         >
-          <Toggle checked={aiEnabled} onChange={setAiEnabled} />
+          <div className="setting-row-actions">
+            {aiEnabled && (
+              <>
+                {aiStatus && (
+                  <span className="setting-hint">
+                    {aiStatus.configured ? `已配置 · ${aiStatus.tier}` : "未配置服务"}
+                  </span>
+                )}
+                <button className="setting-btn" onClick={() => actions.navigate({ page: "ai" })}>
+                  前往 AI 页
+                </button>
+              </>
+            )}
+            <Toggle checked={aiEnabled} onChange={setAiEnabled} />
+          </div>
         </SettingRow>
       </div>
 
