@@ -42,19 +42,47 @@ export type QuantizedSegment = {
   avgIntensity: number;
 };
 
-/** 格宽离散档位(虚拟毫秒)。缩放只在这几档间跳变，不连续变化，避免每帧都令缓存失效。 */
-const CELL_WIDTH_TIERS_VIRT_MS: Array<{ maxSpanVirt: number; widthVirt: number }> = [
-  { maxSpanVirt: 3 * 60 * 60 * 1000, widthVirt: 5_000 },
-  { maxSpanVirt: 10 * 60 * 60 * 1000, widthVirt: 30_000 },
-  { maxSpanVirt: Infinity, widthVirt: 2 * 60_000 },
-];
+/** 轨道估计像素宽 —— 未接入实测宽度前的保守常量，只影响档位选择的临界点，不影响正确性
+ *  (不引入 ResizeObserver，见项目约定)。与 Timeline.tsx 里 LOD 阈值推导用的同一个值，
+ *  来自审计 §2.2:窗口宽 − 侧栏 240px − 标签 200px − padding ≈ 940px。 */
+const TRACK_PX_ESTIMATE = 940;
 
-/** 按当前视口跨度(虚拟毫秒)挑选格宽档位。 */
+/** 格子最小可读像素宽 —— 低于此值色块无法辨认颜色档位。这是下限，不是要贴着走的目标。 */
+const MIN_CELL_PX = 3;
+
+/** 格宽目标:约 2 分钟真实时间。档位选择在满足 MIN_CELL_PX 下限的前提下，取离这个目标最近的一档。 */
+const TARGET_CELL_WIDTH_VIRT_MS = 2 * 60_000;
+
+/** 候选格宽档位(虚拟毫秒)，从粗到细排列。2 分钟是常规命中档；更粗的档只在视口跨度很大、
+ *  2 分钟档也跌破 3px 下限时才会被选中(如全天视图，此时 2 分钟档约 1.3px < 3px，退到 5 分钟档)。
+ *  更细的档在当前 LOD 切换阈值(约 26 分钟视口，见 Timeline.tsx 的 LOD_REAL_BLOCK_MS_PER_PCT)下
+ *  数学上不会被触达 —— 26 分钟视口时 2 分钟档已有约 72px，稳赢任何更细档位；保留它们仅为
+ *  LOD 阈值将来调整时的安全网，不是当前的常态路径。 */
+const CELL_WIDTH_CANDIDATES_VIRT_MS = [5 * 60_000, 2 * 60_000, 30_000, 10_000, 5_000];
+
+/**
+ * 按当前视口跨度(虚拟毫秒)挑选格宽档位:在「格渲染宽度 ≥ MIN_CELL_PX」的候选里，
+ * 取离 TARGET_CELL_WIDTH_VIRT_MS(2 分钟)最近的一档。
+ * 注意 ≥3px 是下限过滤条件，不是要贴着走的最细档 —— 贴着 3px 走会导致格数随视口跨度
+ * 线性暴涨(这正是重构后密度异常增多的根因)。
+ */
 export function pickCellWidthVirt(viewSpanVirt: number): number {
-  for (const tier of CELL_WIDTH_TIERS_VIRT_MS) {
-    if (viewSpanVirt <= tier.maxSpanVirt) return tier.widthVirt;
+  if (viewSpanVirt <= 0) return TARGET_CELL_WIDTH_VIRT_MS;
+  let best = CELL_WIDTH_CANDIDATES_VIRT_MS[0];
+  let bestDist = Infinity;
+  let anyPassed = false;
+  for (const width of CELL_WIDTH_CANDIDATES_VIRT_MS) {
+    const cellPx = (width / viewSpanVirt) * TRACK_PX_ESTIMATE;
+    if (cellPx < MIN_CELL_PX) continue;
+    anyPassed = true;
+    const dist = Math.abs(width - TARGET_CELL_WIDTH_VIRT_MS);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = width;
+    }
   }
-  return CELL_WIDTH_TIERS_VIRT_MS[CELL_WIDTH_TIERS_VIRT_MS.length - 1].widthVirt;
+  // 极端情况:视口跨度极大，所有候选都跌破下限 —— 退回最粗一档，视觉上仍优于更细的选项。
+  return anyPassed ? best : CELL_WIDTH_CANDIDATES_VIRT_MS[0];
 }
 
 /**
