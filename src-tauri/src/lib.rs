@@ -11,6 +11,7 @@ use std::time::Duration;
 const REPO_URL: &str = "https://github.com/Nerakolox/Snoop";
 
 mod activity_tracker;
+mod ai;
 mod commands;
 mod db;
 mod platform;
