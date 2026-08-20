@@ -66,14 +66,10 @@ export default function Sidebar({ active, onSelect }: Props) {
         </div>
       )}
 
-      <div className="sidebar-section sidebar-section--config" data-tauri-drag-region>
-        <div className="sidebar-section-title" data-tauri-drag-region>配置</div>
-        {aiEnabled && renderItem(AI_ITEM)}
-        {renderItem(SETTINGS_ITEM)}
-      </div>
-
       <div className="sidebar-bottom" data-tauri-drag-region>
         <SidebarLive />
+        {aiEnabled && renderItem(AI_ITEM)}
+        {renderItem(SETTINGS_ITEM)}
       </div>
     </aside>
   );
