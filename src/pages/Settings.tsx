@@ -13,6 +13,7 @@ import {
 import { resetAppIconCache } from "../components/AppIcon";
 import PageShell from "../components/PageShell";
 import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELayoutPicker";
+import AISettings from "../components/ai/AISettings";
 
 type UpdateState =
   | { status: "idle" }
@@ -439,6 +440,8 @@ export default function Settings() {
           </div>
         </SettingRow>
       </div>
+
+      <AISettings />
 
       <div className="settings-group">
         <div className="settings-group-title">键盘配列</div>

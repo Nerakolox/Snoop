@@ -1,0 +1,350 @@
+/* ---------- AI 设置区块 ---------- */
+
+/* 与 .setting-row 同构的 AI 专用行（自带分组内边框逻辑） */
+.ai-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ai-row:last-child {
+  border-bottom: none;
+}
+
+.ai-row-left {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ai-row-right {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* 超出当前 tier 的整行淡化 + 开关不可点 */
+.ai-row.is-disabled {
+  opacity: 0.55;
+}
+
+.setting-toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+/* 顶部提示：未配置时出现 */
+.ai-hint {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-xs);
+  color: var(--intensity-4);
+  background: color-mix(in oklab, var(--intensity-4) 8%, transparent);
+  border-bottom: 1px solid color-mix(in oklab, var(--intensity-4) 20%, transparent);
+}
+
+/* 字段输入 */
+.ai-field-icon {
+  color: var(--color-text-3);
+  flex-shrink: 0;
+}
+
+.ai-input {
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  font-size: var(--text-xs);
+  font-family: inherit;
+  outline: none;
+  width: 220px;
+  transition: border-color var(--dur-fast);
+}
+
+.ai-input:focus {
+  border-color: var(--color-accent);
+}
+
+.ai-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-2);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--dur-fast), color var(--dur-fast);
+}
+
+.ai-icon-btn:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* 测试连接结果 */
+.ai-test-msg {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  max-width: 260px;
+}
+
+.ai-test-msg.is-ok {
+  color: #2f9e6e;
+}
+
+.ai-test-msg.is-err {
+  color: var(--intensity-4);
+}
+
+/* 数据层级：三卡片单选 */
+.ai-tier-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ai-tier-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  text-align: left;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  cursor: pointer;
+  color: var(--color-text);
+  transition: border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
+}
+
+.ai-tier-card:hover:not(:disabled) {
+  border-color: var(--color-text-3);
+}
+
+.ai-tier-card.is-active {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  box-shadow: 0 0 0 1px var(--color-accent) inset;
+}
+
+.ai-tier-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.ai-tier-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ai-tier-name {
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.ai-tier-check {
+  color: var(--color-accent);
+}
+
+.ai-tier-desc {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  line-height: 1.4;
+}
+
+.ai-tier-feats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ai-feat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.ai-feat-chip.is-ok {
+  background: color-mix(in oklab, #2f9e6e 14%, transparent);
+  color: #2f9e6e;
+}
+
+.ai-feat-chip.is-lock {
+  background: var(--color-surface);
+  color: var(--color-text-3);
+  border: 1px solid var(--color-border);
+}
+
+/* 警告条 */
+.ai-warn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-xs);
+  color: var(--intensity-4);
+  background: color-mix(in oklab, var(--intensity-4) 8%, transparent);
+  border-top: 1px solid color-mix(in oklab, var(--intensity-4) 20%, transparent);
+}
+
+/* 功能开关的「需要 T2」锁标 */
+.ai-lock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-3);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+}
+
+/* 发送记录 */
+.ai-audit-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.ai-audit-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.ai-audit-item {
+  border-top: 1px solid var(--color-border);
+}
+
+.ai-audit-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-6);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+  text-align: left;
+  transition: background var(--dur-fast);
+}
+
+.ai-audit-head:hover {
+  background: var(--color-surface-2);
+}
+
+.ai-audit-status {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ai-audit-status.is-ok {
+  color: #2f9e6e;
+}
+
+.ai-audit-status.is-err {
+  color: var(--intensity-4);
+}
+
+.ai-audit-feature {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.ai-audit-tier {
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.ai-audit-time {
+  margin-left: auto;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-audit-meta {
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.ai-audit-meta.is-muted {
+  font-weight: 600;
+}
+
+.ai-audit-detail {
+  padding: var(--space-3) var(--space-6) var(--space-4);
+  border-top: 1px dashed var(--color-border);
+  background: var(--color-surface-2);
+}
+
+.ai-audit-detail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.ai-audit-detail-key {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-3);
+}
+
+.ai-audit-detail-val {
+  font-size: var(--text-xs);
+  color: var(--intensity-4);
+}
+
+.ai-audit-json {
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-text-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow: auto;
+}
