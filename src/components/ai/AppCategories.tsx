@@ -8,21 +8,8 @@ import {
   setAppCategory,
   resetAppCategory,
 } from "../../ai/client";
+import { CATEGORIES } from "../../ai/categories";
 import type { AppCategoryRow } from "../../ai/types";
-
-// 与后端 Category 枚举严格对齐（as_str / label）。改枚举必须同步这里。
-const CATEGORIES = [
-  { value: "development", label: "开发" },
-  { value: "communication", label: "沟通" },
-  { value: "browsing", label: "浏览" },
-  { value: "entertainment", label: "娱乐" },
-  { value: "design", label: "设计" },
-  { value: "document", label: "文档" },
-  { value: "system", label: "系统" },
-  { value: "remote", label: "远程控制" },
-  { value: "download", label: "下载工具" },
-  { value: "other", label: "其他" },
-] as const;
 
 const SOURCE_LABEL: Record<string, string> = {
   manual: "手动",

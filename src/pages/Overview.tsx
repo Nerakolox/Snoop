@@ -3,7 +3,7 @@
  * 定位：消费全局 (kind, anchor, appId)，是当前范围的快照 + 猫的实时陪伴。
  */
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   aggregateByApp,
   daysWithDataOf,
@@ -21,6 +21,9 @@ import { useToast } from "../components/shared/Toast";
 import Tooltip from "../components/shared/Tooltip";
 import type { NavKey } from "../components/Sidebar";
 import { useRangeData } from "../data/useRangeData";
+import { getCategoryBreakdown } from "../ai/client";
+import { CATEGORY_COLOR, CATEGORY_LABEL } from "../ai/categories";
+import type { CategoryShare } from "../ai/types";
 import { formatAnchor, toMs } from "../data/ranges";
 import {
   adaptKind,
@@ -263,6 +266,18 @@ export default function Overview() {
   }, [buckets, rhythmRange]);
   const maxDayActiveMs = Math.max(...dailyStats.map((d) => d.activeMs), 1);
 
+  // 分类占比：后端按范围聚合各分类前台时长（未分类计入 other）。
+  // 依赖 allBuckets，使 live 30s 轮询刷新 buckets 时占比也一并刷新。
+  const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryShare[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getCategoryBreakdown(rhythmRange.start_ms, rhythmRange.end_ms)
+      .then((r) => { if (!cancelled) setCategoryBreakdown(r); })
+      .catch(console.error);
+    return () => { cancelled = true; };
+  }, [rhythmRange.start_ms, rhythmRange.end_ms, allBuckets]);
+  const totalCategoryMs = categoryBreakdown.reduce((s, x) => s + x.duration_ms, 0);
+
   const appName =
     appId === null
       ? undefined
@@ -315,6 +330,14 @@ export default function Overview() {
         ? "本周节奏"
         : "本月节奏"
     : `${anchorLabel(viewKind, viewAnchor, today)}节奏`;
+
+  const categoryTitle = isCurrentAnchor
+    ? viewKind === "day"
+      ? "今日分类占比"
+      : viewKind === "week"
+        ? "本周分类占比"
+        : "本月分类占比"
+    : `${anchorLabel(viewKind, viewAnchor, today)}分类占比`;
 
   function goToHour(hour: number) {
     actions.navigate({ page: "timeline", focusHour: hour });
@@ -437,6 +460,51 @@ export default function Overview() {
             );
           })}
         </div>
+      </section>
+
+      {/* ③½ 分类占比 —— 水平堆叠条 + 图例，用独立分类色板 */}
+      <section className="panel">
+        <h3 className="panel-title">{categoryTitle}</h3>
+        {categoryBreakdown.length === 0 ? (
+          <div className="overview-empty-note">
+            {loading ? "加载中…" : "该范围还没有分类数据"}
+          </div>
+        ) : (
+          <>
+            <div className="cat-stack">
+              {categoryBreakdown.map((s) => {
+                const pct = totalCategoryMs > 0 ? (s.duration_ms / totalCategoryMs) * 100 : 0;
+                return (
+                  <div
+                    key={s.category}
+                    className="cat-stack-seg"
+                    style={{
+                      width: `${pct}%`,
+                      background: CATEGORY_COLOR[s.category] ?? "#94a3b8",
+                    }}
+                    title={`${CATEGORY_LABEL[s.category] ?? s.category} · ${formatDurationPlain(s.duration_ms)}`}
+                  />
+                );
+              })}
+            </div>
+            <div className="cat-legend">
+              {categoryBreakdown.map((s) => {
+                const pct = totalCategoryMs > 0 ? (s.duration_ms / totalCategoryMs) * 100 : 0;
+                return (
+                  <div key={s.category} className="cat-legend-row">
+                    <span
+                      className="cat-legend-swatch"
+                      style={{ background: CATEGORY_COLOR[s.category] ?? "#94a3b8" }}
+                    />
+                    <span className="cat-legend-label">{CATEGORY_LABEL[s.category] ?? s.category}</span>
+                    <span className="cat-legend-time">{formatDurationPlain(s.duration_ms)}</span>
+                    <span className="cat-legend-pct">{pct.toFixed(1)}%</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
       </section>
 
       {/* ④ 节奏 —— 日=24 格热力条 / 周=7 柱 / 月=日历热力 */}

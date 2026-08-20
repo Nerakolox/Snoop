@@ -159,3 +159,57 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+/* ---------- 概览分类占比（Task 4） ---------- */
+
+.cat-stack {
+  display: flex;
+  height: 14px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  background: var(--color-surface-2);
+  gap: 1px;
+}
+
+.cat-stack-seg {
+  height: 100%;
+  min-width: 2px;
+}
+
+.cat-legend {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--space-3);
+  gap: var(--space-2);
+}
+
+.cat-legend-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+}
+
+.cat-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.cat-legend-label {
+  color: var(--color-text-2);
+}
+
+.cat-legend-time {
+  margin-left: auto;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.cat-legend-pct {
+  color: var(--color-text-2);
+  font-variant-numeric: tabular-nums;
+  width: 52px;
+  text-align: right;
+}

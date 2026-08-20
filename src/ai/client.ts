@@ -8,6 +8,7 @@ import type {
   AiConfigView,
   AppCategoryRow,
   AuditRecord,
+  CategoryShare,
   ClassifyOutcome,
   ClassifyStatus,
   FeatureDecl,
@@ -82,4 +83,9 @@ export function setAppCategory(
 /** 重置某应用为自动分类。 */
 export function resetAppCategory(appId: string, appName: string): Promise<AppCategoryRow> {
   return invoke<AppCategoryRow>("reset_app_category", { appId, appName });
+}
+
+/** 聚合某时间范围内各分类的前台时长（未分类计入 other），按时长降序。 */
+export function getCategoryBreakdown(startMs: number, endMs: number): Promise<CategoryShare[]> {
+  return invoke<CategoryShare[]>("get_category_breakdown", { startMs, endMs });
 }

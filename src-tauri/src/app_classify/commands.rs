@@ -140,3 +140,62 @@ pub fn reset_app_category(
     let resolved = store::resolve(&conn, &app_id, &app_name, &app_id).map_err(|e| e.to_string())?;
     Ok(to_row(&app_id, &app_name, resolved))
 }
+
+// ─── Task 4：消费方（概览分类占比） ────────────────────────────────────────────
+
+/// 分类占比的一格：某类别在给定范围内的前台时长。
+#[derive(Serialize, Clone)]
+pub struct CategoryShare {
+    pub category: String,
+    pub duration_ms: i64,
+}
+
+/// 聚合给定时间范围内各分类的前台时长（未分类计入 `other`），按时长降序返回。
+#[tauri::command]
+pub fn get_category_breakdown(
+    db: State<'_, DbPath>,
+    start_ms: i64,
+    end_ms: i64,
+) -> Result<Vec<CategoryShare>, String> {
+    use std::collections::HashMap;
+
+    let conn = open_db(&db)?;
+
+    // 每个 app 聚一次：代表名 + 该范围总前台时长。
+    let mut agg: Vec<(String, String, i64)> = Vec::new();
+    {
+        let mut stmt = conn
+            .prepare(
+                "SELECT app_bundle_id, MAX(app_name) AS name, SUM(duration_ms) AS dur
+                 FROM activity_buckets
+                 WHERE bucket_start >= ?1 AND bucket_start < ?2
+                 GROUP BY app_bundle_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map(rusqlite::params![start_ms, end_ms], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))
+            })
+            .map_err(|e| e.to_string())?;
+        for r in rows {
+            agg.push(r.map_err(|e| e.to_string())?);
+        }
+    }
+
+    let mut totals: HashMap<String, i64> = HashMap::new();
+    for (id, name, dur) in agg {
+        let cat = store::resolve(&conn, &id, &name, &id)
+            .map_err(|e| e.to_string())?
+            .map(|c| c.category)
+            .unwrap_or_else(|| "other".to_string());
+        *totals.entry(cat).or_insert(0) += dur;
+    }
+
+    let mut out: Vec<CategoryShare> = totals
+        .into_iter()
+        .filter(|(_, d)| *d > 0)
+        .map(|(category, duration_ms)| CategoryShare { category, duration_ms })
+        .collect();
+    out.sort_by(|a, b| b.duration_ms.cmp(&a.duration_ms));
+    Ok(out)
+}

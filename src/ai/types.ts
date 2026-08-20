@@ -82,3 +82,9 @@ export interface AppCategoryRow {
   classified_at_ms: number | null;
   needs_confirmation: boolean;
 }
+
+/** 分类占比的一格（get_category_breakdown 返回）。 */
+export interface CategoryShare {
+  category: string;
+  duration_ms: number;
+}
