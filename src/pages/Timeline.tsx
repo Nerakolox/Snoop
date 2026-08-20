@@ -14,7 +14,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState, useRef, useCallback } from "react";
 import { Calendar, ChevronDown, Maximize2, Minimize2 } from "lucide-react";
 import { fetchBucketsInRange } from "../data";
-import { formatAnchor, toMs } from "../data/ranges";
+import { toMs } from "../data/ranges";
 import type { RawBucket } from "../data/types";
 import {
   buildAppLanes, computeGlobalGaps, buildSegments, timeToVirt, virtToTime, buildTicks,
@@ -33,7 +33,7 @@ import { useTimeScale } from "../hooks/useTimeScale";
 import { useToast } from "../components/shared/Toast";
 import Tooltip from "../components/shared/Tooltip";
 import { useTopBarTools } from "../components/topbar/TopBarToolsContext";
-import { adaptKind, useContextActions, useContextState } from "../store/context";
+import { adaptKind, useContextActions, useContextState, useToday } from "../store/context";
 import { formatTime, formatDuration } from "../utils/format";
 
 // ---- 主组件 -----------------------------------------------------------------
@@ -42,7 +42,8 @@ export default function Timeline() {
   const { kind, anchor, appId, focusHour } = useContextState();
   const actions = useContextActions();
   const toast = useToast();
-  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("timeline", { kind, anchor });
+  const today = useToday();
+  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("timeline", { kind, anchor }, today);
 
   const [buckets, setBuckets] = useState<RawBucket[]>([]);
   const lanes = useMemo(() => buildAppLanes(buckets), [buckets]);
@@ -116,8 +117,13 @@ export default function Timeline() {
     body.scrollTo({ top: body.scrollHeight, behavior: "smooth" });
   }, []);
 
-  // 当前时刻：仅在查看今天时按分钟推进（历史查看不需要）
-  const isTodayView = viewAnchor === formatAnchor(new Date());
+  // 当前时刻：仅在查看今天时按分钟推进（历史查看不需要）。
+  //
+  // 职责划分：全局的 today 负责「今天是哪一天」，下面的 nowMs 只负责
+  // 「今天之内到几点了」。跨日时 today 与 viewAnchor 同步前进，isTodayView
+  // 保持 true，effect 依赖不翻转，interval 不会被 cleanup 清掉。
+  // （旧写法这里自己读钟，午夜后判据翻假、interval 自己把自己清死。）
+  const isTodayView = viewAnchor === today;
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     if (!isTodayView) return;

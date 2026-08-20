@@ -28,6 +28,7 @@ import {
   shiftAnchor,
   useContextActions,
   useContextState,
+  useToday,
   type RangeKind,
 } from "../store/context";
 import { anchorLabel } from "../utils/format";
@@ -135,7 +136,7 @@ function OverviewHeader({
   appId: string | null;
   appName?: string;
 }) {
-  const now = useMemo(() => new Date(), []);
+  const today = useToday();
   return (
     <div className="overview-header">
       <div className="overview-header-titlerow">
@@ -143,7 +144,7 @@ function OverviewHeader({
         {note !== null && <span className="overview-header-note">{note}</span>}
       </div>
       <p className="overview-header-subtitle">
-        {anchorLabel(kind, anchor, now)} · {daysWithData} 天数据
+        {anchorLabel(kind, anchor, today)} · {daysWithData} 天数据
         {appId ? ` · 已筛选 ${appName ?? appId}` : ""}
       </p>
     </div>
@@ -154,8 +155,9 @@ export default function Overview() {
   const { kind, anchor, appId } = useContextState();
   const actions = useContextActions();
   const toast = useToast();
+  const today = useToday();
 
-  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("overview", { kind, anchor });
+  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("overview", { kind, anchor }, today);
   const { buckets: allBuckets, loading, refetch } = useRangeData(viewKind, viewAnchor, null);
   const buckets = useMemo(
     () => (appId === null ? allBuckets : allBuckets.filter((b) => b.app_bundle_id === appId)),
@@ -185,7 +187,9 @@ export default function Overview() {
     toast.show({ message: `已筛选 ${name}，全站生效`, undoLabel: "取消筛选" });
   }
 
-  const isLive = kind === "day" && anchor === formatAnchor(new Date());
+  // 读全局基准而非自己读钟：跨日时 today 与 anchor 同步前进，isLive 保持 true，
+  // 下面的 30s 轮询不会被 cleanup 清掉（旧写法会在午夜后把自己的 interval 清死）。
+  const isLive = kind === "day" && anchor === today;
 
   useEffect(() => {
     if (!isLive) return; // 看历史数据没必要轮询
@@ -264,7 +268,6 @@ export default function Overview() {
       ? undefined
       : buckets.find((b) => b.app_bundle_id === appId)?.app_name ?? appId;
 
-  const nowLabel = useMemo(() => new Date(), []);
   // 「当前筛选下」是否没有数据 —— 用来决定 KPI / 节奏区的空态说明。
   // App 排行不受筛选影响（展示全量），空态单独按 apps.length 判断。
   const isEmpty = !loading && buckets.length === 0;
@@ -272,7 +275,7 @@ export default function Overview() {
   // 周期总结卡：纯展示，不可点、不弹 toast，X/Y/Z/W 复用上面已算好的数字，不重算。
   const avgActiveHours = daysWithData > 0 ? activeDuration / daysWithData / (60 * 60 * 1000) : 0;
   const summaryText = useMemo(() => {
-    const introParts = [anchorLabel(viewKind, viewAnchor, nowLabel)];
+    const introParts = [anchorLabel(viewKind, viewAnchor, today)];
     if (viewKind !== "day") introParts.push(`共 ${daysWithData} 天有数据`);
     if (appId !== null) introParts.unshift(`已筛选 ${appName ?? appId}`);
 
@@ -292,7 +295,7 @@ export default function Overview() {
   }, [
     viewKind,
     viewAnchor,
-    nowLabel,
+    today,
     daysWithData,
     appId,
     appName,
@@ -304,14 +307,14 @@ export default function Overview() {
     avgActiveHours,
   ]);
 
-  const isCurrentAnchor = viewAnchor === normalizeAnchor(viewKind, formatAnchor(nowLabel));
+  const isCurrentAnchor = viewAnchor === normalizeAnchor(viewKind, today);
   const rhythmTitle = isCurrentAnchor
     ? viewKind === "day"
       ? "今日节奏"
       : viewKind === "week"
         ? "本周节奏"
         : "本月节奏"
-    : `${anchorLabel(viewKind, viewAnchor, nowLabel)}节奏`;
+    : `${anchorLabel(viewKind, viewAnchor, today)}节奏`;
 
   function goToHour(hour: number) {
     actions.navigate({ page: "timeline", focusHour: hour });
@@ -395,7 +398,7 @@ export default function Overview() {
         <div className="app-list">
           {apps.length === 0 && (
             <div className="overview-empty-note">
-              {anchorLabel(viewKind, viewAnchor, nowLabel)}还没有数据
+              {anchorLabel(viewKind, viewAnchor, today)}还没有数据
             </div>
           )}
           {apps.map((app) => {

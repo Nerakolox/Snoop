@@ -9,7 +9,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   fetchBucketsInRange,
   fetchKeyDetailsInRange,
-  formatAnchor,
   type RawBucket,
   type RawKeyDetail,
 } from "../data";
@@ -38,7 +37,7 @@ import { KeySelectionProvider } from "../components/keyboard/KeySelectionContext
 import PageShell from "../components/PageShell";
 import { useTopBarTools } from "../components/topbar/TopBarToolsContext";
 import Tooltip from "../components/shared/Tooltip";
-import { adaptKind, useContextActions, useContextState } from "../store/context";
+import { adaptKind, useContextActions, useContextState, useToday } from "../store/context";
 import { anchorLabel } from "../utils/format";
 
 /** 热力色阶图例的档位，与 KLEKeyboard 的 bucketByPercentile 输出同域。 */
@@ -54,7 +53,8 @@ function formatDistance(pixels: number): { num: string; unit: string } {
 export default function Keyboard() {
   const { kind, anchor, appId, selectedKey } = useContextState();
   const actions = useContextActions();
-  const { kind: viewKind, anchor: viewAnchor } = adaptKind("input", { kind, anchor });
+  const today = useToday();
+  const { kind: viewKind, anchor: viewAnchor } = adaptKind("input", { kind, anchor }, today);
   const range = useMemo(() => toMs(viewKind, viewAnchor), [viewKind, viewAnchor]);
 
   const [loading, setLoading] = useState(false);
@@ -258,15 +258,14 @@ export default function Keyboard() {
   const selectedMerged =
     selectedRdevCode !== null && (MERGED_KEY_GROUPS[selectedRdevCode]?.length ?? 0) > 1;
 
-  const isToday = viewKind === "day" && viewAnchor === formatAnchor(new Date());
+  const isToday = viewKind === "day" && viewAnchor === today;
   const topPanelTitle =
     viewKind === "month" ? "本月按得最多" : viewKind === "week" ? "本周按得最多" : isToday ? "今天按得最多" : "当天按得最多";
 
-  const now = useMemo(() => new Date(), []);
   const appName = appId === null
     ? undefined
     : filteredBuckets.find((b) => b.app_bundle_id === appId)?.app_name ?? appId;
-  const subtitleParts = [anchorLabel(viewKind, viewAnchor, now)];
+  const subtitleParts = [anchorLabel(viewKind, viewAnchor, today)];
   if (appId !== null) subtitleParts.push(`已筛选 ${appName}`);
   if (!loading && filteredBuckets.length === 0) subtitleParts.push("该范围没有采集到数据");
 

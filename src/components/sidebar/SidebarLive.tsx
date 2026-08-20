@@ -1,6 +1,7 @@
 /**
  * 侧栏底部常驻实时区 —— LIVE，不受任何页面的范围/App 筛选影响。
- * 固定读"今天"的全量桶（appId=null），故意不接全局上下文。
+ * 固定读"今天"的全量桶（appId=null），故意不跟随全局的 kind/anchor/appId。
+ * 唯一从全局取的是 today（当日基准），这样跨过午夜时它会自动翻到新的一天。
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -11,12 +12,12 @@ import {
   RECENT_ACTIVITY_WINDOW_MS,
   type Intensity,
 } from "../../analytics";
-import { formatAnchor } from "../../data/ranges";
 import { useRangeData } from "../../data/useRangeData";
+import { useToday } from "../../store/context";
 import Tooltip from "../shared/Tooltip";
 
 export default function SidebarLive() {
-  const today = formatAnchor(new Date());
+  const today = useToday();
   const { buckets: allBuckets, refetch } = useRangeData("day", today, null);
 
   useEffect(() => {

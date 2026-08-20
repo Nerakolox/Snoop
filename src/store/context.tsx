@@ -1,9 +1,10 @@
 import {
-  createContext, useContext, useMemo, useReducer,
+  createContext, useCallback, useContext, useMemo, useReducer,
   type ReactNode,
 } from "react";
 import type { NavKey } from "../components/Sidebar";
 import { DAY_MS, formatAnchor, parseAnchor } from "../data/ranges";
+import { useDayRollover } from "../hooks/useDayRollover";
 
 export type RangeKind = "day" | "week" | "month";
 
@@ -33,31 +34,45 @@ export const PAGE_KIND_CAP: Record<NavKey, RangeKind[]> = {
 
 const HISTORY_MAX = 20;
 
+/** 含该日的那一周的周一。周日算作上一周的第 7 天，与 ranges.ts 的 thisWeekRange 一致。 */
+function startOfWeekAnchor(anchor: string): string {
+  const d = parseAnchor(anchor);
+  const dow = d.getDay();                         // 周日=0
+  d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+  return formatAnchor(d);
+}
+
+/** 含该日的那个月的 1 号。 */
+function startOfMonthAnchor(anchor: string): string {
+  const d = parseAnchor(anchor);
+  return formatAnchor(new Date(d.getFullYear(), d.getMonth(), 1));
+}
+
+/** anchor 自身是否已符合该粒度的起点约定；不符合则修正。 */
+export function normalizeAnchor(kind: RangeKind, anchor: string): string {
+  if (kind === "week")  return startOfWeekAnchor(anchor);
+  if (kind === "month") return startOfMonthAnchor(anchor);
+  return anchor;                                  // day：anchor 即起点
+}
+
 /**
  * 把 anchor 规范化为「目标粒度的区间起点」。
  * 粒度变粗：取包含该日的周一 / 月首日。
  * 粒度变细：区间内含今天则取今天，否则取区间首日 —— 这条规则
  *          在 Batch 2（月历下钻）和 Batch 3（adaptKind 降级）都要用。
+ *
+ * ⚠️ `today` 必填且**没有默认值**，这是刻意的：全局当日基准只有一个来源
+ *    （store 的 `today`，见 useToday）。给它默认成 `new Date()` 就等于
+ *    允许调用方各自读时钟，跨日错位的老毛病会立刻复发。
  */
 export function reanchor(
   fromKind: RangeKind,
   fromAnchor: string,
   toKind: RangeKind,
-  now: Date = new Date()
+  today: string
 ): string {
-  const d = parseAnchor(fromAnchor);
-
-  if (toKind === "week") {
-    // 周日算作上一周的第 7 天，与 ranges.ts 的 thisWeekRange 保持一致
-    const dow = d.getDay();                       // 周日=0
-    const offset = dow === 0 ? 6 : dow - 1;
-    d.setDate(d.getDate() - offset);
-    return formatAnchor(d);
-  }
-
-  if (toKind === "month") {
-    return formatAnchor(new Date(d.getFullYear(), d.getMonth(), 1));
-  }
+  if (toKind === "week")  return startOfWeekAnchor(fromAnchor);
+  if (toKind === "month") return startOfMonthAnchor(fromAnchor);
 
   // toKind === 'day'
   const start = parseAnchor(normalizeAnchor(fromKind, fromAnchor));
@@ -66,15 +81,8 @@ export function reanchor(
   : fromKind === "week"  ? new Date(start.getTime() + 7 * DAY_MS)
   :                        new Date(start.getFullYear(), start.getMonth() + 1, 1);
 
-  const todayStr = formatAnchor(now);
-  const t = parseAnchor(todayStr).getTime();
-  return t >= start.getTime() && t < end.getTime() ? todayStr : formatAnchor(start);
-}
-
-/** anchor 自身是否已符合该粒度的起点约定；不符合则修正。 */
-export function normalizeAnchor(kind: RangeKind, anchor: string): string {
-  if (kind === "day") return anchor;
-  return reanchor("day", anchor, kind);
+  const t = parseAnchor(today).getTime();
+  return t >= start.getTime() && t < end.getTime() ? today : formatAnchor(start);
 }
 
 /** anchor 按当前粒度前后位移。dir=-1 上一个区间，dir=1 下一个。 */
@@ -104,7 +112,7 @@ export interface AdaptedRange {
 export function adaptKind(
   page: NavKey,
   s: Pick<ContextState, "kind" | "anchor">,
-  now: Date = new Date()
+  today: string
 ): AdaptedRange {
   const cap = PAGE_KIND_CAP[page] ?? (["day", "week", "month"] as RangeKind[]);
   if (cap.includes(s.kind)) {
@@ -113,7 +121,7 @@ export function adaptKind(
   const target = cap[0];
   return {
     kind: target,
-    anchor: reanchor(s.kind, s.anchor, target, now),
+    anchor: reanchor(s.kind, s.anchor, target, today),
     note: `「${KIND_LABEL[s.kind]}」视图在此页不可用，已映射为「${KIND_LABEL[target]}」`,
   };
 }
@@ -127,11 +135,20 @@ type Action =
   | { t: "SET_FOCUS_HOUR"; hour: number | null }
   | { t: "SET_SELECTED_KEY"; key: string | null }
   | { t: "NAVIGATE"; patch: Partial<ContextState> }
-  | { t: "BACK" };
+  | { t: "BACK" }
+  | { t: "DAY_ROLLOVER"; today: string };
 
 interface Store {
   cur: ContextState;
   stack: ContextState[];
+  /**
+   * 全局当日基准 'YYYY-MM-DD'，整个应用「今天是哪一天」的唯一真源。
+   *
+   * ⚠️ 刻意放在 Store 层而**不是** ContextState 里：ContextState 会在
+   *    NAVIGATE 时被压进 stack、BACK 时整体还原。基准若在其中，按一次
+   *    「返回」就会把它还原成压栈那一刻的旧值 —— 正是要修的那个 bug。
+   */
+  today: string;
 }
 
 function reducer(s: Store, a: Action): Store {
@@ -142,7 +159,7 @@ function reducer(s: Store, a: Action): Store {
       if (a.kind === cur.kind) return s;
       return {
         ...s,
-        cur: { ...cur, kind: a.kind, anchor: reanchor(cur.kind, cur.anchor, a.kind) },
+        cur: { ...cur, kind: a.kind, anchor: reanchor(cur.kind, cur.anchor, a.kind, s.today) },
       };
     }
     case "SET_ANCHOR":
@@ -153,7 +170,7 @@ function reducer(s: Store, a: Action): Store {
     case "GO_TODAY":
       return {
         ...s,
-        cur: { ...cur, anchor: normalizeAnchor(cur.kind, formatAnchor(new Date())) },
+        cur: { ...cur, anchor: normalizeAnchor(cur.kind, s.today) },
       };
 
     case "SET_APP":
@@ -167,15 +184,45 @@ function reducer(s: Store, a: Action): Store {
       const next = { ...cur, ...a.patch };
       // patch 里带了 kind 时同步修正 anchor（除非 patch 自己给了 anchor）
       if (a.patch.kind && !a.patch.anchor) {
-        next.anchor = reanchor(cur.kind, cur.anchor, a.patch.kind);
+        next.anchor = reanchor(cur.kind, cur.anchor, a.patch.kind, s.today);
       }
       const stack = [...s.stack, cur].slice(-HISTORY_MAX);
-      return { cur: next, stack };
+      // ⚠️ 必须展开 ...s：漏了会把 today 丢成 undefined，
+      //    下一次 DAY_ROLLOVER 就会在 parseAnchor(undefined) 处崩。
+      return { ...s, cur: next, stack };
     }
     case "BACK": {
       if (s.stack.length === 0) return s;
       const stack = s.stack.slice(0, -1);
-      return { cur: s.stack[s.stack.length - 1], stack };
+      // 同上。today 保留**当前**值而非栈里的——基准本来就不进历史栈。
+      return { ...s, cur: s.stack[s.stack.length - 1], stack };
+    }
+
+    /**
+     * 跨日推进。由 useDayRollover 的午夜定时器 / 焦点 / 可见性三个触发器派发，
+     * 幂等：同一天重复派发直接返回原 state（React 会 bail out 不重渲染），
+     * 所以任何触发器可以任意次数重复调用。
+     *
+     * 判据一个表达式覆盖三种粒度，无需 switch(kind)——normalizeAnchor 已经
+     * 编码了各粒度的区间起点：
+     *   day   8/21→8/22：'8/21'→'8/22' 变了 → 推进
+     *   week  周内跨日： '8/17'→'8/17' 没变 → 不动
+     *   week  周日→周一：'8/17'→'8/24' 变了 → 推进
+     *   month 月内跨日： '8/01'→'8/01' 没变 → 不动
+     * 用户停在历史区间时 wasCurrent 为 false，一律不动。
+     * 休眠跨多天后唤醒会直接算出当天，一次跳到位。
+     *
+     * 不压栈：时钟跳变不是导航动作，用户不该能按「返回」回到午夜前的昨天。
+     */
+    case "DAY_ROLLOVER": {
+      if (a.today === s.today) return s;
+      const wasCurrent = cur.anchor === normalizeAnchor(cur.kind, s.today);
+      const nextAnchor = normalizeAnchor(cur.kind, a.today);
+      if (!wasCurrent || nextAnchor === cur.anchor) {
+        // 基准前进，anchor 不动。cur 引用保持不变，依赖 cur 的组件不重渲染。
+        return { ...s, today: a.today };
+      }
+      return { ...s, today: a.today, cur: { ...cur, anchor: nextAnchor } };
     }
   }
 }
@@ -183,6 +230,7 @@ function reducer(s: Store, a: Action): Store {
 const StateCtx = createContext<ContextState | null>(null);
 const ActionsCtx = createContext<Actions | null>(null);
 const StackCtx = createContext<number>(0);   // 栈深，供返回按钮判断 disabled
+const TodayCtx = createContext<string | null>(null);   // 全局当日基准
 
 export interface Actions {
   setKind(kind: RangeKind): void;
@@ -198,17 +246,29 @@ export interface Actions {
 }
 
 export function ContextProvider({ children }: { children: ReactNode }) {
-  const [store, dispatch] = useReducer(reducer, undefined, () => ({
-    cur: {
-      page: "overview" as NavKey,
-      kind: "day" as RangeKind,
-      anchor: formatAnchor(new Date()),
-      appId: null,
-      focusHour: null,
-      selectedKey: null,
-    },
-    stack: [],
-  }));
+  const [store, dispatch] = useReducer(reducer, undefined, () => {
+    // 全应用唯一的启动种子：一次读钟，同时种 today 和 anchor。
+    const today = formatAnchor(new Date());
+    return {
+      cur: {
+        page: "overview" as NavKey,
+        kind: "day" as RangeKind,
+        anchor: today,
+        appId: null,
+        focusHour: null,
+        selectedKey: null,
+      },
+      stack: [],
+      today,
+    };
+  });
+
+  // 午夜 / 焦点 / 可见性三个触发器共用这一个函数，不存在第二份跨日逻辑。
+  const syncToday = useCallback(
+    () => dispatch({ t: "DAY_ROLLOVER", today: formatAnchor(new Date()) }),
+    []
+  );
+  useDayRollover(syncToday);
 
   const actions = useMemo<Actions>(() => ({
     setKind:        (kind)   => dispatch({ t: "SET_KIND", kind }),
@@ -225,7 +285,9 @@ export function ContextProvider({ children }: { children: ReactNode }) {
   return (
     <ActionsCtx.Provider value={actions}>
       <StackCtx.Provider value={store.stack.length}>
-        <StateCtx.Provider value={store.cur}>{children}</StateCtx.Provider>
+        <TodayCtx.Provider value={store.today}>
+          <StateCtx.Provider value={store.cur}>{children}</StateCtx.Provider>
+        </TodayCtx.Provider>
       </StackCtx.Provider>
     </ActionsCtx.Provider>
   );
@@ -243,4 +305,19 @@ export function useContextActions(): Actions {
 }
 export function useHistoryDepth(): number {
   return useContext(StackCtx);
+}
+
+/**
+ * 全局当日基准 'YYYY-MM-DD'。
+ *
+ * **这是页面判断「今天是哪一天」的唯一入口。** 不要在组件里写
+ * `new Date()` / `formatAnchor(new Date())` 自己算——那正是跨日错位的成因：
+ * 冻结型（useMemo 空依赖）和实时型两种写法会在午夜后给出互相矛盾的答案。
+ *
+ * 返回值只在日历日翻页时变化，所以依赖它的 useMemo 全天稳定。
+ */
+export function useToday(): string {
+  const v = useContext(TodayCtx);
+  if (!v) throw new Error("useToday 必须在 ContextProvider 内使用");
+  return v;
 }

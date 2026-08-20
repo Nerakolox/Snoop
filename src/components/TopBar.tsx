@@ -1,17 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, Copy, Minus, Square, X } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   useContextState,
   useContextActions,
   useHistoryDepth,
+  useToday,
   KIND_LABEL,
   PAGE_KIND_CAP,
   normalizeAnchor,
   type RangeKind,
 } from "../store/context";
 import type { NavKey } from "./Sidebar";
-import { formatAnchor, toMs } from "../data/ranges";
+import { toMs } from "../data/ranges";
 import { fetchAppRankingInRange } from "../data/client";
 import type { RawAppRank } from "../data/types";
 import { anchorLabel, formatDuration } from "../utils/format";
@@ -39,10 +40,10 @@ export default function TopBar() {
   const actions = useContextActions();
   const historyDepth = useHistoryDepth();
 
-  const now = useMemo(() => new Date(), []);
+  const today = useToday();
   const cap = PAGE_KIND_CAP[page];
 
-  const atCurrentAnchor = normalizeAnchor(kind, formatAnchor(new Date())) === anchor;
+  const atCurrentAnchor = normalizeAnchor(kind, today) === anchor;
 
   // store 只存 bundleId，展示名从这里查。来源：应用列表拉取结果 + 用户主动选择。
   const [appNames, setAppNames] = useState<Record<string, string>>({});
@@ -189,7 +190,7 @@ export default function TopBar() {
           <ChevronLeft size={16} strokeWidth={2} />
         </button>
       </Tooltip>
-      <span className="topbar__anchor-label">{anchorLabel(kind, anchor, now)}</span>
+      <span className="topbar__anchor-label">{anchorLabel(kind, anchor, today)}</span>
       <Tooltip content={atCurrentAnchor ? "没有未来的数据" : "下一个"}>
         <button
           type="button"

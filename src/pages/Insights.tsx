@@ -30,12 +30,13 @@ import {
 import AppIcon from "../components/AppIcon";
 import PageShell from "../components/PageShell";
 import { useToast } from "../components/shared/Toast";
-import { formatAnchor, toMs } from "../data/ranges";
+import { formatAnchor, parseAnchor, toMs } from "../data/ranges";
 import { useRangeData } from "../data/useRangeData";
 import {
   adaptKind,
   normalizeAnchor,
   shiftAnchor,
+  useToday,
   useContextActions,
   useContextState,
   type RangeKind,
@@ -67,14 +68,17 @@ function dateLabelOf(dayMs: number): string {
   return `${d.getMonth() + 1}月${d.getDate()}日`;
 }
 
-/** 范围内该 dow(0=周一) 的最后一天，不晚于今天；没有则返回 null。 */
+/**
+ * 范围内该 dow(0=周一) 的最后一天，不晚于今天；没有则返回 null。
+ * `today` 传全局当日基准（useToday()），不要自己读钟。
+ */
 function lastDateOfDow(
   dowIndex: number,
   startMs: number,
   endMs: number,
-  now: Date
+  today: string
 ): string | null {
-  const nowDayMs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const nowDayMs = parseAnchor(today).getTime();
   const cur = new Date(endMs);
   cur.setHours(0, 0, 0, 0);
   cur.setDate(cur.getDate() - 1); // endMs 是闭右开，范围内最后一天是 endMs 前一天
@@ -104,7 +108,7 @@ function PatternsHeader({
   appId: string | null;
   appName?: string;
 }) {
-  const now = useMemo(() => new Date(), []);
+  const today = useToday();
   return (
     <div className="ins-header">
       <div className="ins-header-titlerow">
@@ -112,7 +116,7 @@ function PatternsHeader({
         {note !== null && <span className="ins-header-note">{note}</span>}
       </div>
       <p className="ins-header-subtitle">
-        {anchorLabel(kind, anchor, now)} · {daysWithData} 天数据
+        {anchorLabel(kind, anchor, today)} · {daysWithData} 天数据
         {appId ? ` · 已筛选 ${appName ?? appId}` : ""}
       </p>
     </div>
@@ -125,8 +129,9 @@ export default function Insights() {
   const { kind, anchor, appId } = useContextState();
   const actions = useContextActions();
   const toast = useToast();
+  const today = useToday();
 
-  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("patterns", { kind, anchor });
+  const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("patterns", { kind, anchor }, today);
 
   // 全量（未按 app 过滤）——App 排行要看全站数据
   const { buckets: allBuckets } = useRangeData(viewKind, viewAnchor, null);
@@ -148,10 +153,7 @@ export default function Insights() {
   const baseThreshold = viewKind === "week" ? 120 : 600;
 
   const range = useMemo(() => toMs(viewKind, viewAnchor), [viewKind, viewAnchor]);
-  const todayMs = useMemo(() => {
-    const n = new Date();
-    return new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
-  }, []);
+  const todayMs = useMemo(() => parseAnchor(today).getTime(), [today]);
 
   const daysWithData = daysWithDataOf(buckets);
   const appName =
@@ -159,7 +161,7 @@ export default function Insights() {
       ? undefined
       : allBuckets.find((b) => b.app_bundle_id === appId)?.app_name ?? appId;
 
-  const isCurrentAnchor = viewAnchor === normalizeAnchor(viewKind, formatAnchor(new Date()));
+  const isCurrentAnchor = viewAnchor === normalizeAnchor(viewKind, today);
 
   function goToApp(bundleId: string, name: string) {
     actions.navigate({ page: "overview", appId: bundleId });
@@ -198,7 +200,7 @@ export default function Insights() {
   }, [range]);
 
   function goToRhythmCell(ri: number, ci: number) {
-    const dayAnchor = lastDateOfDow(ri, range.start_ms, range.end_ms, new Date());
+    const dayAnchor = lastDateOfDow(ri, range.start_ms, range.end_ms, today);
     if (dayAnchor === null) return;
     actions.navigate({ page: "timeline", kind: "day", anchor: dayAnchor, focusHour: ci });
     toast.show({ message: "已跳转到时间线", undoLabel: "返回" });
@@ -230,8 +232,9 @@ export default function Insights() {
   // 近 14 天键鼠比趋势——恒相对“今天”，与当前查看的范围无关，故不能走 useRangeData
   const [trend14, setTrend14] = useState<Array<{ dayMs: number; ratio: number }>>([]);
   useEffect(() => {
-    const end = new Date();
-    end.setHours(0, 0, 0, 0);
+    // 窗口相对全局基准算，不自己读钟——否则跨日后这个 effect（依赖只有 appId）
+    // 永远不会重算，趋势图会一直停在旧的 14 天。
+    const end = parseAnchor(today);
     end.setDate(end.getDate() + 1); // 明天 0 点，闭右开
     const start = new Date(end);
     start.setDate(start.getDate() - 14);
@@ -262,7 +265,7 @@ export default function Insights() {
     return () => {
       cancelled = true;
     };
-  }, [appId]);
+  }, [appId, today]);
   const maxTrend14Ratio = Math.max(...trend14.map((d) => d.ratio), 0.0001);
 
   // ---- 活跃趋势柱状图 --------------------------------------------------------
@@ -313,8 +316,8 @@ export default function Insights() {
 
   const topRhythmAnchor = useMemo(() => {
     if (!topRhythmCell) return null;
-    return lastDateOfDow(topRhythmCell.ri, range.start_ms, range.end_ms, new Date());
-  }, [topRhythmCell, range]);
+    return lastDateOfDow(topRhythmCell.ri, range.start_ms, range.end_ms, today);
+  }, [topRhythmCell, range, today]);
 
   const homeAppShare = useMemo(() => {
     if (apps.length === 0) return null;

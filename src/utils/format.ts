@@ -1,16 +1,21 @@
 import { DAY_MS, formatAnchor, parseAnchor } from "../data/ranges";
 import { normalizeAnchor, type RangeKind } from "../store/context";
 
-/** 顶栏 anchor 导航与概览页头共用的范围文案：今天 / 昨天 / 具体日期 / 本周 / 区间 / 本月 / 年月。 */
-export function anchorLabel(kind: RangeKind, anchor: string, now: Date): string {
-  const today = formatAnchor(now);
-
+/**
+ * 顶栏 anchor 导航与概览页头共用的范围文案：今天 / 昨天 / 具体日期 / 本周 / 区间 / 本月 / 年月。
+ *
+ * `today` 传全局当日基准（useToday()），**不要传 `new Date()`**。
+ * 这里只用到年月日、从不读时分秒，所以参数类型就是 'YYYY-MM-DD' 字符串——
+ * 让类型如实表达依赖，顺便让「各自读时钟」这种写法压根编译不过。
+ */
+export function anchorLabel(kind: RangeKind, anchor: string, today: string): string {
   if (kind === "day") {
     if (anchor === today) return "今天";
-    const yesterday = formatAnchor(new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1));
+    const t = parseAnchor(today);
+    const yesterday = formatAnchor(new Date(t.getFullYear(), t.getMonth(), t.getDate() - 1));
     if (anchor === yesterday) return "昨天";
     const d = parseAnchor(anchor);
-    return d.getFullYear() === now.getFullYear()
+    return d.getFullYear() === t.getFullYear()
       ? `${d.getMonth() + 1}月${d.getDate()}日`
       : `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
   }
