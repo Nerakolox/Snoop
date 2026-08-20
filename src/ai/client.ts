@@ -7,6 +7,8 @@ import type {
   AiConfig,
   AiConfigView,
   AuditRecord,
+  ClassifyOutcome,
+  ClassifyStatus,
   FeatureDecl,
   TestResult,
 } from "./types";
@@ -50,4 +52,14 @@ export function callAi(
   jsonMode = false,
 ): Promise<AiCallResult> {
   return invoke<AiCallResult>("call_ai", { featureId, payload, jsonMode });
+}
+
+/** 触发应用分类。force=true 对应「立即分类」，跳过攒批阈值。 */
+export function classifyApps(force = false): Promise<ClassifyOutcome> {
+  return invoke<ClassifyOutcome>("classify_apps", { force });
+}
+
+/** 应用分类队列状态。 */
+export function getClassifyStatus(): Promise<ClassifyStatus> {
+  return invoke<ClassifyStatus>("get_classify_status");
 }

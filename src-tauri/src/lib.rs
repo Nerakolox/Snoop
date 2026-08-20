@@ -91,6 +91,8 @@ pub fn run() {
             ai::commands::get_ai_features,
             ai::commands::test_ai_connection,
             ai::commands::call_ai,
+            app_classify::commands::classify_apps,
+            app_classify::commands::get_classify_status,
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]
@@ -197,6 +199,7 @@ pub fn run() {
 
             let icon_cache = icon_cache::IconCache::new(icon_cache_dir);
 
+            let classify_db_path = db_path.clone();
             app.manage(commands::DbPath(db_path));
             app.manage(settings);
             app.manage(icon_cache);
@@ -208,7 +211,26 @@ pub fn run() {
                 app_data_dir.join("ai_key.dat"),
                 app_data_dir.join("ai_code_map.json"),
             );
-            app.manage(std::sync::Arc::new(ai_state));
+            let ai_state = std::sync::Arc::new(ai_state);
+            app.manage(ai_state.clone());
+
+            // 后台轮询触发 AI 应用分类（攒批 / 24h 过期；手动「立即分类」走前端命令）。
+            {
+                let bg_ai = ai_state.clone();
+                let bg_db = classify_db_path.clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        tokio::time::sleep(Duration::from_secs(10 * 60)).await;
+                        let _ = app_classify::engine::classify_if_due(
+                            &bg_ai.config,
+                            &bg_ai.code_map,
+                            &bg_db,
+                            false,
+                        )
+                        .await;
+                    }
+                });
+            }
 
             // Windows release 自启自愈:若注册表里已有自启项,用当前 exe 路径覆盖一次。
             // 用途是修 dev 期开过自启、后来装了正式版的老用户 —— 注册表里那条 Run 项

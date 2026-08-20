@@ -10,6 +10,8 @@
 #![allow(dead_code)]
 
 pub mod builtin;
+pub mod commands;
+pub mod engine;
 pub mod store;
 
 use serde::{Deserialize, Serialize};

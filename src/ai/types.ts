@@ -56,3 +56,18 @@ export interface AiCallResult {
   content: string | null;
   reason: string | null;
 }
+
+/** classify_apps 的返回。status 取值见后端 ClassifyOutcome。 */
+export interface ClassifyOutcome {
+  status: string;
+  queue_len: number;
+  classified: number;
+  message: string;
+}
+
+/** get_classify_status 的返回。 */
+export interface ClassifyStatus {
+  queue_len: number;
+  last_classified_at_ms: number | null;
+  running: boolean;
+}

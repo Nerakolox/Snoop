@@ -21,6 +21,7 @@ import {
   Server,
   Send,
   Sparkles,
+  Tag,
 } from "lucide-react";
 import {
   getAiConfig,
@@ -31,8 +32,10 @@ import {
   queryAiAudit,
   exportAiAudit,
   clearAiAudit,
+  classifyApps,
+  getClassifyStatus,
 } from "../../ai/client";
-import type { AiConfigView, AuditRecord, FeatureDecl, Tier } from "../../ai/types";
+import type { AiConfigView, AuditRecord, ClassifyStatus, FeatureDecl, Tier } from "../../ai/types";
 
 const TIER_ORDER: Tier[] = ["T0", "T1", "T2", "T3"];
 
@@ -71,6 +74,11 @@ export default function AISettings() {
   const [expanded, setExpanded] = useState<number | null>(null);
   const [confirmClearAudit, setConfirmClearAudit] = useState(false);
 
+  // 应用分类：队列状态 + 「立即分类」按钮
+  const [classify, setClassify] = useState<ClassifyStatus | null>(null);
+  const [classifyMsg, setClassifyMsg] = useState("");
+  const [classifying, setClassifying] = useState(false);
+
   const featureLabel = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of features) m.set(f.id, f.label);
@@ -95,6 +103,7 @@ export default function AISettings() {
       })
       .catch(console.error);
     getAiFeatures().then(setFeatures).catch(console.error);
+    getClassifyStatus().then(setClassify).catch(console.error);
     reloadAudit();
   }, []);
 
@@ -156,6 +165,34 @@ export default function AISettings() {
   function toggleFeature(id: string, v: boolean) {
     persist({ enabled_features: { ...(config?.enabled_features ?? {}), [id]: v } });
   }
+
+  async function runClassify() {
+    if (classifying) return;
+    setClassifying(true);
+    setClassifyMsg("");
+    try {
+      const r = await classifyApps(true);
+      setClassifyMsg(r.message);
+      setClassify(await getClassifyStatus());
+      reloadAudit();
+    } catch (e) {
+      setClassifyMsg(String(e));
+    } finally {
+      setClassifying(false);
+    }
+  }
+
+  const classifyDesc = classifyMsg
+    ? classifyMsg
+    : classify
+      ? classify.queue_len === 0
+        ? "暂无待分类的应用"
+        : `待分类 ${classify.queue_len} 个应用${
+            classify.last_classified_at_ms
+              ? ` · 上次 ${fmtTime(classify.last_classified_at_ms)}`
+              : ""
+          }`
+      : "加载中…";
 
   async function handleExportAudit() {
     try {
@@ -398,6 +435,23 @@ export default function AISettings() {
             <span className="setting-row-desc">加载中…</span>
           </div>
         )}
+
+        <div className="ai-row">
+          <div className="ai-row-left">
+            <span className="setting-row-label">应用分类</span>
+            <span className="setting-row-desc">{classifyDesc}</span>
+          </div>
+          <div className="ai-row-right">
+            <button
+              className="setting-btn"
+              onClick={runClassify}
+              disabled={classifying || !configured || classify?.running === true}
+            >
+              {classifying ? <Loader2 size={13} className="is-spin" /> : <Tag size={13} />}
+              {classifying ? "分类中…" : "立即分类"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* ── 发送记录 ─────────────────────────────────────────── */}
