@@ -7,10 +7,12 @@ import Timeline from "./pages/Timeline";
 import Keyboard from "./pages/Keyboard";
 import Insights from "./pages/Insights";
 import Settings from "./pages/Settings";
+import Ai from "./pages/Ai";
 import Dev from "./pages/Dev";
 import KeymapTest from "./pages/KeymapTest";
 import { useContextState, useContextActions } from "./store/context";
 import { TopBarToolsProvider } from "./components/topbar/TopBarToolsContext";
+import { useAiEnabled } from "./ai/master";
 
 // 两段动画：先淡出旧页（旧内容往上飞），换页并等新页 layout 完成，
 // 再淡入新页（新内容从下方浮上）
@@ -27,6 +29,8 @@ function renderPage(key: NavKey) {
       return <Keyboard />;
     case "patterns":
       return <Insights />;
+    case "ai":
+      return <Ai />;
     case "settings":
       return <Settings />;
     case "dev":
@@ -41,6 +45,7 @@ type Phase = "idle" | "leaving" | "entering-start" | "entering";
 export default function App() {
   const { page } = useContextState();
   const actions = useContextActions();
+  const [aiEnabled] = useAiEnabled();
   const [displayed, setDisplayed] = useState<NavKey>(page);
   const [phase, setPhase] = useState<Phase>("idle");
   const [transitionEnabled, setTransitionEnabled] = useState(
@@ -56,6 +61,13 @@ export default function App() {
     window.addEventListener("page-transition-change", handler);
     return () => window.removeEventListener("page-transition-change", handler);
   }, []);
+
+  // 总开关关闭时若还停在「AI」页，跳回概览（覆盖「停在 AI 页时关掉开关」的防御路径）。
+  useEffect(() => {
+    if (page === "ai" && !aiEnabled) {
+      actions.navigate({ page: "overview" });
+    }
+  }, [page, aiEnabled, actions]);
 
   useEffect(() => {
     const unlistenPromise = listen<string>("menu-navigate", (event) => {

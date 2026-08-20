@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Clock, Keyboard, Lightbulb, Settings, Database, TestTube } from "lucide-react";
+import { BarChart3, Clock, Keyboard, Lightbulb, Settings, Database, TestTube, Sparkles } from "lucide-react";
 import SidebarLive from "./sidebar/SidebarLive";
+import { useAiEnabled } from "../ai/master";
 
-export type NavKey = "overview" | "timeline" | "input" | "patterns" | "settings" | "dev" | "keymap-test";
+export type NavKey = "overview" | "timeline" | "input" | "patterns" | "ai" | "settings" | "dev" | "keymap-test";
 
 type NavItem = { key: NavKey; label: string; icon: React.ReactNode };
 
@@ -18,6 +19,7 @@ const DEV_ITEMS: NavItem[] = [
   { key: "keymap-test", label: "键盘映射测试", icon: <TestTube size={18} /> },
 ];
 const SETTINGS_ITEM: NavItem = { key: "settings", label: "设置", icon: <Settings size={18} /> };
+const AI_ITEM: NavItem = { key: "ai", label: "AI", icon: <Sparkles size={18} /> };
 
 type Props = {
   active: NavKey;
@@ -26,6 +28,7 @@ type Props = {
 
 export default function Sidebar({ active, onSelect }: Props) {
   const [devMode, setDevMode] = useState(() => localStorage.getItem("dev_mode") === "true");
+  const [aiEnabled] = useAiEnabled();
 
   useEffect(() => {
     const handleDevModeChange = (e: CustomEvent<boolean>) => {
@@ -63,9 +66,14 @@ export default function Sidebar({ active, onSelect }: Props) {
         </div>
       )}
 
+      <div className="sidebar-section sidebar-section--config" data-tauri-drag-region>
+        <div className="sidebar-section-title" data-tauri-drag-region>配置</div>
+        {aiEnabled && renderItem(AI_ITEM)}
+        {renderItem(SETTINGS_ITEM)}
+      </div>
+
       <div className="sidebar-bottom" data-tauri-drag-region>
         <SidebarLive />
-        {renderItem(SETTINGS_ITEM)}
       </div>
     </aside>
   );

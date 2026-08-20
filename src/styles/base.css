@@ -269,6 +269,18 @@ body[data-platform="macos"] .sidebar-nav {
   gap: var(--space-1);
 }
 
+/* 配置组（AI / 设置）：顶部分隔线把数据视图与配置项隔开，视觉同 .sidebar-bottom */
+.sidebar-section--config {
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+  padding-top: var(--space-4);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar-section--config {
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+}
+
 .sidebar-section-title {
   font-size: var(--text-xs);
   font-weight: 600;

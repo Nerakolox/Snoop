@@ -13,8 +13,6 @@ import {
 import { resetAppIconCache } from "../components/AppIcon";
 import PageShell from "../components/PageShell";
 import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELayoutPicker";
-import AISettings from "../components/ai/AISettings";
-import AppCategories from "../components/ai/AppCategories";
 import { useAiEnabled } from "../ai/master";
 
 type UpdateState =
@@ -425,13 +423,6 @@ export default function Settings() {
             </div>
           </div>
         </SettingRow>
-      </div>
-
-      <AISettings />
-
-      <div className="settings-group">
-        <div className="settings-group-title">应用分类</div>
-        <AppCategories />
       </div>
 
       <div className="settings-group">

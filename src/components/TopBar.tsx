@@ -28,6 +28,7 @@ const PAGE_LABEL: Record<NavKey, string> = {
   timeline: "时间线",
   input: "输入",
   patterns: "规律",
+  ai: "AI",
   settings: "设置",
   dev: "原始数据",
   "keymap-test": "键盘映射测试",
