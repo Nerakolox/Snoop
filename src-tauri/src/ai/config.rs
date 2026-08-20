@@ -19,6 +19,11 @@ pub struct AiConfig {
     pub model: String,
     pub tier: Tier,
     pub window_titles_enabled: bool,
+    /// 「AI 功能」总开关：关闭时一切 AI 调用在信封层直接退回 T0。
+    /// `#[serde(default)]` 保证老配置文件（无此字段）缺省关闭，而不是
+    /// 反序列化失败 → 整体回落 default，把已配置的 base_url/model/tier 清空。
+    #[serde(default)]
+    pub enabled: bool,
     /// 功能开关：feature_id → 是否启用。缺省视为启用（空 map = 全开）。
     pub enabled_features: HashMap<String, bool>,
 }
@@ -30,6 +35,7 @@ impl Default for AiConfig {
             model: String::new(),
             tier: Tier::T1,
             window_titles_enabled: false,
+            enabled: false,
             enabled_features: HashMap::new(),
         }
     }

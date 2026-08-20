@@ -18,6 +18,8 @@ export interface AiConfig {
   model: string;
   tier: Tier;
   window_titles_enabled: boolean;
+  /** 「AI 功能」总开关：关闭时一切 AI 调用在后端信封层退回 T0。 */
+  enabled: boolean;
   enabled_features: Record<string, boolean>;
 }
 

@@ -342,28 +342,34 @@ pub async fn call_ai(
         return degraded(format!("未知的 AI 功能：{feature_id}"));
     };
 
-    // 2) 读配置 + 功能开关
+    // 2) 总开关：关闭时一切 AI 调用立即停止，退回 T0（不区分功能）。
     let cfg = config.get();
+    if !cfg.enabled {
+        audit_not_sent(db_path, &feature_id, "ai_disabled");
+        return degraded("AI 功能总开关已关闭");
+    }
+
+    // 3) 功能开关
     if !cfg.feature_enabled(&feature_id) {
         audit_not_sent(db_path, &feature_id, "feature_disabled");
         return degraded("该功能已被用户关闭");
     }
 
-    // 3) 生效 tier：取更严者，不足则不发请求
+    // 4) 生效 tier：取更严者，不足则不发请求
     let Some(effective) = effective_tier(decl.required_tier, cfg.tier, cfg.window_titles_enabled) else {
         let reason = format!("需要 {}，但当前天花板为 {}", decl.required_tier.label(), cfg.tier.label());
         audit_not_sent(db_path, &feature_id, "tier_insufficient");
         return degraded(reason);
     };
 
-    // 4) 未配置 API → 不发请求
+    // 5) 未配置 API → 不发请求
     let svc = config.service_config();
     if !svc.is_configured() {
         audit_not_sent(db_path, &feature_id, "not_configured");
         return degraded("尚未配置 API（缺少 Key 或模型）");
     }
 
-    // 5) 裁剪 + 准备回映对（锁仅覆盖同步裁剪，不跨 await）
+    // 6) 裁剪 + 准备回映对（锁仅覆盖同步裁剪，不跨 await）
     let (trimmed, pairs) = {
         let mut map = code_map.lock().unwrap();
         let trimmed = trim_payload(&payload, effective, &mut map);
@@ -371,7 +377,7 @@ pub async fn call_ai(
         (trimmed, pairs)
     };
 
-    // 6) 组装消息
+    // 7) 组装消息
     let system_prompt = trimmed
         .get("system_prompt")
         .and_then(|v| v.as_str())
@@ -395,12 +401,12 @@ pub async fn call_ai(
     }))
     .ok();
 
-    // 7) 发请求
+    // 8) 发请求
     let start = audit::now_ms();
     let result = provider::chat_completion(&svc, &messages, json_mode).await;
     let duration = audit::now_ms() - start;
 
-    // 8) 记审计 + 回映代号 → 返回
+    // 9) 记审计 + 回映代号 → 返回
     match result {
         Ok(resp) => {
             let content = resolve_codes(&resp.content, &pairs);

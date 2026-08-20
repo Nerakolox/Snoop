@@ -8,13 +8,14 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import {
   Sun, Moon, Monitor, Power, Minimize2,
-  Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code, Hammer,
+  Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code,
 } from "lucide-react";
 import { resetAppIconCache } from "../components/AppIcon";
 import PageShell from "../components/PageShell";
 import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELayoutPicker";
 import AISettings from "../components/ai/AISettings";
 import AppCategories from "../components/ai/AppCategories";
+import { useAiEnabled } from "../ai/master";
 
 type UpdateState =
   | { status: "idle" }
@@ -27,7 +28,6 @@ type UpdateState =
 
 type ThemeMode = "system" | "light" | "dark";
 type CloseMode = "tray" | "quit";
-type SnarkyLevel = "mild" | "normal" | "savage";
 
 interface AppSettings {
   collection_paused: boolean;
@@ -101,12 +101,6 @@ export default function Settings() {
   const [theme, setTheme] = useState<ThemeMode>(() =>
     (localStorage.getItem("theme") as ThemeMode) ?? "system"
   );
-  const [snarky, setSnarky] = useState<SnarkyLevel>(() =>
-    (localStorage.getItem("snarky") as SnarkyLevel) ?? "normal"
-  );
-  const [catEnabled, setCatEnabled] = useState(() =>
-    localStorage.getItem("cat_enabled") !== "false"
-  );
   const [devMode, setDevMode] = useState(() =>
     localStorage.getItem("dev_mode") === "true"
   );
@@ -130,6 +124,7 @@ export default function Settings() {
   const [version, setVersion] = useState<string>("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
   const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
+  const [aiEnabled, setAiEnabled] = useAiEnabled();
 
   function handleLayoutChange(id: string) {
     setLayoutId(id);
@@ -185,16 +180,6 @@ export default function Settings() {
     const next = { ...settings, ...patch };
     setSettings(next);
     invoke("save_settings", { settings: next }).catch(console.error);
-  }
-
-  function saveCat(v: boolean) {
-    setCatEnabled(v);
-    localStorage.setItem("cat_enabled", String(v));
-  }
-
-  function saveSnarky(v: SnarkyLevel) {
-    setSnarky(v);
-    localStorage.setItem("snarky", v);
   }
 
   async function toggleAutostart(v: boolean) {
@@ -457,33 +442,15 @@ export default function Settings() {
         </SettingRow>
       </div>
 
-      <div className="settings-group is-wip">
-        <div className="settings-group-title">猫</div>
+      <div className="settings-group">
+        <div className="settings-group-title">AI 功能</div>
 
-        <div className="settings-group-wip-body">
-          <div className="settings-group-wip-inner" aria-hidden="true">
-            <SettingRow label="吐槽开关" desc="关闭后各页面不显示猫的吐槽">
-              <Toggle checked={catEnabled} onChange={saveCat} />
-            </SettingRow>
-
-            <SettingRow label="毒舌程度" desc="影响吐槽文案的风格">
-              <SegmentedControl<SnarkyLevel>
-                value={snarky}
-                onChange={saveSnarky}
-                options={[
-                  { value: "mild", label: "温和" },
-                  { value: "normal", label: "正常" },
-                  { value: "savage", label: "毒舌" },
-                ]}
-              />
-            </SettingRow>
-          </div>
-
-          <div className="settings-group-wip-mask">
-            <Hammer size={18} />
-            <span>施工中</span>
-          </div>
-        </div>
+        <SettingRow
+          label="AI 功能"
+          desc="启用后侧栏会出现「AI」页。AI 功能需要将部分使用数据发送到你配置的服务商，具体范围由你在 AI 页选择，可随时查看完整发送记录。"
+        >
+          <Toggle checked={aiEnabled} onChange={setAiEnabled} />
+        </SettingRow>
       </div>
 
       <div className="settings-group">

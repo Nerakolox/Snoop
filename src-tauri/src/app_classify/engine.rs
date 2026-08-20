@@ -370,6 +370,11 @@ pub async fn poll_once(
     code_map: &Mutex<AiCodeMap>,
     db_path: &Path,
 ) -> bool {
+    // 0) 总开关关闭：后台轮询直接短路。分类走 call_ai 时信封层还会再拦一道，
+    //    这里提前返回是为了避免每 10 分钟对已禁用状态反复尝试、往审计日志灌 ai_disabled。
+    if !config.get().enabled {
+        return false;
+    }
     // 1) 有新 app → 先重算一次缓存（消费脏标记，清掉后再读才准确）。
     if PENDING_DIRTY.swap(false, Ordering::SeqCst) {
         refresh_pending(db_path);

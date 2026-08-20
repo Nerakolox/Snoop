@@ -53,6 +53,7 @@ pub struct AiConfigView {
     pub model: String,
     pub tier: Tier,
     pub window_titles_enabled: bool,
+    pub enabled: bool,
     pub enabled_features: std::collections::HashMap<String, bool>,
     pub has_key: bool,
 }
@@ -65,6 +66,7 @@ pub fn get_ai_config(state: State<'_, Arc<AiState>>) -> AiConfigView {
         model: cfg.model,
         tier: cfg.tier,
         window_titles_enabled: cfg.window_titles_enabled,
+        enabled: cfg.enabled,
         enabled_features: cfg.enabled_features,
         has_key: state.config.has_key(),
     }
