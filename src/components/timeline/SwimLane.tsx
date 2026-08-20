@@ -4,18 +4,17 @@
  * 子组件只负责渲染。
  */
 
-import type { CSSProperties, RefObject } from "react";
+import type { RefObject } from "react";
 import AppIcon from "../AppIcon";
 import type { AppLane, TimeBlock, Tick } from "../../analytics";
 import type { HoveredBlock } from "./TimelineTooltip";
+import type { TimeScale } from "../../hooks/useTimeScale";
 import Tooltip from "../shared/Tooltip";
 
 type SwimLaneProps = {
   lane: AppLane;
   ticks: Tick[];
-  virtToPct: (v: number) => number;
-  blockStyle: (block: TimeBlock) => CSSProperties;
-  isBlockVisible: (block: TimeBlock) => boolean;
+  scale: TimeScale;
   /** 轨道 DOM ref —— 主组件用它做视口 rect 测量，用于滚轮缩放和拖拽 */
   trackRef: RefObject<HTMLDivElement | null>;
   onHoverBlock: (hovered: HoveredBlock | null) => void;
@@ -28,9 +27,7 @@ type SwimLaneProps = {
 export default function SwimLane({
   lane,
   ticks,
-  virtToPct,
-  blockStyle,
-  isBlockVisible,
+  scale,
   trackRef,
   onHoverBlock,
   dimmed,
@@ -54,17 +51,17 @@ export default function SwimLane({
           <div
             key={tk.time_ms}
             className="swimlane-grid-line"
-            style={{ left: `${virtToPct(tk.virt)}%` }}
+            style={{ left: `${scale.toPct(tk.virt)}%` }}
           />
         ))}
-        {lane.blocks.filter(isBlockVisible).map((block, i) => (
+        {lane.blocks.filter((b) => scale.isVisible(b.start_ms, b.end_ms)).map((block, i) => (
           <div
             key={i}
             className="swimlane-block"
             role="button"
             tabIndex={0}
             style={{
-              ...blockStyle(block),
+              ...scale.blockStyle(block.start_ms, block.end_ms),
               background: lane.color,
             }}
             onMouseEnter={(e) => {

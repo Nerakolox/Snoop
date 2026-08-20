@@ -12,7 +12,6 @@
  */
 
 import { useEffect, useMemo, useState, useRef, useCallback } from "react";
-import type { CSSProperties } from "react";
 import { Calendar, Maximize2, Minimize2 } from "lucide-react";
 import { fetchBucketsInRange } from "../data";
 import { formatAnchor, toMs } from "../data/ranges";
@@ -27,6 +26,7 @@ import {
 import PageShell from "../components/PageShell";
 import TimelineTooltip from "../components/timeline/TimelineTooltip";
 import SwimLane from "../components/timeline/SwimLane";
+import { useTimeScale } from "../hooks/useTimeScale";
 import { useToast } from "../components/shared/Toast";
 import Tooltip from "../components/shared/Tooltip";
 import { useTopBarTools } from "../components/topbar/TopBarToolsContext";
@@ -138,7 +138,8 @@ export default function Timeline() {
     return { start: viewport.start, end: viewport.end };
   }, [viewport, segmentsData.totalVirt]);
 
-  const viewSpan = viewRange.end - viewRange.start;
+  // 时间 → 横向百分比换算统一入口（供刻度/色块/强度曲线/空白带共享）
+  const scale = useTimeScale(segmentsData.segments, viewRange);
 
   const ticks = useMemo(
     () => buildTicks(segmentsData.segments, viewRange.start, viewRange.end),
@@ -370,29 +371,6 @@ export default function Timeline() {
     updateFadeMasks();
   }, [viewport, lanes, updateFadeMasks]);
 
-  // ---- 位置换算：统一入口 ---------------------------------------------------
-
-  /** 虚拟坐标 → 视口内百分比（左侧 %） */
-  function virtToPct(v: number): number {
-    if (viewSpan <= 0) return 0;
-    return ((v - viewRange.start) / viewSpan) * 100;
-  }
-
-  function blockStyle(block: TimeBlock): CSSProperties {
-    const vs = timeToVirt(block.start_ms, segmentsData.segments);
-    const ve = timeToVirt(block.end_ms, segmentsData.segments);
-    const left = virtToPct(vs);
-    const width = Math.max(virtToPct(ve) - left, 0.3);
-    return { left: `${left}%`, width: `${width}%` };
-  }
-
-  function isBlockVisible(block: TimeBlock): boolean {
-    // 直接用真实时间判断可见性（避免非必要 timeToVirt 调用）
-    const vs = timeToVirt(block.start_ms, segmentsData.segments);
-    const ve = timeToVirt(block.end_ms, segmentsData.segments);
-    return ve >= viewRange.start && vs <= viewRange.end;
-  }
-
   // 拖拽平移松手时会在同一位置触发 click，需按位移量区分「点击」与「拖拽后松手」
   function isClickNotDrag(e: React.MouseEvent): boolean {
     const s = dragStartRef.current;
@@ -419,8 +397,7 @@ export default function Timeline() {
 
   const gapBands = useMemo(() => {
     return segmentsData.virtGaps.map((g) => {
-      const left = virtToPct(g.virt_start);
-      const width = virtToPct(g.virt_end) - left;
+      const { left, width } = scale.bandStyle(g.virt_start, g.virt_end);
       const durationMs = g.time_end - g.time_start;
       return {
         key: `${g.time_start}-${g.time_end}`,
@@ -432,7 +409,7 @@ export default function Timeline() {
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [segmentsData, viewRange.start, viewRange.end]);
+  }, [segmentsData, scale]);
 
   // 强度曲线：SVG viewBox 高度，与 CSS 里 .swimlane-intensity-track 的高度对应
   const CURVE_VB_H = 32;
@@ -440,16 +417,16 @@ export default function Timeline() {
   // 按小时的活跃强度 —— 复用 Batch 2 的 intensityByHourFromBuckets，不新写聚合
   const hourlyIntensity = useMemo(() => intensityByHourFromBuckets(buckets), [buckets]);
 
-  // x 坐标统一走 timeToVirt + virtToPct，与刻度尺/色块共用同一套映射
+  // x 坐标统一走 scale.timeToPct，与刻度尺/色块共用同一套映射
   const curvePoints = useMemo(() => {
     return hourlyIntensity.map((level, hour) => {
       const t = range.start_ms + hour * 3_600_000;
-      const x = virtToPct(timeToVirt(t, segmentsData.segments));
+      const x = scale.timeToPct(t);
       const y = CURVE_VB_H - 2 - (level / 4) * (CURVE_VB_H - 4);
       return { hour, level, x, y };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hourlyIntensity, range.start_ms, segmentsData, viewRange.start, viewRange.end]);
+  }, [hourlyIntensity, range.start_ms, scale]);
 
   const curvePathD = useMemo(
     () => curvePoints.map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`).join(" "),
@@ -579,7 +556,7 @@ export default function Timeline() {
                 <div
                   key={tk.time_ms}
                   className="swimlane-tick"
-                  style={{ left: `${virtToPct(tk.virt)}%` }}
+                  style={{ left: `${scale.toPct(tk.virt)}%` }}
                 >
                   {tk.label}
                 </div>
@@ -639,7 +616,7 @@ export default function Timeline() {
                   >
                     <div
                       className="swimlane-gap-band"
-                      style={{ left: `${g.left}%`, width: `${g.width}%` }}
+                      style={{ left: g.left, width: g.width }}
                     >
                       <span className="swimlane-gap-label">
                         空闲 {formatDuration(g.durationMs)}
@@ -657,9 +634,7 @@ export default function Timeline() {
                   key={lane.app_bundle_id}
                   lane={lane}
                   ticks={ticks}
-                  virtToPct={virtToPct}
-                  blockStyle={blockStyle}
-                  isBlockVisible={isBlockVisible}
+                  scale={scale}
                   trackRef={trackRef}
                   onHoverBlock={setHoveredBlock}
                   dimmed={appId !== null && lane.app_bundle_id !== appId}
