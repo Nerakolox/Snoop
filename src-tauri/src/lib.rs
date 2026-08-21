@@ -242,9 +242,10 @@ pub fn run() {
 
             // 每天首次启动时后台生成「昨天」的日报（记录太少 / 无记录跳过，见 report::maybe_generate_yesterday）。
             {
+                let report_ai = ai_state.clone();
                 let report_db = classify_db_path.clone();
                 tauri::async_runtime::spawn(async move {
-                    report::maybe_generate_yesterday(&report_db);
+                    report::maybe_generate_yesterday(&report_ai.config, &report_ai.code_map, &report_db).await;
                 });
             }
 

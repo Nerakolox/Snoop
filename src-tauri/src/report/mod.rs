@@ -12,14 +12,24 @@ pub mod narrative;
 pub mod store;
 
 use std::path::Path;
+use std::sync::Mutex;
+
+use crate::ai::config::AiConfigState;
+use crate::ai::envelope::AiCodeMap;
 
 use store::MIN_ACTIVE_MS;
 
-/// 每天首次启动时后台生成「昨天」的日报（执行单 Task 2）。
+/// 每天首次启动时后台生成「昨天」的日报（执行单 Task 2 / Task 3）。
 ///
-/// 流程：已生成则跳过 → 计算 → 三档分流（无记录不落行 / 记录太少落 `too_little` /
-/// 正常落 `ok` 并配模板叙事）。Task 3 会把模板叙事升级为 AI 叙事。
-pub fn maybe_generate_yesterday(db_path: &Path) {
+/// 流程：已生成则跳过 → 计算 → 三档分流：
+/// - 无记录（当天 0 桶）→ 不落行；
+/// - 记录太少（活跃 < 30 分钟）→ 落 `too_little` 行，不调 AI；
+/// - 正常 → 落 `ok` 行，叙事走 AI（`ai.daily-report`），失败回落模板。
+pub async fn maybe_generate_yesterday(
+    config: &AiConfigState,
+    code_map: &Mutex<AiCodeMap>,
+    db_path: &Path,
+) {
     let conn = match rusqlite::Connection::open(db_path) {
         Ok(c) => c,
         Err(e) => {
@@ -56,15 +66,11 @@ pub fn maybe_generate_yesterday(db_path: &Path) {
     }
 
     // 记录太少：落 too_little 行，不调 AI。
-    let (status, narrative) = if report.active_ms < MIN_ACTIVE_MS {
-        ("too_little", None)
+    let (status, narrative, narrative_source) = if report.active_ms < MIN_ACTIVE_MS {
+        ("too_little", None, None)
     } else {
-        ("ok", Some(narrative::template_narrative(&report)))
-    };
-    let narrative_source = if status == "ok" {
-        Some("template".to_string())
-    } else {
-        None
+        let (text, source) = narrative::generate_narrative(config, code_map, db_path, &report).await;
+        ("ok", Some(text), Some(source))
     };
 
     let row = store::ReportRow {
