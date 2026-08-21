@@ -6,6 +6,27 @@ use tauri::State;
 pub struct DbPath(pub PathBuf);
 
 #[derive(Serialize)]
+pub struct AccessibilityStatus {
+    pub granted: bool,
+    pub reason: &'static str,
+}
+
+/// 当前进程是否已获「辅助功能」权限（macOS 键鼠采集的先决条件）。
+/// 非 macOS 平台无此概念，恒返回 granted=true（前端据此不显示横幅）。
+#[tauri::command]
+pub fn get_accessibility_status() -> AccessibilityStatus {
+    #[cfg(target_os = "macos")]
+    let (granted, reason) = if crate::platform::is_accessibility_trusted() {
+        (true, "granted")
+    } else {
+        (false, "untrusted")
+    };
+    #[cfg(not(target_os = "macos"))]
+    let (granted, reason) = (true, "granted");
+    AccessibilityStatus { granted, reason }
+}
+
+#[derive(Serialize)]
 pub struct Bucket {
     pub id: i64,
     pub bucket_start: i64,

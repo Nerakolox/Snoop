@@ -18,6 +18,14 @@ struct InputEventPayload {
     code: String,
 }
 
+/// 键鼠采集的可用性状态，通过 `accessibility-permission` 事件推给前端。
+/// `reason`：`untrusted`=未授权 / `granted`=已授权 / `listener_stopped`=监听意外返回 / `listener_error`=监听报错。
+#[derive(Clone, serde::Serialize)]
+struct AccessibilityPayload {
+    granted: bool,
+    reason: &'static str,
+}
+
 const MAX_BUCKET_MS: i64 = 5000;
 const MIN_KEEP_MS: i64 = 1000;
 const MIN_KEEP_EXPLORER_MS: i64 = 2000;
@@ -280,8 +288,42 @@ pub fn start_activity_tracking(
     // EAC / 小蓝熊 / 反宏工具都挡不住。其它平台继续用 rdev。
     let counters_input = Arc::clone(&counters);
     let app_handle_input = app_handle.clone();
+    let app_handle_notify = app_handle_input.clone();
     thread::spawn(move || {
         println!("🎹 输入监听线程启动");
+
+        // macOS：启动监听前先查辅助功能权限。未授权则通知前端显示常驻横幅，
+        // 之后每 30s 重检，授权后自动继续启动监听（无需重启应用）。
+        #[cfg(target_os = "macos")]
+        {
+            let mut reported_denied = false;
+            loop {
+                if crate::platform::is_accessibility_trusted() {
+                    if reported_denied {
+                        let _ = app_handle_notify.emit(
+                            "accessibility-permission",
+                            AccessibilityPayload {
+                                granted: true,
+                                reason: "granted",
+                            },
+                        );
+                    }
+                    break;
+                }
+                if !reported_denied {
+                    let _ = app_handle_notify.emit(
+                        "accessibility-permission",
+                        AccessibilityPayload {
+                            granted: false,
+                            reason: "untrusted",
+                        },
+                    );
+                    reported_denied = true;
+                }
+                thread::sleep(Duration::from_secs(30));
+            }
+        }
+
         let callback = move |event: Event| {
             // emit 实时事件供前端调试页使用
             let payload = match &event.event_type {
@@ -319,9 +361,28 @@ pub fn start_activity_tracking(
             listen(callback).map_err(|e| format!("{:?}", e))
         }));
 
+        // listen 意外返回：上报 UI 但不自动重试（正常情况它应永不返回）。
         match result {
-            Ok(Ok(())) => eprintln!("⚠️ 输入监听正常返回（不应该发生）"),
-            Ok(Err(e)) => eprintln!("❌ 输入监听错误: {}", e),
+            Ok(Ok(())) => {
+                eprintln!("⚠️ 输入监听意外返回（正常应永不返回）");
+                let _ = app_handle_notify.emit(
+                    "accessibility-permission",
+                    AccessibilityPayload {
+                        granted: false,
+                        reason: "listener_stopped",
+                    },
+                );
+            }
+            Ok(Err(e)) => {
+                eprintln!("❌ 输入监听错误: {}", e);
+                let _ = app_handle_notify.emit(
+                    "accessibility-permission",
+                    AccessibilityPayload {
+                        granted: false,
+                        reason: "listener_error",
+                    },
+                );
+            }
             Err(p) => eprintln!("❌ 输入监听线程 panic: {:?}", p),
         }
     });

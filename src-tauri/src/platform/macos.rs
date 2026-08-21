@@ -5,9 +5,22 @@ use objc::runtime::{Object, Sel};
 use objc::{class, msg_send, sel, sel_impl};
 use std::panic::AssertUnwindSafe;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::thread;
 
 use super::{send_switch, FrontmostApp};
+
+#[link(name = "ApplicationServices", kind = "framework")]
+extern "C" {
+    fn AXIsProcessTrustedWithOptions(options: *const std::os::raw::c_void) -> bool;
+}
+
+/// 查询当前进程是否已被授予「辅助功能」权限。options 传 null 表示只查询、不弹系统提示。
+/// （传带 `kAXTrustedCheckOptionPrompt=true` 的字典才会触发弹窗，这里刻意不弹。）
+///
+/// 这是 rdev `CGEventTap` 能否采到键鼠事件的先决条件：未授权时 tap 建了也是静默失效，
+/// 表现为 `listen` 正常返回、每个桶 key/mouse 全 0。
+pub fn is_accessibility_trusted() -> bool {
+    unsafe { AXIsProcessTrustedWithOptions(std::ptr::null()) }
+}
 
 /// 相对系统默认位置的偏移：向右 2pt、向下 2pt。
 /// AppKit 里按钮 superview 不是 flipped 的（y 向上），所以"向下"= y 减小。
@@ -254,75 +267,68 @@ unsafe fn nsstring_to_string(ns: id) -> Option<String> {
 }
 
 pub fn spawn_switch_observer() {
-    thread::spawn(|| {
-        start_nsworkspace_observer();
-    });
+    // NSWorkspace 及其通知中心是主线程专用的，从后台线程注册是未定义行为。
+    // 本函数必须从主线程调用（Tauri 的 setup / RunEvent::Ready 都在主线程）。
+    // 注册后回调由主线程 run loop 派发，无需再开独立线程。
+    unsafe {
+        register_nsworkspace_observer();
+    }
 }
 
+/// 观察者实例的指针，用于注册后让它保持存活。NSNotificationCenter 不 retain
+/// observer，如果只留局部变量，函数返回后对象会被回收，通知就再也收不到了。
+static WORKSPACE_OBSERVER: AtomicUsize = AtomicUsize::new(0);
+
 extern "C" fn app_activated_callback(_self: &Object, _cmd: Sel, _notification: id) {
-    // 回调也在专用线程分发，get_frontmost_app 内部已经自带 autoreleasepool
+    // 回调在主线程派发。get_frontmost_app 只做轻量 Cocoa 查询 + 非阻塞 channel
+    // send，不占主线程；真正耗时的结算在 settler 线程里跑。
     let app = get_frontmost_app();
     send_switch(app);
 }
 
-fn start_nsworkspace_observer() {
-    unsafe {
-        let pool: id = NSAutoreleasePool::new(nil);
+/// 注册 NSWorkspace 前台切换观察者。
+/// 必须在主线程调用（NSWorkspace 及其通知中心是主线程专用）。
+unsafe fn register_nsworkspace_observer() {
+    let pool: id = NSAutoreleasePool::new(nil);
 
-        let superclass = class!(NSObject);
-        let mut decl = match objc::declare::ClassDecl::new("SnoopAppObserver", superclass) {
-            Some(d) => d,
-            None => {
-                eprintln!("⚠️ NSWorkspace 观察者类已存在，跳过注册（可能是热重载）");
-                let _: () = msg_send![pool, drain];
-                return;
-            }
-        };
-
-        decl.add_method(
-            sel!(appActivated:),
-            app_activated_callback as extern "C" fn(&Object, Sel, id),
-        );
-        let observer_class = decl.register();
-        // observer 需要长期存活，用 alloc/init 拿到 retain=1 的实例
-        let observer: id = msg_send![observer_class, alloc];
-        let observer: id = msg_send![observer, init];
-
-        let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
-        let notification_center: id = msg_send![workspace, notificationCenter];
-
-        // NSString stringWithUTF8String: 返回 autoreleased，在下面 addObserver
-        // 里 name 会被 retain，pool drain 后仍然有效
-        let name_ns: id = NSString::alloc(nil).init_str(
-            "NSWorkspaceDidActivateApplicationNotification",
-        );
-
-        let _: () = msg_send![
-            notification_center,
-            addObserver: observer
-            selector: sel!(appActivated:)
-            name: name_ns
-            object: nil
-        ];
-
-        println!("✅ NSWorkspace 前台切换通知观察者已注册");
-
-        // 给 run loop 挂一个 Mach 端口作为输入源，否则没有任何输入源时
-        // runUntilDate: 会立即返回，导致下面的 loop 空转吃满一个 CPU 核心
-        let port: id = msg_send![class!(NSMachPort), port];
-        let default_mode: id = NSString::alloc(nil).init_str("kCFRunLoopDefaultMode");
-        let keep_alive_run_loop: id = msg_send![class!(NSRunLoop), currentRunLoop];
-        let _: () = msg_send![keep_alive_run_loop, addPort: port forMode: default_mode];
-
-        let _: () = msg_send![pool, drain];
-
-        // 事件循环本身长跑，每次 runUntilDate 之前开新的 pool 释放中间对象
-        loop {
-            let iter_pool: id = NSAutoreleasePool::new(nil);
-            let run_loop: id = msg_send![class!(NSRunLoop), currentRunLoop];
-            let distant_future: id = msg_send![class!(NSDate), distantFuture];
-            let _: () = msg_send![run_loop, runUntilDate: distant_future];
-            let _: () = msg_send![iter_pool, drain];
+    let superclass = class!(NSObject);
+    let mut decl = match objc::declare::ClassDecl::new("SnoopAppObserver", superclass) {
+        Some(d) => d,
+        None => {
+            eprintln!("⚠️ NSWorkspace 观察者类已存在，跳过注册（可能是热重载）");
+            let _: () = msg_send![pool, drain];
+            return;
         }
-    }
+    };
+
+    decl.add_method(
+        sel!(appActivated:),
+        app_activated_callback as extern "C" fn(&Object, Sel, id),
+    );
+    let observer_class = decl.register();
+    // observer 需要长期存活，用 alloc/init 拿到 retain=1 的实例并钉进 static。
+    let observer: id = msg_send![observer_class, alloc];
+    let observer: id = msg_send![observer, init];
+    WORKSPACE_OBSERVER.store(observer as usize, Ordering::SeqCst);
+
+    let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+    let notification_center: id = msg_send![workspace, notificationCenter];
+
+    // NSString stringWithUTF8String: 返回 autoreleased，addObserver 会 retain name，
+    // pool drain 后仍然有效。
+    let name_ns: id = NSString::alloc(nil).init_str(
+        "NSWorkspaceDidActivateApplicationNotification",
+    );
+
+    let _: () = msg_send![
+        notification_center,
+        addObserver: observer
+        selector: sel!(appActivated:)
+        name: name_ns
+        object: nil
+    ];
+
+    println!("✅ NSWorkspace 前台切换通知观察者已注册（主线程）");
+
+    let _: () = msg_send![pool, drain];
 }

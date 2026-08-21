@@ -51,7 +51,11 @@ impl AiConfig {
 pub struct AiConfigState {
     config: Mutex<AiConfig>,
     /// 解密后的 Key，仅内存持有，从不落明文盘。
-    api_key: Mutex<Option<String>>,
+    /// 外层 `Option` 表示「是否已从 OS 凭证库读过」：`None` = 尚未读（懒加载），
+    /// `Some(None)` = 已读、无 Key，`Some(Some(k))` = 已读、有 Key。
+    /// 懒加载的目的：setup 阶段不触碰 Security.framework（macOS），避免启动瞬间
+    /// 与其它线程在 objc 运行时抢首次类实现 → 崩溃；也避免 Keychain 弹授权框卡死启动。
+    api_key: Mutex<Option<Option<String>>>,
     config_path: PathBuf,
     key_path: PathBuf,
 }
@@ -62,11 +66,11 @@ impl AiConfigState {
             .ok()
             .and_then(|t| serde_json::from_str(&t).ok())
             .unwrap_or_default();
-        // 密钥文件解不开（换用户 / 损坏）时按未配置处理，不阻塞启动。
-        let api_key = secure::get_secret(&key_path).ok().flatten();
+        // Key 懒加载：这里不读 OS 凭证库，首次真正需要时（发起 AI 调用 / 前端查状态）
+        // 才由 `ensure_key_loaded` 读取并缓存。setup 阶段绝不能碰 Security.framework。
         AiConfigState {
             config: Mutex::new(config),
-            api_key: Mutex::new(api_key),
+            api_key: Mutex::new(None),
             config_path,
             key_path,
         }
@@ -76,8 +80,23 @@ impl AiConfigState {
         self.config.lock().unwrap().clone()
     }
 
+    /// 惰性读取并缓存 Key。首次调用触发一次 OS 凭证库访问，之后命中内存缓存。
+    /// 读不到 / 解不开（换用户 / 损坏）一律按无 Key 处理，不阻塞调用方。
+    fn ensure_key_loaded(&self) -> Option<String> {
+        let mut slot = self.api_key.lock().unwrap();
+        match &*slot {
+            Some(cached) => cached.clone(),
+            None => {
+                let loaded = secure::get_secret(&self.key_path).ok().flatten();
+                let out = loaded.clone();
+                *slot = Some(loaded);
+                out
+            }
+        }
+    }
+
     pub fn has_key(&self) -> bool {
-        self.api_key.lock().unwrap().is_some()
+        self.ensure_key_loaded().is_some()
     }
 
     pub fn apply(&self, cfg: AiConfig) {
@@ -92,11 +111,11 @@ impl AiConfigState {
         match key {
             Some(k) if !k.trim().is_empty() => {
                 secure::set_secret(&self.key_path, k.trim())?;
-                *self.api_key.lock().unwrap() = Some(k.trim().to_string());
+                *self.api_key.lock().unwrap() = Some(Some(k.trim().to_string()));
             }
             _ => {
                 secure::delete_secret(&self.key_path)?;
-                *self.api_key.lock().unwrap() = None;
+                *self.api_key.lock().unwrap() = Some(None);
             }
         }
         Ok(())
@@ -104,12 +123,12 @@ impl AiConfigState {
 
     /// 拼出发请求所需的运行期配置（含解密后的 Key）。
     pub fn service_config(&self) -> AiServiceConfig {
-        let cfg = self.config.lock().unwrap();
-        let key = self.api_key.lock().unwrap();
+        let cfg = self.config.lock().unwrap().clone();
+        let key = self.ensure_key_loaded().unwrap_or_default();
         AiServiceConfig {
-            base_url: cfg.base_url.clone(),
-            api_key: key.clone().unwrap_or_default(),
-            model: cfg.model.clone(),
+            base_url: cfg.base_url,
+            api_key: key,
+            model: cfg.model,
         }
     }
 }

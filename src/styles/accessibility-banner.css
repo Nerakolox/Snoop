@@ -1,0 +1,49 @@
+/* ---------- 辅助功能权限横幅 ---------- */
+/* 挂在 .app-right 里 TopBar 与 .app-main 之间，随列布局伸缩、不参与页面滚动 */
+
+.accessibility-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  padding: 10px 16px;
+  background: var(--color-accent-soft);
+  border-bottom: 1px solid var(--color-border);
+  z-index: 10;
+}
+
+.accessibility-banner__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.accessibility-banner__text strong {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.accessibility-banner__text span {
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+
+.accessibility-banner__button {
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.accessibility-banner__button:hover {
+  background: var(--color-accent-hover);
+}

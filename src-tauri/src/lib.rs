@@ -73,6 +73,7 @@ pub fn run() {
             commands::get_settings,
             commands::save_settings,
             commands::get_db_info,
+            commands::get_accessibility_status,
             commands::clear_data,
             commands::export_data,
             commands::get_recent_apps,
@@ -192,18 +193,19 @@ pub fn run() {
             let db_path = app_data_dir.join("snoop.db");
             let config_path = app_data_dir.join("settings.json");
             let icon_cache_dir = app_data_dir.join("icon_cache");
+            println!("运行身份 identifier: {}", app.config().identifier);
             println!("数据库路径: {:?}", db_path);
 
             let settings = settings::SettingsState::load(config_path);
-            let paused = settings.paused.clone();
-            let ignore_list = settings.ignore_list.clone();
 
             let database = db::Database::new(db_path.clone()).expect("无法创建数据库连接");
             database.init_schema().expect("无法初始化数据库表结构");
             println!("✓ 数据库初始化成功");
 
-            // 启动集成的活动追踪（5秒桶 + 实时键鼠 + 前台应用）
-            activity_tracker::start_activity_tracking(db_path.clone(), app.handle().clone(), paused, ignore_list);
+            // 活动追踪（5秒桶 + 实时键鼠 + 前台应用）不在 setup 里同步启动，
+            // 而是推迟到应用 ready（RunEvent::Ready）后再起线程，见 start_deferred_tracking：
+            // rdev 监听 / NSWorkspace 观察者 / SQLite 连接三组线程若在 setup 期间与
+            // 主线程并发启动，会在 macOS 上争抢 objc 运行时的首次类实现导致崩溃。
 
             let icon_cache = icon_cache::IconCache::new(icon_cache_dir);
 
@@ -308,6 +310,20 @@ pub fn run() {
                     .quit()
                     .build()?;
 
+                // 编辑菜单：撤销/重做/剪切/复制/粘贴/全选。macOS 的 ⌘X/⌘C/⌘V/⌘A/⌘Z
+                // 是绑定到菜单栏 Edit 菜单里的标准 responder 动作（cut:/copy:/paste:/…）生效的；
+                // 没有这个菜单，WKWebView 输入框里这些快捷键就没有接收者，按了没反应
+                // （Windows 不依赖菜单，所以只有 macOS 有这个问题）。
+                let edit_submenu = SubmenuBuilder::new(app, "编辑")
+                    .undo()
+                    .redo()
+                    .separator()
+                    .cut()
+                    .copy()
+                    .paste()
+                    .select_all()
+                    .build()?;
+
                 let window_submenu = SubmenuBuilder::new(app, "窗口")
                     .minimize()
                     .maximize()
@@ -321,6 +337,7 @@ pub fn run() {
 
                 let app_menu = MenuBuilder::new(app)
                     .item(&app_submenu)
+                    .item(&edit_submenu)
                     .item(&window_submenu)
                     .item(&help_submenu)
                     .build()?;
@@ -497,7 +514,10 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, event| match event {
+        .run(|app_handle, event| match event {
+            RunEvent::Ready => {
+                start_deferred_tracking(app_handle);
+            }
             RunEvent::ExitRequested { api, code, .. } => {
                 if code.is_none() {
                     api.prevent_exit();
@@ -506,7 +526,7 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             RunEvent::Reopen { has_visible_windows, .. } => {
                 if !has_visible_windows {
-                    if let Some(window) = _app_handle.get_webview_window("main") {
+                    if let Some(window) = app_handle.get_webview_window("main") {
                         let _ = window.show();
                         let _ = window.set_focus();
                     }
@@ -514,6 +534,31 @@ pub fn run() {
             }
             _ => {}
         });
+}
+
+/// 应用 ready 后启动活动追踪线程。
+///
+/// 不在 setup 里同步 spawn 的原因（macOS 启动崩溃修复）：setup 阶段主线程正在跑
+/// `applicationDidFinishLaunching`，此时 rdev 监听（触发 TCC 辅助功能授权）、
+/// NSWorkspace 观察者、SQLite 建连接三组线程若并发启动，会与主线程争抢 objc
+/// 运行时的首次类实现，把只读的 `__AUTH_CONST` 段页保护踩坏 → EXC_BAD_ACCESS。
+/// 推迟到 RunEvent::Ready 之后，此时应用已启动完成，竞态窗口消失。
+fn start_deferred_tracking(app: &tauri::AppHandle) {
+    let db_path = match app.try_state::<commands::DbPath>() {
+        Some(p) => p.0.clone(),
+        None => {
+            eprintln!("⚠️ 未找到 DbPath，跳过活动追踪启动");
+            return;
+        }
+    };
+    let (paused, ignore_list) = match app.try_state::<settings::SettingsState>() {
+        Some(s) => (s.paused.clone(), s.ignore_list.clone()),
+        None => {
+            eprintln!("⚠️ 未找到 SettingsState，跳过活动追踪启动");
+            return;
+        }
+    };
+    activity_tracker::start_activity_tracking(db_path, app.clone(), paused, ignore_list);
 }
 
 fn toggle_main_window(app: &tauri::AppHandle) {

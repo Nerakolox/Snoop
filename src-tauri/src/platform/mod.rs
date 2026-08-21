@@ -33,7 +33,7 @@ pub(crate) fn send_switch(app: FrontmostApp) {
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "macos")]
-pub use macos::{configure_titlebar, get_frontmost_app, spawn_switch_observer};
+pub use macos::{configure_titlebar, get_frontmost_app, is_accessibility_trusted, spawn_switch_observer};
 
 #[cfg(target_os = "windows")]
 mod windows;

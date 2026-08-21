@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import Sidebar, { NavKey } from "./components/Sidebar";
 import TopBar from "./components/TopBar";
+import AccessibilityBanner from "./components/AccessibilityBanner";
 import Overview from "./pages/Overview";
 import Timeline from "./pages/Timeline";
 import Keyboard from "./pages/Keyboard";
@@ -147,6 +148,7 @@ export default function App() {
       <TopBarToolsProvider>
         <div className="app-right">
           <TopBar />
+          <AccessibilityBanner />
           <main className="app-main">
             <div className={layerClass} style={style}>
               {renderPage(displayed)}
