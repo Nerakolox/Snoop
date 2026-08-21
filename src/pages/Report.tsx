@@ -16,6 +16,8 @@ import { useToast } from "../components/shared/Toast";
 import { CATEGORY_COLOR, CATEGORY_LABEL } from "../ai/categories";
 import { formatDuration } from "../utils/format";
 import { getReport, getReportList, regenerateReport } from "../report/client";
+import { DOW_LABELS, dateLabel, formatSleepMin, monthLabel, weekRangeLabel } from "../report/format";
+import ExportDialog from "../report/ExportDialog";
 import type {
   AppRank,
   AppRef,
@@ -27,45 +29,9 @@ import type {
 } from "../report/types";
 import { fetchHourlyActivity, fetchHourlyHeartbeats } from "../data/client";
 import { aggregateDowHourGrid, type DowHourCell } from "../analytics/aggregate";
-import { parseAnchor, toMs } from "../data/ranges";
+import { toMs } from "../data/ranges";
 import { normalizeAnchor, useContextState } from "../store/context";
 import DatePicker from "../components/shared/DatePicker";
-
-const DOW_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
-
-/** 'YYYY-MM-DD' → 「M月D日」。 */
-function dateLabel(date: string): string {
-  const [, m, d] = date.split("-").map(Number);
-  if (!m || !d) return date;
-  return `${m}月${d}日`;
-}
-
-/** '2026-08-01' → 「2026年8月」。 */
-function monthLabel(monthStart: string): string {
-  const [y, m] = monthStart.split("-").map(Number);
-  if (!y || !m) return monthStart;
-  return `${y}年${m}月`;
-}
-
-/** 周报标题：`week_start` 的「M月D日」– 6 天后的「M月D日」。禁止 new Date("YYYY-MM-DD")。 */
-function weekRangeLabel(weekStart: string): string {
-  const start = parseAnchor(weekStart);
-  const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
-  return `${dateLabel(weekStart)} – ${dateLabel(
-    `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(
-      end.getDate(),
-    ).padStart(2, "0")}`,
-  )}`;
-}
-
-/** 距自然日 00:00 的分钟数 → 可读时刻。≥1440 显示「次日 HH:MM」。 */
-function formatSleepMin(min: number): string {
-  const day = Math.floor(min / 1440);
-  const rem = ((min % 1440) + 1440) % 1440;
-  const hh = String(Math.floor(rem / 60)).padStart(2, "0");
-  const mm = String(rem % 60).padStart(2, "0");
-  return day > 0 ? `次日 ${hh}:${mm}` : `${hh}:${mm}`;
-}
 
 function reportKey(type: string, date: string): string {
   return `${type}:${date}`;
@@ -79,6 +45,8 @@ export default function Report() {
   );
   const [detail, setDetail] = useState<ReportView | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  // 导出成图对话框：挂当前详情那份报告，null 表示关闭。
+  const [exporting, setExporting] = useState<ReportView | null>(null);
   // 手动生成：选一个日期，按当前 kind 归一到周期起点生成。默认当前浏览的 anchor。
   const [genDate, setGenDate] = useState(anchor);
   const [generating, setGenerating] = useState(false);
@@ -178,7 +146,8 @@ export default function Report() {
   }
 
   return (
-    <PageShell className="report-page" header={<ReportHeader />}>
+    <>
+      <PageShell className="report-page" header={<ReportHeader />}>
       <div className="report-toolbar">
         <span className="report-toolbar-label">生成{KIND_LABEL[kind]}报</span>
         <DatePicker value={genDate} onChange={setGenDate} />
@@ -220,6 +189,7 @@ export default function Report() {
                   detail={detail}
                   onRegenerate={handleRegenerate}
                   regenerating={regenerating}
+                  onExport={() => setExporting(detail)}
                 />
               </div>
             );
@@ -242,7 +212,9 @@ export default function Report() {
           );
         })}
       </div>
-    </PageShell>
+      </PageShell>
+      {exporting && <ExportDialog detail={exporting} onClose={() => setExporting(null)} />}
+    </>
   );
 }
 
@@ -278,10 +250,12 @@ function ReportDetail({
   detail,
   onRegenerate,
   regenerating,
+  onExport,
 }: {
   detail: ReportView | null;
   onRegenerate: () => void;
   regenerating: boolean;
+  onExport: () => void;
 }) {
   if (!detail) {
     return <div className="report-card report-card--loading">加载中…</div>;
@@ -292,6 +266,7 @@ function ReportDetail({
         detail={detail}
         onRegenerate={onRegenerate}
         regenerating={regenerating}
+        onExport={onExport}
       />
     );
   }
@@ -301,11 +276,17 @@ function ReportDetail({
         detail={detail}
         onRegenerate={onRegenerate}
         regenerating={regenerating}
+        onExport={onExport}
       />
     );
   }
   return (
-    <DailyCard detail={detail} onRegenerate={onRegenerate} regenerating={regenerating} />
+    <DailyCard
+      detail={detail}
+      onRegenerate={onRegenerate}
+      regenerating={regenerating}
+      onExport={onExport}
+    />
   );
 }
 
@@ -362,16 +343,42 @@ function RegenerateButton({
   );
 }
 
+/** 详情卡底部操作行：导出成图 + 重新生成。导出仅在 status==="ok" 时可用。 */
+function CardActions({
+  canExport,
+  onExport,
+  onRegenerate,
+  regenerating,
+}: {
+  canExport: boolean;
+  onExport: () => void;
+  onRegenerate: () => void;
+  regenerating: boolean;
+}) {
+  return (
+    <div className="report-card-actions">
+      {canExport && (
+        <button type="button" className="report-export-btn" onClick={onExport}>
+          导出成图
+        </button>
+      )}
+      <RegenerateButton onRegenerate={onRegenerate} regenerating={regenerating} />
+    </div>
+  );
+}
+
 // ── 日报卡片（沿用 4a，字段不变） ──────────────────────────────────────────
 
 function DailyCard({
   detail,
   onRegenerate,
   regenerating,
+  onExport,
 }: {
   detail: Extract<ReportView, { report_type: "day" }>;
   onRegenerate: () => void;
   regenerating: boolean;
+  onExport: () => void;
 }) {
   const d = detail.data;
   const maxHourMs = Math.max(...d.hourly.map((h) => h.active_ms), 1);
@@ -432,7 +439,12 @@ function DailyCard({
         )}
       </section>
 
-      <RegenerateButton onRegenerate={onRegenerate} regenerating={regenerating} />
+      <CardActions
+        canExport={detail.status === "ok"}
+        onExport={onExport}
+        onRegenerate={onRegenerate}
+        regenerating={regenerating}
+      />
     </div>
   );
 }
@@ -443,10 +455,12 @@ function WeeklyCard({
   detail,
   onRegenerate,
   regenerating,
+  onExport,
 }: {
   detail: Extract<ReportView, { report_type: "week" }>;
   onRegenerate: () => void;
   regenerating: boolean;
+  onExport: () => void;
 }) {
   const d = detail.data;
   const maxDayMs = Math.max(...d.days.map((x) => x.active_ms), 1);
@@ -524,7 +538,12 @@ function WeeklyCard({
         </div>
       </section>
 
-      <RegenerateButton onRegenerate={onRegenerate} regenerating={regenerating} />
+      <CardActions
+        canExport={detail.status === "ok"}
+        onExport={onExport}
+        onRegenerate={onRegenerate}
+        regenerating={regenerating}
+      />
     </div>
   );
 }
@@ -664,10 +683,12 @@ function MonthlyCard({
   detail,
   onRegenerate,
   regenerating,
+  onExport,
 }: {
   detail: Extract<ReportView, { report_type: "month" }>;
   onRegenerate: () => void;
   regenerating: boolean;
+  onExport: () => void;
 }) {
   const d = detail.data;
   const maxWeekMs = Math.max(...d.weeks.map((w) => w.active_ms), 1);
@@ -764,7 +785,12 @@ function MonthlyCard({
         <AppChangeRow label="整月新增" apps={d.new_apps} />
       </section>
 
-      <RegenerateButton onRegenerate={onRegenerate} regenerating={regenerating} />
+      <CardActions
+        canExport={detail.status === "ok"}
+        onExport={onExport}
+        onRegenerate={onRegenerate}
+        regenerating={regenerating}
+      />
     </div>
   );
 }
