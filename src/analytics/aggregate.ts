@@ -8,6 +8,26 @@ import { computeIntensity, computeIntensityFromTotals } from "./intensity";
 import type { AppStat, DayStat, HourStat, Intensity } from "./types";
 
 /**
+ * 有输入桶判定（活跃口径）—— 前端唯一来源。
+ *
+ * 与后端 `report/common.rs::RawBucket::is_active` 及 `db.rs::ACTIVE_PREDICATE` 同源：
+ * **纯鼠标位移 `mouse_move_dist` 故意不计**。纯位移是连续信号，若计入，看网页时随手晃鼠标
+ * 都会被当成「活跃」，挂机判定就失效了。「留意」检测、侧栏、报告共用这一条判定，
+ * 不能再各自写一份，否则口径会分叉。
+ */
+export function isActiveBucket(b: RawBucket): boolean {
+  return (
+    (b.key_total || 0) > 0 ||
+    (b.mouse_left || 0) > 0 ||
+    (b.mouse_right || 0) > 0 ||
+    (b.mouse_middle || 0) > 0 ||
+    (b.mouse_back || 0) > 0 ||
+    (b.mouse_forward || 0) > 0 ||
+    (b.scroll_dist || 0) > 0
+  );
+}
+
+/**
  * 对桶的时间区间 [bucket_start, bucket_start + duration_ms) 求并集后再求和，
  * 得到"真实墙钟活跃时长"。这是总时长的权威口径：与"各桶 duration_ms 直接相加"
  * 不同的地方仅在于会自动吸收任何时间重叠（理论上落库端已用唯一索引 + 单一归因
