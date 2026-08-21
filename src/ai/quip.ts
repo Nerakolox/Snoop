@@ -165,6 +165,9 @@ function parseQuips(content: string): QuipPools {
  * 大多数调用都是 no-op。成功则刷新缓存并通知订阅者；失败静默保持现状。
  */
 export function ensureQuipCache(buckets: RawBucket[]): Promise<void> {
+  // 无数据时（含首次渲染前的空数组）不生成，避免拿全零数据浪费一次配额；
+  // 等真实数据到达后再生成。
+  if (buckets.length === 0) return Promise.resolve();
   const nowMs = Date.now();
   if (nowMs - lastAttemptAtMs < BATCH_TTL_MS) {
     return inflight ?? Promise.resolve();

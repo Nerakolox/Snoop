@@ -14,6 +14,7 @@ import {
 } from "../../analytics";
 import { useRangeData } from "../../data/useRangeData";
 import { useToday } from "../../store/context";
+import { ensureQuipCache, getQuip, useQuipVersion } from "../../ai/quip";
 import Tooltip from "../shared/Tooltip";
 
 export default function SidebarLive() {
@@ -40,11 +41,18 @@ export default function SidebarLive() {
     return { appName: dominant[0], intensity: computeIntensity(recent) };
   }, [allBuckets]);
 
+  // 每 30 分钟批量生成一批 AI 吐槽（内部按 TTL + inflight 去重，多数调用 no-op）。
+  // 无感降级：AI 不可用 / 关闭 / tier 不足时 getQuip 返回 null，回落到模板。
+  useEffect(() => {
+    void ensureQuipCache(allBuckets);
+  }, [allBuckets]);
+
+  const quipVersion = useQuipVersion();
   const [rerollTick, setRerollTick] = useState(0);
   const quip = useMemo(
-    () => pickCatQuip(status.intensity, status.appName),
+    () => getQuip(status.intensity) ?? pickCatQuip(status.intensity, status.appName),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [status.intensity, status.appName, rerollTick]
+    [status.intensity, status.appName, rerollTick, quipVersion]
   );
 
   return (
