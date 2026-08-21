@@ -21,67 +21,12 @@
   color: var(--color-text-3);
 }
 
-/* ---- 工具栏：筛选 + 日期跳转 ---- */
+/* ---- 工具栏：手动生成（Task 4 填充，此块先只留容器） ---- */
 .report-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
+  gap: var(--space-3);
   flex-wrap: wrap;
-}
-
-.report-filters {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.report-filter {
-  appearance: none;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-full);
-  font: inherit;
-  cursor: pointer;
-  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
-}
-
-.report-filter.is-active {
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  color: var(--color-on-accent);
-}
-
-.report-jump {
-  display: flex;
-  gap: var(--space-2);
-  align-items: center;
-}
-
-.report-jump-input {
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  font: inherit;
-}
-
-.report-jump-btn {
-  appearance: none;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-2);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  cursor: pointer;
-}
-
-.report-jump-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 /* ---- 列表 ---- */
@@ -115,6 +60,12 @@
 
 .report-row:hover {
   border-color: var(--color-accent);
+}
+
+/* 当前周期（全局 anchor 指向）的报告行：持久描边 + 浅紫底，区别于 hover 的瞬时反馈 */
+.report-row.is-current {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
 }
 
 .report-row-date {

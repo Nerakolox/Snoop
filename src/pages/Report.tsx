@@ -1,14 +1,14 @@
 /**
  * 报告 —— 历史日报 / 周报 / 月报时间轴。
- * 顶部筛选（全部 / 日 / 周 / 月）+ 跳到指定日期；下方三种报混排，按日期倒序，
- * 点开在卡片原位展开详情。导出成图是批次 4b，本批只让详情卡固定宽度 + 最小高度、
- * 高度可往下长，结构上支持导出。
+ * 消费全局 (kind, anchor)：顶栏的日/周/月 筛列表显示的报类型，日期导航滚到并高亮
+ * 对应周期那份报告。三种报按日期倒序，点开在卡片原位展开详情。
+ * 导出成图是批次 4b，本批只让详情卡固定宽度 + 最小高度、高度可往下长，结构上支持导出。
  *
  * 三种报回答三个问题：日报讲叙事、周报讲对比（7 天条形 + 作息偏差）、月报讲趋势
  * （按周走势 + 上下半月分类变化 + weekday×小时热力网格）。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import PageShell from "../components/PageShell";
 import AppIcon from "../components/AppIcon";
 import Tooltip from "../components/shared/Tooltip";
@@ -28,15 +28,7 @@ import type {
 import { fetchHourlyActivity, fetchHourlyHeartbeats } from "../data/client";
 import { aggregateDowHourGrid, type DowHourCell } from "../analytics/aggregate";
 import { parseAnchor, toMs } from "../data/ranges";
-
-type Filter = "all" | "day" | "week" | "month";
-
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all", label: "全部" },
-  { key: "day", label: "日" },
-  { key: "week", label: "周" },
-  { key: "month", label: "月" },
-];
+import { useContextState } from "../store/context";
 
 const DOW_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
@@ -79,15 +71,15 @@ function reportKey(type: string, date: string): string {
 }
 
 export default function Report() {
+  const { kind, anchor } = useContextState();
   const [reports, setReports] = useState<ReportMeta[]>([]);
-  const [filter, setFilter] = useState<Filter>("all");
   const [selected, setSelected] = useState<{ type: ReportMeta["report_type"]; date: string } | null>(
     null,
   );
   const [detail, setDetail] = useState<ReportView | null>(null);
-  const [jumpDate, setJumpDate] = useState("");
   const [regenerating, setRegenerating] = useState(false);
   const toast = useToast();
+  const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -118,9 +110,22 @@ export default function Report() {
   }, [selected]);
 
   const filtered = useMemo(
-    () => reports.filter((r) => filter === "all" || r.report_type === filter),
-    [reports, filter],
+    () => reports.filter((r) => r.report_type === kind),
+    [reports, kind],
   );
+
+  // 当前全局 (kind, anchor) 对应的那份报告。anchor 恒已按 kind 归一化（当天/周一/月首）。
+  const currentKey = reportKey(kind, anchor);
+
+  // anchor 变化（或列表初次就绪）时，滚动定位到当前周期那份报告，只滚一次。
+  const scrolledKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (scrolledKeyRef.current === currentKey) return;
+    const el = listRef.current?.querySelector(`[data-report-key="${currentKey}"]`);
+    if (!el) return; // 目标还没渲染（列表未就绪 / 该周期无报告），等下一次
+    scrolledKeyRef.current = currentKey;
+    (el as HTMLElement).scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [currentKey, filtered]);
 
   function openReport(type: ReportMeta["report_type"], date: string) {
     setSelected({ type, date });
@@ -145,46 +150,9 @@ export default function Report() {
     }
   }
 
-  function handleJump() {
-    if (!jumpDate) return;
-    // 跳转默认落在日报（日期选择器给的是一天）。
-    setSelected({ type: "day", date: jumpDate });
-  }
-
   return (
     <PageShell className="report-page" header={<ReportHeader />}>
-      <div className="report-toolbar">
-        <div className="report-filters">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              type="button"
-              className={`report-filter${filter === f.key ? " is-active" : ""}`}
-              onClick={() => setFilter(f.key)}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
-        <div className="report-jump">
-          <input
-            type="date"
-            className="report-jump-input"
-            value={jumpDate}
-            onChange={(e) => setJumpDate(e.target.value)}
-          />
-          <button
-            type="button"
-            className="report-jump-btn"
-            onClick={handleJump}
-            disabled={!jumpDate}
-          >
-            跳到日期
-          </button>
-        </div>
-      </div>
-
-      <div className="report-list">
+      <div className="report-list" ref={listRef}>
         {filtered.length === 0 && (
           <p className="report-empty">还没有报告，明天回来看看喵～</p>
         )}
@@ -192,7 +160,7 @@ export default function Report() {
           const key = reportKey(r.report_type, r.report_date);
           if (r.status === "too_little") {
             return (
-              <div key={key} className="report-skip-row">
+              <div key={key} className="report-skip-row" data-report-key={key}>
                 {rowTitle(r.report_type, r.report_date)} · 记录太少
               </div>
             );
@@ -219,7 +187,8 @@ export default function Report() {
             <button
               key={key}
               type="button"
-              className="report-row"
+              data-report-key={key}
+              className={`report-row${key === currentKey ? " is-current" : ""}`}
               onClick={() => openReport(r.report_type, r.report_date)}
             >
               <span className={`report-row-kind report-row-kind--${r.report_type}`}>
