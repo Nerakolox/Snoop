@@ -250,7 +250,7 @@ export default function AISettings({ tab }: { tab: AiTab }) {
               <span className="setting-row-label">服务地址</span>
               <span className="setting-row-desc">OpenAI v1 兼容端点，默认 api.openai.com/v1</span>
             </div>
-            <div className="ai-row-right">
+            <div className="ai-row-right ai-row-right--field">
               <Server size={14} className="ai-field-icon" />
               <input
                 className="ai-input"
@@ -267,7 +267,7 @@ export default function AISettings({ tab }: { tab: AiTab }) {
               <span className="setting-row-label">API Key</span>
               <span className="setting-row-desc">存于系统原生加密存储（DPAPI / Keychain），不落明文</span>
             </div>
-            <div className="ai-row-right">
+            <div className="ai-row-right ai-row-right--field">
               <KeyRound size={14} className="ai-field-icon" />
               <input
                 className="ai-input"
@@ -300,7 +300,7 @@ export default function AISettings({ tab }: { tab: AiTab }) {
               <span className="setting-row-label">模型</span>
               <span className="setting-row-desc">自由填写，如 gpt-4o-mini / deepseek-chat</span>
             </div>
-            <div className="ai-row-right">
+            <div className="ai-row-right ai-row-right--field">
               <Sparkles size={14} className="ai-field-icon" />
               <input
                 className="ai-input"

@@ -86,12 +86,20 @@
   font-size: var(--text-xs);
   font-family: inherit;
   outline: none;
-  width: 220px;
+  flex: 1;
+  min-width: 0;
   transition: border-color var(--dur-fast);
 }
 
 .ai-input:focus {
   border-color: var(--color-accent);
+}
+
+/* 服务配置字段行：右侧控件区固定宽度、整体右对齐（靠 .ai-row 的 space-between）。
+   输入框 flex:1 填满控件区，API Key 行的眼睛/保存/清除挤在输入框右边，输入框
+   自动变窄，四者合起来的右边缘与其它行输入框右边缘齐平，不留额外空白。 */
+.ai-row-right--field {
+  width: 320px;
 }
 
 .ai-icon-btn {
