@@ -591,7 +591,9 @@ function CategoryDeltaBars({ categories }: { categories: CategoryDelta[] }) {
   }
   return (
     <section className="report-section">
-      <h4 className="report-section-title">分类占比（vs 前 4 周）</h4>
+      <h4 className="report-section-title">
+        分类占比（vs 前 4 周）<span className="report-note">按活跃时长统计</span>
+      </h4>
       <div className="report-cat-legend">
         {categories.map((c) => (
           <div key={c.category} className="report-cat-row">
@@ -855,7 +857,9 @@ function CategoryStack({ categories }: { categories: CategoryShare[] }) {
   }
   return (
     <section className="report-section">
-      <h4 className="report-section-title">分类占比</h4>
+      <h4 className="report-section-title">
+        分类占比<span className="report-note">按活跃时长统计</span>
+      </h4>
       <div className="report-cat-stack">
         {categories.map((c) => (
           <div

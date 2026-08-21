@@ -285,7 +285,7 @@ export default function Dev() {
                   </pre>
                 </div>
                 <div>
-                  <b>每日活跃</b>
+                  <b>每日前台时长</b>
                   <ol>
                     {s.dailyActive.map((d, i) => (
                       <li key={i}>
@@ -316,7 +316,7 @@ export default function Dev() {
       </section>
 
       <section className="dev-section">
-        <h3>App 时长排行 (按桶数)</h3>
+        <h3>App 前台时长排行 (按桶数)</h3>
         <table className="dev-table" border={1}>
           <thead>
             <tr>

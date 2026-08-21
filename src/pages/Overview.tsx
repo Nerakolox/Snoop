@@ -215,7 +215,7 @@ export default function Overview() {
 
   const kpis: Kpi[] = [
     {
-      label: "活跃时长",
+      label: "前台时长",
       parts: formatDuration(activeDuration),
       target: "timeline",
       targetLabel: "时间线",
@@ -301,7 +301,7 @@ export default function Overview() {
         : "";
 
     return (
-      `${introParts.join("，")}，你活跃了 ${formatDurationPlain(activeDuration)}，` +
+      `${introParts.join("，")}，你在前台待了 ${formatDurationPlain(activeDuration)}，` +
       `敲下 ${formatNumber(totalKeys)} 次按键、点出 ${formatNumber(totalClicks)} 次点击，` +
       `鼠标跑了 ${formatMouseDistance(totalMouseDist).map((p) => p.text).join("")}。` +
       homeSentence +
@@ -464,7 +464,10 @@ export default function Overview() {
 
       {/* ③½ 分类占比 —— 水平堆叠条 + 图例，用独立分类色板 */}
       <section className="panel">
-        <h3 className="panel-title">{categoryTitle}</h3>
+        <h3 className="panel-title">
+          {categoryTitle}
+          <span className="cat-note">按前台时长统计</span>
+        </h3>
         {categoryBreakdown.length === 0 ? (
           <div className="overview-empty-note">
             {loading ? "加载中…" : "该范围还没有分类数据"}

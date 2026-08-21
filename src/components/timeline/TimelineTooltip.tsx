@@ -73,7 +73,7 @@ export default function TimelineTooltip({ hovered, onClose }: TimelineTooltipPro
           {formatTime(hovered.startMs)} – {formatTime(hovered.endMs)}
         </div>
         <div className="swimlane-tooltip-duration">
-          活跃 {formatDuration(hovered.activeMs)}
+          {formatDuration(hovered.activeMs)}
         </div>
         <div className="swimlane-tooltip-intensity">
           平均强度 {hovered.avgIntensity.toFixed(1)}

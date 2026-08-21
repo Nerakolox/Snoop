@@ -367,7 +367,7 @@ export default function Insights() {
     catRules.push({
       key: "home",
       title: "你几乎住在这里",
-      body: `${homeAppShare.app.name} 占了 ${homeAppShare.pct.toFixed(0)}% 的活跃时长，是当之无愧的第二个家喵。`,
+      body: `${homeAppShare.app.name} 占了 ${homeAppShare.pct.toFixed(0)}% 的前台时长，是当之无愧的第二个家喵。`,
       onClick: () => {
         actions.navigate({ page: "overview", appId: homeAppShare.app.bundleId });
         toast.show({ message: `已筛选 ${homeAppShare.app.name}，全站生效`, undoLabel: "取消筛选" });
@@ -391,7 +391,7 @@ export default function Insights() {
     catRules.push({
       key: "night-owl",
       title: "夜猫子指数",
-      body: `22 点到次日 2 点贡献了 ${nightOwl.pct.toFixed(1)}% 的活跃时长，早点睡喵～`,
+      body: `22 点到次日 2 点贡献了 ${nightOwl.pct.toFixed(1)}% 的前台时长，早点睡喵～`,
       onClick: () => {
         actions.navigate({ page: "timeline", kind: "day", anchor: nightOwl.anchor, focusHour: 23 });
         toast.show({ message: "已跳转到时间线", undoLabel: "返回" });
@@ -416,7 +416,7 @@ export default function Insights() {
       {/* ⓪ 顶部两张卡：活跃对比 · 键鼠比 */}
       <section className="ins-top-cards">
         <div className="panel ins-card">
-          <h3 className="panel-title">活跃对比</h3>
+          <h3 className="panel-title">前台时长对比</h3>
           <div className="ins-card-value">{fmtHours(activeDurationMs / (60 * 60 * 1000))} 小时</div>
           <DeltaBadge
             current={activeCurrentMin}
@@ -490,7 +490,7 @@ export default function Insights() {
         {/* ② 活跃趋势 */}
         <section className="panel ins-trend-panel">
           <h3 className="panel-title">
-            {isCurrentAnchor ? (viewKind === "week" ? "本周" : "本月") : "该范围"}活跃趋势
+            {isCurrentAnchor ? (viewKind === "week" ? "本周" : "本月") : "该范围"}前台时长趋势
           </h3>
           <div className="ins-trend" style={{ gridTemplateColumns: `repeat(${dailyStats.length}, 1fr)` }}>
             {dailyStats.map((d, i) => {
