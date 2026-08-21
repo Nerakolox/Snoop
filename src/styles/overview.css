@@ -489,12 +489,21 @@
   line-height: 1;
 }
 
-/* 月形态：日历热力 ------------------------------------------------------- */
+/* 月形态：紧凑连续格子带（不按星期对齐，1 号顺排到月末） -------------------- */
 
 .month-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: var(--space-2);
+  grid-template-columns: repeat(10, 26px);
+  gap: var(--space-1);
+  justify-content: start;
+}
+
+/* 每个格子槽：上=色块、下=每 5 天的日期刻度；无刻度时只有色块，槽高自适应 */
+.month-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
 
 .month-cell {
@@ -502,17 +511,14 @@
   border: none;
   padding: 0;
   cursor: pointer;
-  aspect-ratio: 1;
-  border-radius: var(--radius-sm);
-  background: var(--intensity-0);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
   transition: transform var(--dur-fast) var(--ease-smooth);
 }
 
 .month-cell:hover {
-  transform: scale(1.08);
+  transform: scale(1.1);
 }
 
 .month-cell:hover,
@@ -521,19 +527,34 @@
   outline-offset: 1px;
 }
 
-/* 空天：无采集数据，虚线边框 + 无底色，与强度 0（实心浅灰）区分 */
-.month-cell--empty {
+/* 零活跃（有采集但无输入）：最浅一档实色 */
+.month-cell--idle {
+  background: var(--duration-1);
+}
+
+/* 无数据（未采集）：透明底 + 1px 描边 */
+.month-cell--no-data {
+  background: transparent;
+  border: 1px solid var(--color-border);
+}
+
+/* 未到来（本月内今天之后）：比无数据更弱 */
+.month-cell--future {
   background: transparent;
   border: 1px dashed var(--color-border);
+  opacity: 0.45;
 }
 
-.month-cell-date {
+/* 今天：外圈品牌色环标记，不用填充色（颜色已让给时长） */
+.month-cell--today {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+/* 每 5 天的日期刻度 */
+.month-tick {
   font-size: var(--text-xs);
-  color: var(--color-text-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.month-cell--empty .month-cell-date {
   color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 

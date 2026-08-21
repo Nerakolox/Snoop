@@ -409,6 +409,7 @@ export default function Overview() {
         level,
         isDeep: hasData && level >= 4,
         isToday: d.dayMs === todayMs,
+        future: d.dayMs > todayMs,
         label: hasData ? formatCompactDuration(d.foregroundMs) : "",
       };
     });
@@ -662,7 +663,7 @@ export default function Overview() {
         )}
       </section>
 
-      {/* ④ 节奏 —— 日=24 格时长条 / 周=7 方格(品牌紫深浅) / 月=日历强度(保持暖色) */}
+      {/* ④ 节奏 —— 日=24 格时长条 / 周=7 方格 / 月=紧凑格子带（均品牌紫深浅阶编码时长） */}
       <section className="panel">
         <h3 className="panel-title rhythm-panel-title">
           <span>{rhythmTitle}</span>
@@ -760,26 +761,50 @@ export default function Overview() {
         )}
 
         {viewKind === "month" && (
-          <div className="month-grid">
-            {dailyStats.map((d, i) => (
-              <Tooltip
-                key={d.dayMs}
-                content={d.hasData ? `${dateLabelOf(d.dayMs)} · 强度 ${d.intensity}` : `${dateLabelOf(d.dayMs)} · 无采集数据`}
-              >
-                <button
-                  type="button"
-                  className={`month-cell${d.hasData ? "" : " month-cell--empty"}`}
-                  style={{
-                    gridColumnStart: i === 0 ? mondayIndex(d.dayMs) + 1 : undefined,
-                    background: d.hasData ? intensityVar(d.intensity) : undefined,
-                  }}
-                  onClick={() => goToDay(d.dayMs)}
-                >
-                  <span className="month-cell-date">{new Date(d.dayMs).getDate()}</span>
-                </button>
-              </Tooltip>
-            ))}
-          </div>
+          <>
+            <div className="month-grid">
+              {dayCells.map((d) => {
+                const dayOfMonth = new Date(d.dayMs).getDate();
+                const cls =
+                  "month-cell" +
+                  (d.future
+                    ? " month-cell--future"
+                    : d.idle
+                      ? " month-cell--idle"
+                      : d.hasData
+                        ? ""
+                        : " month-cell--no-data") +
+                  (d.isToday ? " month-cell--today" : "");
+                const style = d.hasData ? { background: durationColorVar(d.level) } : undefined;
+                const tip = d.hasData
+                  ? `${dateLabelOf(d.dayMs)} · ${fmtDuration(d.foregroundMs)}`
+                  : d.future
+                    ? `${dateLabelOf(d.dayMs)} · 未到来`
+                    : d.idle
+                      ? `${dateLabelOf(d.dayMs)} · 无输入`
+                      : `${dateLabelOf(d.dayMs)} · 无数据`;
+                // 刻度只打 1 / 5 / 10 / 15 / 20 / 25 / 30，其余靠 hover
+                const showTick = dayOfMonth === 1 || dayOfMonth % 5 === 0;
+                return (
+                  <div className="month-slot" key={d.dayMs}>
+                    <Tooltip content={tip}>
+                      <button type="button" className={cls} style={style} onClick={() => goToDay(d.dayMs)} />
+                    </Tooltip>
+                    {showTick && <span className="month-tick">{dayOfMonth}</span>}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="rhythm-legend">
+              <span className="rhythm-legend-caption">少</span>
+              {DURATION_LEVELS.map((l) => (
+                <span key={l} className="rhythm-legend-swatch" style={{ background: durationColorVar(l) }} />
+              ))}
+              <span className="rhythm-legend-caption">多</span>
+              <span className="rhythm-legend-swatch rhythm-legend-swatch--empty" />
+              <span className="rhythm-legend-caption">无数据</span>
+            </div>
+          </>
         )}
 
         {isEmpty && <p className="overview-empty-note">{noDataReason(appId, appName)}</p>}
