@@ -7,6 +7,7 @@
 pub mod commands;
 pub mod common;
 pub mod daily;
+pub mod monthly;
 pub mod narrative;
 pub mod store;
 pub mod weekly;

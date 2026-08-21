@@ -233,6 +233,18 @@ pub(crate) fn week_start_of(conn: &Connection, date: &str) -> rusqlite::Result<S
     conn.query_row("SELECT date(?1, '-6 days', 'weekday 1')", [date], |r| r.get(0))
 }
 
+/// 星期几，**0=周一 … 6=周日**（与前端 `aggregate.ts` 的 `mondayIndex` 同约定）。
+///
+/// SQLite 的 `%w` 是 0=周日，`+6 % 7` 换算成周一起。
+pub(crate) fn dow_of(conn: &Connection, date: &str) -> rusqlite::Result<u8> {
+    let w: i64 = conn.query_row(
+        "SELECT (CAST(strftime('%w', ?1) AS INTEGER) + 6) % 7",
+        [date],
+        |r| r.get(0),
+    )?;
+    Ok(w as u8)
+}
+
 /// 含 `date` 那个月的 1 号。
 pub(crate) fn month_start_of(conn: &Connection, date: &str) -> rusqlite::Result<String> {
     conn.query_row("SELECT strftime('%Y-%m-01', ?1)", [date], |r| r.get(0))
