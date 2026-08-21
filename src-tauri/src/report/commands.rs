@@ -10,7 +10,7 @@ use tauri::State;
 
 use crate::ai::AiState;
 use crate::commands::DbPath;
-use crate::report::{daily, store, ReportView};
+use crate::report::{store, ReportView};
 
 fn open_db(state: &State<'_, DbPath>) -> Result<rusqlite::Connection, String> {
     rusqlite::Connection::open(&state.0).map_err(|e| e.to_string())
@@ -48,7 +48,9 @@ pub fn get_report_list(state: State<'_, DbPath>) -> Result<Vec<ReportMeta>, Stri
         .collect())
 }
 
-/// 取某日期的完整报告（含叙事）。无行返回 `None`。
+/// 取某个报告的完整内容（含叙事）。无行返回 `None`。
+///
+/// `data` 原样透传 `data_json`（三种报形状不同，前端靠 `report_type` 收窄）。
 #[tauri::command]
 pub fn get_report(
     state: State<'_, DbPath>,
@@ -61,9 +63,10 @@ pub fn get_report(
     match row {
         None => Ok(None),
         Some(r) => {
-            let data: daily::DailyReport =
+            let data: serde_json::Value =
                 serde_json::from_str(&r.data_json).map_err(|e| e.to_string())?;
             Ok(Some(ReportView {
+                report_type: r.report_type,
                 data,
                 narrative: r.narrative,
                 narrative_source: r.narrative_source,
@@ -72,21 +75,25 @@ pub fn get_report(
     }
 }
 
-/// 手动重新生成某日期报告（重算 + 重调 AI + 覆盖落库）。
+/// 手动重新生成某个报告（重算 + 重调 AI + 覆盖落库）。
 #[tauri::command]
 pub async fn regenerate_report(
     state: State<'_, Arc<AiState>>,
     db: State<'_, DbPath>,
     report_date: String,
+    report_type: Option<String>,
 ) -> Result<ReportView, String> {
     let ai = state.inner().clone();
     let db_path = db.0.clone();
     drop(state);
     drop(db);
 
-    match crate::report::generate_for_date(&ai.config, &ai.code_map, &db_path, &report_date).await {
+    let rtype = report_type.unwrap_or_else(|| "day".to_string());
+    match crate::report::generate_report(&ai.config, &ai.code_map, &db_path, &report_date, &rtype)
+        .await
+    {
         Ok(Some(view)) => Ok(view),
-        Ok(None) => Err("该日期没有采集记录".to_string()),
+        Ok(None) => Err("这个周期没有采集记录".to_string()),
         Err(e) => Err(e),
     }
 }

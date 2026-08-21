@@ -106,8 +106,17 @@ pub fn get(conn: &Connection, date: &str, rtype: &str) -> Result<Option<ReportRo
     }
 }
 
+/// 全部报告，按日期倒序。
+///
+/// 二级排序是必需的：三种报共用 `report_date`，8 月 1 日可能同时是日报、周报（若逢周一）
+/// 和月报的报告日期，只按日期排序结果不稳定。同一天有多种报时**粒度粗的排前面**
+/// （覆盖周期更长的先看）。
 pub fn list(conn: &Connection) -> Result<Vec<ReportRow>> {
-    let sql = format!("SELECT {COLS} FROM daily_reports ORDER BY report_date DESC");
+    let sql = format!(
+        "SELECT {COLS} FROM daily_reports
+         ORDER BY report_date DESC,
+                  CASE report_type WHEN 'month' THEN 0 WHEN 'week' THEN 1 ELSE 2 END"
+    );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], row_to_report)?;
     rows.collect()

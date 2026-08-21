@@ -245,12 +245,15 @@ pub fn run() {
                 });
             }
 
-            // 每天首次启动时后台生成「昨天」的日报（记录太少 / 无记录跳过，见 report::maybe_generate_yesterday）。
+            // 启动时补齐最近一个完整周期的三种报：昨天的日报、上一周的周报、上一个月的月报。
+            // 三者在同一个任务里**顺序**执行（记录太少 / 无记录会跳过，见
+            // report::maybe_generate_on_startup）—— 首次升级启动时三份都缺，
+            // 并发会同时打三个 AI 请求。
             {
                 let report_ai = ai_state.clone();
                 let report_db = classify_db_path.clone();
                 tauri::async_runtime::spawn(async move {
-                    report::maybe_generate_yesterday(&report_ai.config, &report_ai.code_map, &report_db).await;
+                    report::maybe_generate_on_startup(&report_ai.config, &report_ai.code_map, &report_db).await;
                 });
             }
 
