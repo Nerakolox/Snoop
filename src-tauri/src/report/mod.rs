@@ -5,6 +5,7 @@
 //! 图表完全不依赖 AI，T0 下也能正常显示。
 
 pub mod commands;
+pub mod common;
 pub mod daily;
 pub mod narrative;
 pub mod store;

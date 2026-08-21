@@ -1,14 +1,17 @@
-//! 日报数据算法（Task 1）—— 纯计算，不碰 AI。
+//! 日报数据算法（批次 4a Task 1）—— 纯计算，不碰 AI。
+//!
+//! 桶查询、活跃判定、时长聚合、应用排行、分类占比等**周月报也要用的原语**已抽到
+//! [`super::common`]，本模块只保留「一天」特有的部分。
 //!
 //! # 时长口径（执行单已锁定）
 //!
 //! - **活跃时长** = 有输入桶的时长，是报告主体口径。
 //! - **前台时长** = 前台墙钟（所有桶），只在总览副行并排展示。
-//! - 有输入桶判定见 [`RawBucket::is_active`]。
+//! - 有输入桶判定见 [`super::common::RawBucket::is_active`]。
 //!
 //! # 连续专注段（定义 + 理由）
 //!
-//! 专注段 = 在「活跃桶」序列上，把相邻活跃桶之间时间间隙 ≤ [`FOCUS_GAP_MS`] 的连成一段；
+//! 专注段 = 在「活跃桶」序列上，把相邻活跃桶之间时间间隙 ≤ [`super::common::FOCUS_GAP_MS`] 的连成一段；
 //! **跨应用算同一段**。
 //!
 //! - 间隙取 5 分钟：桶是 5 秒级，读文档/思考的输入停顿通常 < 5 分钟；起身离开
@@ -23,16 +26,24 @@
 //! 桶归哪一天**只看 `bucket_start`**（`date(bucket_start/1000,'unixepoch','localtime')`），
 //! 不看 `bucket_start + duration_ms`。一个 23:59:50 开始、持续 30s 跨到次日的桶，
 //! 归入起点那天、只计一次。这与现有 `commands::get_hourly_activity` 的按起点分桶一致。
+//!
+//! 作息模块（周报）另有 4:00 日界，见 [`super::common::RHYTHM_DAY_START_HOUR`]；
+//! **两套日界互不混用** —— 混用会让「7 天条形加起来 ≠ 周活跃总时长」。
 
 use std::collections::HashMap;
 
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
-use crate::app_classify::store;
+use super::common::{
+    add_days, category_shares, longest_focus, query_buckets_in_range, query_day_buckets,
+    sum_active_duration, sum_duration, switch_count, top_apps, RawBucket, ACTIVE_PREDICATE,
+    LOCAL_DAY,
+};
 
-/// 专注段的间隙阈值：相邻活跃桶超过这个墙钟间隔即断段。做成常量，日后可调。
-const FOCUS_GAP_MS: i64 = 5 * 60 * 1000;
+// 这四个结构体现在住在 common（周月报同样要用），从这里 re-export 保持
+// `report::daily::AppRank` 这类既有路径可用。
+pub use super::common::{AppRank, AppRef, CategoryShare, FocusSegment};
 
 // ── 结构体 ──────────────────────────────────────────────────────────────────
 
@@ -68,31 +79,9 @@ pub struct DailyReport {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct AppRank {
-    pub name: String,
-    pub bundle_id: String,
-    pub active_ms: i64,
-    pub share_pct: f64,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct CategoryShare {
-    pub category: String,
-    pub active_ms: i64,
-    pub share_pct: f64,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
 pub struct HourCell {
     pub hour: u8,
     pub active_ms: i64,
-}
-
-#[derive(Serialize, Deserialize, Clone, Default)]
-pub struct FocusSegment {
-    pub start_ms: i64,
-    pub end_ms: i64,
-    pub duration_ms: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -103,245 +92,34 @@ pub struct Compare7d {
     pub switch_delta_pct: f64,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct AppRef {
-    pub name: String,
-    pub bundle_id: String,
-}
-
-// ── 内部原始桶 ─────────────────────────────────────────────────────────────
-
-/// 参与计算的桶字段（不读 key_details / mouse_move_dist）。
-#[derive(Clone)]
-struct RawBucket {
-    bucket_start: i64,
-    duration_ms: i64,
-    app_name: String,
-    app_bundle_id: String,
-    key_total: i64,
-    mouse_left: i64,
-    mouse_right: i64,
-    mouse_middle: i64,
-    mouse_back: i64,
-    mouse_forward: i64,
-    scroll_dist: i64,
-}
-
-impl RawBucket {
-    /// 有输入桶判定（活跃口径的判定式）。
-    ///
-    /// **`mouse_move_dist` 故意不计**：纯鼠标位移是连续信号，若计入，看网页时随手晃鼠标
-    /// 都会被当成「活跃」，挂机判定就失效了。代价是「只移动鼠标不点击」被判成无输入——
-    /// 数据上是对的，但若占比很高，活跃时长会低于直觉。若日后用户反馈「活跃时长偏低」，
-    /// 从这个判定式开始排查。
-    fn is_active(&self) -> bool {
-        self.key_total > 0
-            || self.mouse_left > 0
-            || self.mouse_right > 0
-            || self.mouse_middle > 0
-            || self.mouse_back > 0
-            || self.mouse_forward > 0
-            || self.scroll_dist > 0
-    }
-}
-
-const BUCKET_COLS: &str = "bucket_start, duration_ms, app_name, app_bundle_id, \
-    key_total, mouse_left, mouse_right, mouse_middle, mouse_back, mouse_forward, scroll_dist";
-
-fn row_to_bucket_at(row: &rusqlite::Row<'_>, offset: usize) -> rusqlite::Result<RawBucket> {
-    Ok(RawBucket {
-        bucket_start: row.get(offset)?,
-        duration_ms: row.get(offset + 1)?,
-        app_name: row.get(offset + 2)?,
-        app_bundle_id: row.get(offset + 3)?,
-        key_total: row.get(offset + 4)?,
-        mouse_left: row.get(offset + 5)?,
-        mouse_right: row.get(offset + 6)?,
-        mouse_middle: row.get(offset + 7)?,
-        mouse_back: row.get(offset + 8)?,
-        mouse_forward: row.get(offset + 9)?,
-        scroll_dist: row.get(offset + 10)?,
-    })
-}
-
-/// 某本地日的全部桶，按 `bucket_start` 升序。
-fn query_day_buckets(conn: &Connection, date: &str) -> rusqlite::Result<Vec<RawBucket>> {
-    let sql = format!(
-        "SELECT {BUCKET_COLS} FROM activity_buckets
-         WHERE date(bucket_start/1000,'unixepoch','localtime') = ?1
-         ORDER BY bucket_start ASC"
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([date], |row| row_to_bucket_at(row, 0))?;
-    rows.collect()
-}
-
-/// 近 7 天（不含当天）的桶，返回 `(本地日, 桶)`，按 `bucket_start` 升序。
-fn query_prev_7d_buckets(
-    conn: &Connection,
-    date: &str,
-) -> rusqlite::Result<Vec<(String, RawBucket)>> {
-    let sql = format!(
-        "SELECT date(bucket_start/1000,'unixepoch','localtime') AS day, {BUCKET_COLS}
-         FROM activity_buckets
-         WHERE date(bucket_start/1000,'unixepoch','localtime') >= date(?1, '-7 days')
-           AND date(bucket_start/1000,'unixepoch','localtime') < ?1
-         ORDER BY bucket_start ASC"
-    );
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt.query_map([date], |row| {
-        let day: String = row.get(0)?;
-        let b = row_to_bucket_at(row, 1)?;
-        Ok((day, b))
-    })?;
-    rows.collect()
-}
+// ── 查询 ────────────────────────────────────────────────────────────────────
 
 /// 前 30 天（不含当天）出现过的 `app_bundle_id`。
 fn query_prior_30d_apps(conn: &Connection, date: &str) -> rusqlite::Result<Vec<String>> {
-    let mut stmt = conn.prepare(
+    let sql = format!(
         "SELECT DISTINCT app_bundle_id FROM activity_buckets
-         WHERE date(bucket_start/1000,'unixepoch','localtime') < ?1
-           AND date(bucket_start/1000,'unixepoch','localtime') >= date(?1, '-30 days')",
-    )?;
+         WHERE {LOCAL_DAY} < ?1
+           AND {LOCAL_DAY} >= date(?1, '-30 days')"
+    );
+    let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([date], |row| row.get::<_, String>(0))?;
     rows.collect()
 }
 
-// ── 纯计算 helper（入参均须已按 bucket_start 升序） ─────────────────────────
-
-fn sum_duration(buckets: &[RawBucket]) -> i64 {
-    buckets.iter().map(|b| b.duration_ms).sum()
-}
-
-/// 切换次数 = 相邻桶 `bundle_id` 变化的次数。同 App 的连续 5s 桶不计数。
-fn switch_count(buckets: &[RawBucket]) -> u32 {
-    let mut count = 0u32;
-    for w in buckets.windows(2) {
-        if w[0].app_bundle_id != w[1].app_bundle_id {
-            count += 1;
-        }
-    }
-    count
-}
-
-/// 最长连续专注段。间隙 = 当前段末到下一个活跃桶起点的墙钟间隔（见模块头注释）。
-fn longest_focus(buckets: &[RawBucket]) -> FocusSegment {
-    let active: Vec<&RawBucket> = buckets.iter().filter(|b| b.is_active()).collect();
-    let Some(first) = active.first() else {
-        return FocusSegment::default();
-    };
-
-    let mut best = FocusSegment {
-        start_ms: first.bucket_start,
-        end_ms: first.bucket_start + first.duration_ms,
-        duration_ms: first.duration_ms,
-    };
-    let mut cur_start = first.bucket_start;
-    let mut cur_end = first.bucket_start + first.duration_ms;
-
-    for b in &active[1..] {
-        let b_end = b.bucket_start + b.duration_ms;
-        if b.bucket_start - cur_end <= FOCUS_GAP_MS {
-            cur_end = cur_end.max(b_end);
-            let dur = cur_end - cur_start;
-            if dur > best.duration_ms {
-                best = FocusSegment {
-                    start_ms: cur_start,
-                    end_ms: cur_end,
-                    duration_ms: dur,
-                };
-            }
-        } else {
-            cur_start = b.bucket_start;
-            cur_end = b_end;
-        }
-    }
-    best
-}
-
-/// 应用活跃时长 Top 5。
-fn top_apps(buckets: &[RawBucket]) -> Vec<AppRank> {
-    let mut acc: HashMap<String, (String, i64)> = HashMap::new();
-    for b in buckets.iter().filter(|b| b.is_active()) {
-        let e = acc
-            .entry(b.app_bundle_id.clone())
-            .or_insert((b.app_name.clone(), 0));
-        e.0 = b.app_name.clone();
-        e.1 += b.duration_ms;
-    }
-    let total: i64 = acc.values().map(|(_, ms)| *ms).sum();
-    let mut v: Vec<AppRank> = acc
-        .into_iter()
-        .map(|(id, (name, ms))| AppRank {
-            name,
-            bundle_id: id,
-            active_ms: ms,
-            share_pct: if total > 0 {
-                ms as f64 / total as f64 * 100.0
-            } else {
-                0.0
-            },
-        })
-        .collect();
-    v.sort_by(|a, b| {
-        b.active_ms
-            .cmp(&a.active_ms)
-            .then_with(|| a.bundle_id.cmp(&b.bundle_id))
-    });
-    v.truncate(5);
-    v
-}
-
-/// 分类占比（复用批次 2 的 `store::resolve` + 11 类，未分类计 `other`）。
-fn category_shares(conn: &Connection, buckets: &[RawBucket]) -> rusqlite::Result<Vec<CategoryShare>> {
-    let mut by_app: HashMap<String, (String, i64)> = HashMap::new();
-    for b in buckets.iter().filter(|b| b.is_active()) {
-        let e = by_app
-            .entry(b.app_bundle_id.clone())
-            .or_insert((b.app_name.clone(), 0));
-        e.0 = b.app_name.clone();
-        e.1 += b.duration_ms;
-    }
-
-    let mut totals: HashMap<String, i64> = HashMap::new();
-    for (id, (name, ms)) in by_app {
-        let cat = store::resolve(conn, &id, &name, &id)?
-            .map(|c| c.category)
-            .unwrap_or_else(|| "other".to_string());
-        *totals.entry(cat).or_insert(0) += ms;
-    }
-
-    let total: i64 = totals.values().sum();
-    let mut v: Vec<CategoryShare> = totals
-        .into_iter()
-        .filter(|(_, ms)| *ms > 0)
-        .map(|(category, active_ms)| CategoryShare {
-            category,
-            active_ms,
-            share_pct: if total > 0 {
-                active_ms as f64 / total as f64 * 100.0
-            } else {
-                0.0
-            },
-        })
-        .collect();
-    v.sort_by(|a, b| b.active_ms.cmp(&a.active_ms));
-    Ok(v)
-}
+// ── 纯计算 ──────────────────────────────────────────────────────────────────
 
 /// 24 小时活跃分布（有输入口径）+ 峰值时段。小时分桶直接走 SQLite 本地时区。
 fn build_hourly(conn: &Connection, date: &str) -> rusqlite::Result<(Vec<HourCell>, u8)> {
     let mut ms_by_hour = [0i64; 24];
-    let mut stmt = conn.prepare(
+    let sql = format!(
         "SELECT CAST(strftime('%H', datetime(bucket_start/1000,'unixepoch','localtime')) AS INTEGER) AS h,
                 COALESCE(SUM(duration_ms), 0)
          FROM activity_buckets
-         WHERE date(bucket_start/1000,'unixepoch','localtime') = ?1
-           AND (key_total > 0 OR mouse_left > 0 OR mouse_right > 0 OR mouse_middle > 0
-                OR mouse_back > 0 OR mouse_forward > 0 OR scroll_dist > 0)
-         GROUP BY h",
-    )?;
+         WHERE {LOCAL_DAY} = ?1
+           AND {ACTIVE_PREDICATE}
+         GROUP BY h"
+    );
+    let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([date], |row| {
         Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?))
     })?;
@@ -376,7 +154,10 @@ fn compare_7d(
     today_active_ms: i64,
     today_switch_count: u32,
 ) -> rusqlite::Result<Compare7d> {
-    let buckets = query_prev_7d_buckets(conn, date)?;
+    // 闭区间 [date-7, date-1] 等价于原来的 `>= date-7 AND < date`。
+    let from = add_days(conn, date, -7)?;
+    let to = add_days(conn, date, -1)?;
+    let buckets = query_buckets_in_range(conn, &from, &to)?;
 
     // 按本地日分组（查询已升序，分组内保持升序，switch_count 依赖这一点）。
     let mut per_day: HashMap<String, Vec<RawBucket>> = HashMap::new();
@@ -388,11 +169,7 @@ fn compare_7d(
     let mut total_active = 0i64;
     let mut total_switches = 0u32;
     for bs in per_day.values() {
-        total_active += bs
-            .iter()
-            .filter(|b| b.is_active())
-            .map(|b| b.duration_ms)
-            .sum::<i64>();
+        total_active += sum_active_duration(bs);
         total_switches += switch_count(bs);
     }
 
@@ -451,11 +228,7 @@ fn new_apps(conn: &Connection, date: &str, today: &[RawBucket]) -> rusqlite::Res
 pub fn compute_daily_report(conn: &Connection, date: &str) -> rusqlite::Result<DailyReport> {
     let buckets = query_day_buckets(conn, date)?;
 
-    let active_ms = buckets
-        .iter()
-        .filter(|b| b.is_active())
-        .map(|b| b.duration_ms)
-        .sum::<i64>();
+    let active_ms = sum_active_duration(&buckets);
     let foreground_ms = sum_duration(&buckets);
     let switch_count = switch_count(&buckets);
     let span_start_ms = buckets.iter().map(|b| b.bucket_start).min().unwrap_or(0);
@@ -465,7 +238,7 @@ pub fn compute_daily_report(conn: &Connection, date: &str) -> rusqlite::Result<D
         .max()
         .unwrap_or(0);
 
-    let top_apps = top_apps(&buckets);
+    let top_apps = top_apps(&buckets, 5);
     let categories = category_shares(conn, &buckets)?;
     let (hourly, peak_hour) = build_hourly(conn, date)?;
     let longest_focus = longest_focus(&buckets);
