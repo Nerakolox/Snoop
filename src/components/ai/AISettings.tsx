@@ -7,7 +7,7 @@
 // 由 `tab` prop 决定展示哪个区块（服务 / 隐私 / 分类 / 记录）。
 // 所有 state 保持在组件内不变——切 tab 只改 prop，数据不丢。
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { save } from "@tauri-apps/plugin-dialog";
 import { writeTextFile } from "@tauri-apps/plugin-fs";
 import {
@@ -40,6 +40,12 @@ import {
   getClassifyStatus,
 } from "../../ai/client";
 import type { AiConfigView, AuditRecord, ClassifyStatus, FeatureDecl, Tier } from "../../ai/types";
+import {
+  NOTICE_RULES,
+  readDisabledNoticeRules,
+  writeDisabledNoticeRules,
+  type NoticeRuleId,
+} from "../../ai/notice";
 import AppCategories from "./AppCategories";
 
 const TIER_ORDER: Tier[] = ["T0", "T1", "T2", "T3"];
@@ -86,6 +92,9 @@ export default function AISettings({ tab }: { tab: AiTab }) {
   const [classifyMsg, setClassifyMsg] = useState("");
   const [classifying, setClassifying] = useState(false);
 
+  // 「留意」的分规则开关（localStorage 持久化，检测引擎在 notice.ts 消费同一份）。
+  const [disabledNoticeRules, setDisabledNoticeRules] = useState<NoticeRuleId[]>([]);
+
   const featureLabel = useMemo(() => {
     const m = new Map<string, string>();
     for (const f of features) m.set(f.id, f.label);
@@ -111,6 +120,7 @@ export default function AISettings({ tab }: { tab: AiTab }) {
       .catch(console.error);
     getAiFeatures().then(setFeatures).catch(console.error);
     getClassifyStatus().then(setClassify).catch(console.error);
+    setDisabledNoticeRules(readDisabledNoticeRules());
     reloadAudit();
   }, []);
 
@@ -171,6 +181,12 @@ export default function AISettings({ tab }: { tab: AiTab }) {
 
   function toggleFeature(id: string, v: boolean) {
     persist({ enabled_features: { ...(config?.enabled_features ?? {}), [id]: v } });
+  }
+
+  function toggleNoticeRule(id: NoticeRuleId, v: boolean) {
+    const next = v ? disabledNoticeRules.filter((r) => r !== id) : [...disabledNoticeRules, id];
+    setDisabledNoticeRules(next);
+    writeDisabledNoticeRules(next);
   }
 
   async function runClassify() {
@@ -414,30 +430,58 @@ export default function AISettings({ tab }: { tab: AiTab }) {
             {features.map((f) => {
               const overTier = config ? !tierAtLeast(config.tier, f.required_tier) : true;
               const enabled = config ? (config.enabled_features[f.id] ?? f.default_enabled) : false;
+              const isNotice = f.id === "ai.notice";
               return (
-                <div key={f.id} className={`ai-row${overTier ? " is-disabled" : ""}`}>
-                  <div className="ai-row-left">
-                    <span className="setting-row-label">{f.label}</span>
-                    <span className="setting-row-desc">{f.description}</span>
+                <Fragment key={f.id}>
+                  <div className={`ai-row${overTier ? " is-disabled" : ""}`}>
+                    <div className="ai-row-left">
+                      <span className="setting-row-label">{f.label}</span>
+                      <span className="setting-row-desc">{f.description}</span>
+                    </div>
+                    <div className="ai-row-right">
+                      {overTier && (
+                        <span className="ai-lock-badge">
+                          <Lock size={10} />
+                          需要 {f.required_tier}
+                        </span>
+                      )}
+                      <button
+                        className={`setting-toggle${enabled ? " is-on" : ""}`}
+                        onClick={() => toggleFeature(f.id, !enabled)}
+                        role="switch"
+                        aria-checked={enabled}
+                        disabled={!config || overTier}
+                      >
+                        <span className="setting-toggle-thumb" />
+                      </button>
+                    </div>
                   </div>
-                  <div className="ai-row-right">
-                    {overTier && (
-                      <span className="ai-lock-badge">
-                        <Lock size={10} />
-                        需要 {f.required_tier}
-                      </span>
-                    )}
-                    <button
-                      className={`setting-toggle${enabled ? " is-on" : ""}`}
-                      onClick={() => toggleFeature(f.id, !enabled)}
-                      role="switch"
-                      aria-checked={enabled}
-                      disabled={!config || overTier}
-                    >
-                      <span className="setting-toggle-thumb" />
-                    </button>
-                  </div>
-                </div>
+                  {isNotice && enabled && !overTier && (
+                    <div className="ai-notice-rules">
+                      {NOTICE_RULES.map((r) => {
+                        const ruleOn = !disabledNoticeRules.includes(r.id);
+                        return (
+                          <div key={r.id} className="ai-notice-rule">
+                            <div className="ai-row-left">
+                              <span className="setting-row-label">{r.label}</span>
+                              <span className="setting-row-desc">{r.description}</span>
+                            </div>
+                            <div className="ai-row-right">
+                              <button
+                                className={`setting-toggle${ruleOn ? " is-on" : ""}`}
+                                onClick={() => toggleNoticeRule(r.id, !ruleOn)}
+                                role="switch"
+                                aria-checked={ruleOn}
+                              >
+                                <span className="setting-toggle-thumb" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Fragment>
               );
             })}
             {features.length === 0 && (

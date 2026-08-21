@@ -58,6 +58,33 @@
   opacity: 0.5;
 }
 
+/* 「留意」的分规则开关：缩进在功能行下方、背景略深以示从属，视觉更弱。
+   功能行自身有 border-bottom 作上分隔，本容器不加顶边；底边由 settings-group 的边框收口。 */
+.ai-notice-rules {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-2);
+}
+
+.ai-notice-rule {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--space-6);
+  padding-left: calc(var(--space-6) * 2);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.ai-notice-rule:last-child {
+  border-bottom: none;
+}
+
+.ai-notice-rule .setting-row-label {
+  font-weight: 500;
+  color: var(--color-text-2);
+}
+
 /* 顶部提示：未配置时出现 */
 .ai-hint {
   display: flex;
