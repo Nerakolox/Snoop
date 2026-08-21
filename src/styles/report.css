@@ -703,20 +703,29 @@
   border-color: var(--color-accent-hover);
 }
 
-/* ---- 导出成图对话框（预览 + 选尺寸 + 保存） ---- */
+/* ---- 导出成图对话框（预览 + 选尺寸 + 保存） ----
+   overlay 是 .page-layer（含 transform，构成 containing block）的 fixed 子元素，
+   因此 inset:0 已经落在「主内容区」（顶栏下方、侧栏右侧），不盖顶栏拖拽区。
+   居中用「overlay display:flex + dialog margin:auto」，而不是 align/justify-content:center ——
+   后者在子项比容器高时会向两侧等量溢出、顶部被裁进顶栏；margin:auto 在装不下时归零、
+   配合 overlay 的 overflow:auto 让内容留在 overlay 内滚动。 */
 .export-dialog-overlay {
+  /* 弹层挂在 .page-layer 内，而 .page-layer 有 transform: translateY(0) + will-change，
+     构成 fixed 的包含块，故 inset:0 只铺满主内容区（顶栏 46px 拖拽区之下、侧栏之右），
+     天然避开自定义标题栏，无需再手动加 top 偏移。 */
   position: fixed;
   inset: 0;
   z-index: 1000;
   background: rgba(0, 0, 0, 0.45);
   display: flex;
-  align-items: center;
-  justify-content: center;
+  overflow: auto;
+  padding: var(--space-6);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
 
 .export-dialog {
+  margin: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -725,7 +734,8 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   padding: var(--space-6);
-  max-height: calc(100vh - var(--space-8));
+  max-height: 80vh;
+  max-width: 100%;
   overflow: auto;
 }
 
@@ -787,10 +797,23 @@
 
 .export-dialog__preview {
   position: relative;
+  /* 固定 300px 宽 + overflow:hidden：transform:scale 不改变布局尺寸，
+     内层卡片仍是 1080px 的布局宽，靠这里裁掉，避免把对话框横向撑爆。 */
+  width: 300px;
+  flex: none;
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg);
+}
+
+/* 内层缩放容器：绝对定位脱离文档流，1080px 布局尺寸不再参与预览容器排版，
+   只靠 transform:scale 缩小呈现；预览容器固定 300px + overflow:hidden 裁剪。 */
+.export-dialog__scaled {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: top left;
 }
 
 .export-dialog__loading {

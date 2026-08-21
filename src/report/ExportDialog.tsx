@@ -128,10 +128,10 @@ export default function ExportDialog({
 
         <div
           className="export-dialog__preview"
-          style={{ width: PREVIEW_W, height: Math.round(height * scale) }}
+          style={{ height: Math.round(height * scale) }}
         >
           {icons ? (
-            <div style={{ transform: `scale(${scale})`, transformOrigin: "top left" }}>
+            <div className="export-dialog__scaled" style={{ transform: `scale(${scale})` }}>
               <div ref={cardRef}>
                 <ReportExportCard detail={detail} size={size} icons={icons} />
               </div>
