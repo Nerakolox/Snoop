@@ -44,12 +44,18 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 }
 
 function buildSvg(node: HTMLElement, width: number, height: number, css: string): string {
+  // 序列化必须用 XMLSerializer，不能用 node.outerHTML：outerHTML 走 HTML 序列化，
+  // void 元素（<img>/<br>/<input>）不会补斜杠，产出的字符串不是合法 XML，SVG 会加载失败。
+  // XMLSerializer 走 XHTML 序列化，自动 <img/> 自闭合、自动把文本/属性里的 & < > 转义
+  // （如应用名 "AT&T" 会变 AT&amp;T）。样式是纯字符串（export.css?inline），不进 DOM、
+  // 不会被 serializer 二次转义，手动包 <![CDATA[]]>（CSS 里只忌出现 "]]>"，本文件没有）。
+  const body = new XMLSerializer().serializeToString(node);
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">`,
     `<foreignObject width="${width}" height="${height}">`,
     `<div xmlns="http://www.w3.org/1999/xhtml">`,
-    `<style>${css}</style>`,
-    node.outerHTML,
+    `<style><![CDATA[${css}]]></style>`,
+    body,
     `</div>`,
     `</foreignObject>`,
     `</svg>`,
@@ -89,6 +95,16 @@ export async function captureNodeAsPng(
 
   // 4. 序列化 DOM → foreignObject SVG
   const svg = buildSvg(node, width, height, css);
+
+  // dev-only 自检：XMLSerializer 产物应是合法 XML。只在开发构建跑，生产导出不加这层解析开销。
+  // 若哪天失效（例如 CSS 里混入 "]]>"），这里会打出浏览器 XML 解析器的精确报错，而不是让
+  // 后面的 <img>.onerror 只回一句空泛的「渲染失败」。
+  if (import.meta.env.DEV) {
+    const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+    const perr = parsed.querySelector("parsererror");
+    if (perr) console.error("[export] SVG 非合法 XML：", perr.textContent);
+  }
+
   const svgUrl = URL.createObjectURL(
     new Blob([svg], { type: "image/svg+xml;charset=utf-8" }),
   );
