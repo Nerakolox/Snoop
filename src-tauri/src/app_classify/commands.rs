@@ -10,6 +10,7 @@ use crate::app_classify::engine::{self, ClassifyOutcome, ClassifyStatus};
 use crate::app_classify::store::{self, ClassifiedApp, Source};
 use crate::app_classify::Category;
 use crate::commands::DbPath;
+use crate::db::ACTIVE_PREDICATE;
 
 /// 「待确认」阈值：AI 置信度低于此值（或缺省）需要用户复核。
 const CONFIRM_THRESHOLD: f64 = 0.6;
@@ -148,14 +149,16 @@ pub fn reset_app_category(
 
 // ─── Task 4：消费方（概览分类占比） ────────────────────────────────────────────
 
-/// 分类占比的一格：某类别在给定范围内的前台时长。
+/// 分类占比的一格：某类别在给定范围内的活跃时长（有输入）。
 #[derive(Serialize, Clone)]
 pub struct CategoryShare {
     pub category: String,
     pub duration_ms: i64,
 }
 
-/// 聚合给定时间范围内各分类的前台时长（未分类计入 `other`），按时长降序返回。
+/// 聚合给定时间范围内各分类的活跃时长（有输入口径，未分类计入 `other`），按时长降序返回。
+///
+/// 与报告页分类占比同一口径：复用 [`crate::db::ACTIVE_PREDICATE`]，挂机时段不计入。
 #[tauri::command]
 pub fn get_category_breakdown(
     db: State<'_, DbPath>,
@@ -166,17 +169,17 @@ pub fn get_category_breakdown(
 
     let conn = open_db(&db)?;
 
-    // 每个 app 聚一次：代表名 + 该范围总前台时长。
+    // 每个 app 聚一次：代表名 + 该范围总活跃时长（有输入）。
     let mut agg: Vec<(String, String, i64)> = Vec::new();
     {
-        let mut stmt = conn
-            .prepare(
-                "SELECT app_bundle_id, MAX(app_name) AS name, SUM(duration_ms) AS dur
-                 FROM activity_buckets
-                 WHERE bucket_start >= ?1 AND bucket_start < ?2
-                 GROUP BY app_bundle_id",
-            )
-            .map_err(|e| e.to_string())?;
+        let sql = format!(
+            "SELECT app_bundle_id, MAX(app_name) AS name,
+                    SUM(CASE WHEN {ACTIVE_PREDICATE} THEN duration_ms ELSE 0 END) AS dur
+             FROM activity_buckets
+             WHERE bucket_start >= ?1 AND bucket_start < ?2
+             GROUP BY app_bundle_id"
+        );
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map(rusqlite::params![start_ms, end_ms], |r| {
                 Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, i64>(2)?))

@@ -134,10 +134,10 @@ impl RawBucket {
 pub(crate) const BUCKET_COLS: &str = "bucket_start, duration_ms, app_name, app_bundle_id, \
     key_total, mouse_left, mouse_right, mouse_middle, mouse_back, mouse_forward, scroll_dist";
 
-/// [`RawBucket::is_active`] 的 SQL 等价式。放在这里是为了让「有输入」只有一个定义，
-/// Rust 侧改了 SQL 侧不会忘。
-pub(crate) const ACTIVE_PREDICATE: &str = "(key_total > 0 OR mouse_left > 0 OR mouse_right > 0 \
-    OR mouse_middle > 0 OR mouse_back > 0 OR mouse_forward > 0 OR scroll_dist > 0)";
+/// [`RawBucket::is_active`] 的 SQL 等价式。定义已上提到 [`crate::db::ACTIVE_PREDICATE`]
+/// （概览分类占比也要用，不能再留在 report 里）；此处 re-export 只为保住
+/// `super::common::ACTIVE_PREDICATE` 既有路径。Rust 侧 [`RawBucket::is_active`] 与它必须同步。
+pub(crate) use crate::db::ACTIVE_PREDICATE;
 
 /// 本地日表达式：桶归哪一天只看 `bucket_start`（见 [`super::daily`] 的「跨午夜归属」）。
 pub(crate) const LOCAL_DAY: &str = "date(bucket_start/1000,'unixepoch','localtime')";

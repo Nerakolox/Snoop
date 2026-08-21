@@ -266,7 +266,7 @@ export default function Overview() {
   }, [buckets, rhythmRange]);
   const maxDayForegroundMs = Math.max(...dailyStats.map((d) => d.foregroundMs), 1);
 
-  // 分类占比：后端按范围聚合各分类前台时长（未分类计入 other）。
+  // 分类占比：后端按范围聚合各分类活跃时长（有输入，未分类计入 other）。
   // 依赖 allBuckets，使 live 30s 轮询刷新 buckets 时占比也一并刷新。
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryShare[]>([]);
   useEffect(() => {
@@ -466,7 +466,7 @@ export default function Overview() {
       <section className="panel">
         <h3 className="panel-title">
           {categoryTitle}
-          <span className="cat-note">按前台时长统计</span>
+          <span className="cat-note">按活跃时长统计</span>
         </h3>
         {categoryBreakdown.length === 0 ? (
           <div className="overview-empty-note">

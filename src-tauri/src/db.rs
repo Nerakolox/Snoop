@@ -1,6 +1,15 @@
 use rusqlite::{Connection, Result};
 use std::path::PathBuf;
 
+/// 「有输入桶」的 SQL 判定式 —— 概览分类占比 / 报告时长共用的单一来源，
+/// 保证「有输入」只有一个定义，别再在别处各写一份（那正是分类占比口径分叉的成因）。
+///
+/// 与 [`crate::report::common::RawBucket::is_active`] 是同一判定的 SQL 版 / Rust 版，
+/// 改一边必须同步另一边。`mouse_move_dist` 故意不计：纯位移是连续信号，计入会让
+/// 「只晃鼠标不点击」被当成活跃，挂机判定就失效了。
+pub(crate) const ACTIVE_PREDICATE: &str = "(key_total > 0 OR mouse_left > 0 OR mouse_right > 0 \
+    OR mouse_middle > 0 OR mouse_back > 0 OR mouse_forward > 0 OR scroll_dist > 0)";
+
 pub struct Database {
     conn: Connection,
 }

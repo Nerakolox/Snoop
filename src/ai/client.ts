@@ -85,7 +85,7 @@ export function resetAppCategory(appId: string, appName: string): Promise<AppCat
   return invoke<AppCategoryRow>("reset_app_category", { appId, appName });
 }
 
-/** 聚合某时间范围内各分类的前台时长（未分类计入 other），按时长降序。 */
+/** 聚合某时间范围内各分类的活跃时长（有输入，未分类计入 other），按时长降序。 */
 export function getCategoryBreakdown(startMs: number, endMs: number): Promise<CategoryShare[]> {
   return invoke<CategoryShare[]>("get_category_breakdown", { startMs, endMs });
 }
