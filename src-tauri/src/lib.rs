@@ -16,6 +16,7 @@ mod app_classify;
 mod commands;
 mod db;
 mod platform;
+mod report;
 mod settings;
 mod icon_cache;
 mod updater;
