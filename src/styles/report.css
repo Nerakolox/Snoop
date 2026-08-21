@@ -53,11 +53,6 @@
   color: var(--color-on-accent);
 }
 
-.report-filter:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .report-jump {
   display: flex;
   gap: var(--space-2);
@@ -134,6 +129,27 @@
 
 .report-row-arrow {
   color: var(--color-text-3);
+}
+
+/* 类型徽章：日 / 周 / 月 */
+.report-row-kind {
+  font-size: var(--text-xs);
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-2);
+  flex-shrink: 0;
+}
+
+.report-row-kind--week {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.report-row-kind--month {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
 /* 「记录太少」：极简灰色条目，不可点开 */
@@ -412,4 +428,262 @@
 .report-regen:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+/* ---- 周报 / 月报卡片（比日报宽，同样固定宽度 + 最小高度、不锁 aspect-ratio） ---- */
+.report-card--weekly,
+.report-card--monthly {
+  width: 560px;
+  min-height: 560px;
+}
+
+/* ---- 周报：7 天条形（主视觉） ---- */
+.report-week-bars {
+  display: flex;
+  gap: var(--space-2);
+  height: 120px;
+  align-items: stretch;
+}
+
+.report-week-bar-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  height: 100%;
+}
+
+.report-week-bar-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.report-week-bar {
+  width: 60%;
+  min-height: 2px;
+  background: var(--color-accent);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  opacity: 0.85;
+}
+
+.report-week-bar--max {
+  opacity: 1;
+  outline: 1px solid var(--color-text-2);
+  outline-offset: 1px;
+}
+
+.report-week-bar--min {
+  opacity: 0.45;
+}
+
+.report-week-bar-day {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.report-week-legend {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+/* ---- 周报：作息块（第二视觉重点） ---- */
+.report-sleep {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.report-sleep-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+  padding-left: var(--space-3);
+  position: relative;
+}
+
+/* 通宵的次日：左侧画一道竖线，表示与上一行合并，不是漏了一格 */
+.report-sleep-row--carried::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: -6px;
+  bottom: 50%;
+  width: 2px;
+  background: var(--color-border);
+}
+
+.report-sleep-day {
+  color: var(--color-text-2);
+  min-width: 3ch;
+}
+
+.report-sleep-times {
+  color: var(--color-text);
+}
+
+.report-sleep-note {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.report-sleep-avg {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+}
+
+/* ---- 周报：分类偏差 ---- */
+.report-cat-delta {
+  color: var(--color-text-2);
+  font-size: var(--text-sm);
+  min-width: 7ch;
+  text-align: right;
+}
+
+/* ---- 周报 / 月报：应用变化行 ---- */
+.report-app-change {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.report-app-change-label {
+  color: var(--color-text-3);
+  flex-shrink: 0;
+}
+
+.report-app-change-names {
+  color: var(--color-text-2);
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.report-gone-name {
+  cursor: default;
+  border-bottom: 1px dashed var(--color-text-3);
+}
+
+/* ---- 周报：工作日 vs 周末 / 月报：峰值日 ---- */
+.report-weekend {
+  display: flex;
+  gap: var(--space-6);
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+}
+
+/* ---- 月报：按周走势（主视觉） ---- */
+.report-month-weeks {
+  display: flex;
+  gap: var(--space-2);
+  height: 120px;
+  align-items: stretch;
+}
+
+.report-month-week-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  height: 100%;
+}
+
+.report-month-week-track {
+  flex: 1;
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.report-month-week-bar {
+  width: 60%;
+  min-height: 2px;
+  background: var(--color-accent);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+/* 半截周用斜纹暗示「不完整」，避免看起来像活跃度暴跌 */
+.report-month-week-bar--partial {
+  opacity: 0.5;
+  background: repeating-linear-gradient(
+    135deg,
+    var(--color-accent) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.report-month-week-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  min-height: 1em;
+}
+
+/* ---- 月报：上下半月变化 ---- */
+.report-halfshift {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.report-halfshift-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-sm);
+}
+
+.report-halfshift-name {
+  color: var(--color-text);
+}
+
+.report-halfshift-values {
+  color: var(--color-text-2);
+}
+
+.report-halfshift-delta {
+  margin-left: auto;
+  color: var(--color-text-2);
+}
+
+/* ---- 月报：weekday × 小时热力网格（复用规律页聚合函数，配色本地化） ---- */
+.report-grid-wrap {
+  overflow-x: auto;
+}
+
+.report-grid {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  min-width: 300px;
+}
+
+.report-grid-cell {
+  aspect-ratio: 1 / 1;
+  min-height: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+}
+
+.report-grid-cell--idle {
+  background: var(--color-border);
+}
+
+.report-grid-cell--no_data {
+  background: var(--color-surface-2);
+}
+
+.report-grid-note {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
