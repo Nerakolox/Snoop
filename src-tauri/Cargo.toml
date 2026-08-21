@@ -42,6 +42,7 @@ cocoa = "0.25"
 objc = "0.2"
 objc-foundation = "0.1"
 window-vibrancy = "0.6"
+security-framework = "2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
 window-vibrancy = "0.6"

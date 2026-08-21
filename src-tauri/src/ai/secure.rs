@@ -149,164 +149,53 @@ mod imp {
     }
 }
 
-// ─── macOS：Keychain Generic Password ────────────────────────────────────────
+// ─── macOS：Keychain Generic Password（security-framework）──────────────────
 //
-// ⚠️ 本分支在当前（Windows）开发机上无法编译验证，仅按 Apple 官方 C API 文档
-// 编写。若 macOS 打包报错或运行异常，优先排查这里的 extern "C" 常量名与签名。
+// 手写 CF FFI 曾在 NULL-callback 字典下提前 CFRelease，导致 SecItemCopyMatching
+// 复制查询时 retain 野指针 → objc_retain 崩溃。改用 security-framework 的
+// generic password 接口，CF 对象生命周期由 crate 管理，类型层面杜绝 use-after-free。
 
 #[cfg(target_os = "macos")]
 mod imp {
     use super::*;
-    use std::ffi::c_void;
-    use std::ptr;
+    use security_framework::base::Error as SecError;
+    use security_framework::passwords::{
+        delete_generic_password, get_generic_password, set_generic_password,
+    };
 
     const SERVICE: &str = "org.feedra.snoop.ai";
     const ACCOUNT: &str = "api_key";
 
-    type CFStringRef = *const c_void;
-    type CFDataRef = *const c_void;
-    type CFDictionaryRef = *const c_void;
-    type CFMutableDictionaryRef = *const c_void;
-    type CFAllocatorRef = *const c_void;
-    type CFTypeRef = *const c_void;
-    type OSStatus = i32;
+    /// SecItemCopyMatching 未找到记录（errSecItemNotFound）。
+    const ERR_ITEM_NOT_FOUND: i32 = -25300;
 
-    const ERR_SUCCESS: OSStatus = 0;
-    const ERR_ITEM_NOT_FOUND: OSStatus = -25300;
-    const K_CF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
-
-    #[link(name = "Security", kind = "framework")]
-    extern "C" {
-        static kSecClass: CFStringRef;
-        static kSecClassGenericPassword: CFStringRef;
-        static kSecAttrService: CFStringRef;
-        static kSecAttrAccount: CFStringRef;
-        static kSecValueData: CFStringRef;
-        static kSecReturnData: CFStringRef;
-        static kSecMatchLimit: CFStringRef;
-        static kSecMatchLimitOne: CFStringRef;
-
-        fn SecItemCopyMatching(query: CFDictionaryRef, result: *mut CFTypeRef) -> OSStatus;
-        fn SecItemAdd(attributes: CFDictionaryRef, result: *mut CFTypeRef) -> OSStatus;
-        fn SecItemUpdate(query: CFDictionaryRef, attributes: CFDictionaryRef) -> OSStatus;
-        fn SecItemDelete(query: CFDictionaryRef) -> OSStatus;
+    fn is_not_found(e: &SecError) -> bool {
+        e.code() == ERR_ITEM_NOT_FOUND
     }
 
-    #[link(name = "CoreFoundation", kind = "framework")]
-    extern "C" {
-        static kCFBooleanTrue: CFTypeRef;
-        fn CFDictionaryCreateMutable(
-            allocator: CFAllocatorRef,
-            capacity: isize,
-            key_callbacks: *const c_void,
-            value_callbacks: *const c_void,
-        ) -> CFMutableDictionaryRef;
-        fn CFDictionarySetValue(dict: CFMutableDictionaryRef, key: *const c_void, value: *const c_void);
-        fn CFStringCreateWithCString(
-            allocator: CFAllocatorRef,
-            c_str: *const std::os::raw::c_char,
-            encoding: u32,
-        ) -> CFStringRef;
-        fn CFDataCreate(allocator: CFAllocatorRef, bytes: *const u8, length: isize) -> CFDataRef;
-        fn CFDataGetLength(data: CFDataRef) -> isize;
-        fn CFDataGetBytePtr(data: CFDataRef) -> *const u8;
-        fn CFRelease(cf: CFTypeRef);
-    }
-
-    fn cf_string(s: &str) -> CFStringRef {
-        let c = std::ffi::CString::new(s).expect("CString 转换失败");
-        unsafe { CFStringCreateWithCString(ptr::null(), c.as_ptr(), K_CF_STRING_ENCODING_UTF8) }
-    }
-
-    fn cf_data(bytes: &[u8]) -> CFDataRef {
-        unsafe { CFDataCreate(ptr::null(), bytes.as_ptr(), bytes.len() as isize) }
-    }
-
-    /// 以 (class=GenericPassword, service, account) 为键的基础查询字典。
-    fn base_query() -> CFMutableDictionaryRef {
-        unsafe {
-            let d = CFDictionaryCreateMutable(ptr::null(), 0, ptr::null(), ptr::null());
-            let svc = cf_string(SERVICE);
-            let acct = cf_string(ACCOUNT);
-            CFDictionarySetValue(d, kSecClass as *const c_void, kSecClassGenericPassword as *const c_void);
-            CFDictionarySetValue(d, kSecAttrService as *const c_void, svc as *const c_void);
-            CFDictionarySetValue(d, kSecAttrAccount as *const c_void, acct as *const c_void);
-            CFRelease(svc as CFTypeRef);
-            CFRelease(acct as CFTypeRef);
-            d
-        }
-    }
-
+    /// 写入（已存在则覆盖）。`set_generic_password` 内部已处理 Add/Update 两条路径。
     pub fn set(_path: &Path, secret: &str) -> Result<(), String> {
-        unsafe {
-            let query = base_query();
-            let value = cf_data(secret.as_bytes());
-            let attrs = CFDictionaryCreateMutable(ptr::null(), 0, ptr::null(), ptr::null());
-            CFDictionarySetValue(attrs, kSecValueData as *const c_void, value as *const c_void);
-
-            let status = SecItemUpdate(query, attrs);
-            let status = if status == ERR_ITEM_NOT_FOUND {
-                // 不存在则新增：把 class/service/account 补进 attributes
-                CFDictionarySetValue(attrs, kSecClass as *const c_void, kSecClassGenericPassword as *const c_void);
-                let svc = cf_string(SERVICE);
-                let acct = cf_string(ACCOUNT);
-                CFDictionarySetValue(attrs, kSecAttrService as *const c_void, svc as *const c_void);
-                CFDictionarySetValue(attrs, kSecAttrAccount as *const c_void, acct as *const c_void);
-                CFRelease(svc as CFTypeRef);
-                CFRelease(acct as CFTypeRef);
-                SecItemAdd(attrs, ptr::null_mut())
-            } else {
-                status
-            };
-
-            CFRelease(attrs as CFTypeRef);
-            CFRelease(value as CFTypeRef);
-            CFRelease(query as CFTypeRef);
-
-            if status == ERR_SUCCESS {
-                Ok(())
-            } else {
-                Err(format!("Keychain 写入失败（状态码 {status}）"))
-            }
-        }
+        set_generic_password(SERVICE, ACCOUNT, secret.as_bytes())
+            .map_err(|e| format!("Keychain 写入失败：{e}"))
     }
 
     pub fn get(_path: &Path) -> Result<Option<String>, String> {
-        unsafe {
-            let query = base_query();
-            CFDictionarySetValue(query, kSecReturnData as *const c_void, kCFBooleanTrue as *const c_void);
-            CFDictionarySetValue(query, kSecMatchLimit as *const c_void, kSecMatchLimitOne as *const c_void);
-
-            let mut result: CFTypeRef = ptr::null();
-            let status = SecItemCopyMatching(query, &mut result);
-            CFRelease(query as CFTypeRef);
-
-            if status == ERR_ITEM_NOT_FOUND || result.is_null() {
-                return Ok(None);
-            }
-            if status != ERR_SUCCESS {
-                return Err(format!("Keychain 读取失败（状态码 {status}）"));
-            }
-
-            let data = result as CFDataRef;
-            let len = CFDataGetLength(data);
-            let p = CFDataGetBytePtr(data);
-            let bytes = std::slice::from_raw_parts(p, len as usize).to_vec();
-            CFRelease(result);
-            String::from_utf8(bytes).map(Some).map_err(|e| format!("密钥解码失败：{e}"))
+        match get_generic_password(SERVICE, ACCOUNT) {
+            Ok(data) => String::from_utf8(data)
+                .map(Some)
+                .map_err(|e| format!("密钥解码失败：{e}")),
+            Err(e) if is_not_found(&e) => Ok(None),
+            // 其余错误（用户拒绝授权、Keychain 被锁等）原样上抛，不吞成 Ok(None)，
+            // 以免「读不到」与「没存过」混淆，UI 显示成未配置。
+            Err(e) => Err(format!("Keychain 读取失败：{e}")),
         }
     }
 
     pub fn delete(_path: &Path) -> Result<(), String> {
-        unsafe {
-            let query = base_query();
-            let status = SecItemDelete(query);
-            CFRelease(query as CFTypeRef);
-            if status == ERR_SUCCESS || status == ERR_ITEM_NOT_FOUND {
-                Ok(())
-            } else {
-                Err(format!("Keychain 删除失败（状态码 {status}）"))
-            }
+        match delete_generic_password(SERVICE, ACCOUNT) {
+            Ok(()) => Ok(()),
+            Err(e) if is_not_found(&e) => Ok(()),
+            Err(e) => Err(format!("Keychain 删除失败：{e}")),
         }
     }
 }
