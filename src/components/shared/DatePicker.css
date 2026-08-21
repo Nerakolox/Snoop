@@ -1,0 +1,206 @@
+/* ---------- DatePicker ----------
+   自研日期选择器。视觉复用全局 token，与 TopBar 芯片 / 应用筛选弹层同一套语言：
+   触发器 = .topbar__chip，弹层 = .topbar__app-menu，导航 = .topbar__nav-btn。
+   深浅双态自动跟随 [data-theme]。
+*/
+
+.date-picker {
+  position: relative;
+  display: inline-flex;
+}
+
+/* ---- 触发器（与顶栏芯片同语言） ---- */
+.date-picker__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font-size: var(--text-sm);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.date-picker__trigger.has-value {
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.date-picker__trigger:hover {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+/* ---- 弹层（与顶栏应用筛选弹层同层同视觉） ---- */
+.date-picker__popover {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 100;
+  width: 256px;
+  padding: var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* ---- 头部：上月 / 年月标签（点击跳年份） / 下月 ---- */
+.date-picker__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.date-picker__nav {
+  border: none;
+  background: transparent;
+  color: var(--color-text-2);
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  transition: background var(--dur-fast) var(--ease-smooth), color var(--dur-fast) var(--ease-smooth);
+}
+
+.date-picker__nav:hover:not(:disabled) {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+.date-picker__nav:disabled {
+  color: var(--color-text-3);
+  cursor: not-allowed;
+}
+
+.date-picker__head-label {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.date-picker__head-label:hover {
+  background: var(--color-surface-2);
+}
+
+/* ---- 星期表头 ---- */
+.date-picker__weekdays {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+
+.date-picker__weekday {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+/* ---- 日期网格 ---- */
+.date-picker__grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  outline: none;
+}
+
+.date-picker__cell {
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--dur-fast) var(--ease-smooth);
+}
+
+/* 展示月之外的占位格：只撑住网格，不渲染内容 */
+.date-picker__cell--muted {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.date-picker__cell:hover:not(.is-disabled):not(.is-selected) {
+  background: var(--color-surface-2);
+}
+
+.date-picker__cell.is-today {
+  color: var(--color-accent);
+  font-weight: 700;
+}
+
+.date-picker__cell.is-selected {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-weight: 600;
+}
+
+.date-picker__cell.is-selected.is-today {
+  color: var(--color-on-accent);
+}
+
+/* 键盘方向键移动的落点：非选中时给一圈内描边，选中时被实底覆盖 */
+.date-picker__cell.is-cursor:not(.is-selected) {
+  box-shadow: inset 0 0 0 1px var(--color-accent);
+}
+
+.date-picker__cell.is-disabled {
+  color: var(--color-text-3);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- 年份快速跳转 ---- */
+.date-picker__years {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-1);
+}
+
+.date-picker__year {
+  height: 32px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: background var(--dur-fast) var(--ease-smooth);
+}
+
+.date-picker__year:hover {
+  background: var(--color-surface-2);
+}
+
+.date-picker__year.is-active {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-weight: 600;
+}
