@@ -26,7 +26,7 @@ import { formatDuration } from "../utils/format";
 import { CATEGORY_COLOR, CATEGORY_LABEL } from "../ai/categories";
 import { DOW_LABELS, dateLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
 import { EXPORT_SIZES, type ExportSize } from "./export";
-import snoopIconInline from "../assets/snoop-icon.png?inline";
+import snoopIconInline from "../assets/snoop-icon-64.png?inline";
 import qrInline from "../assets/qr-official.png?inline";
 
 /** 已解析的 app 图标：bundleId → base64（无图标为 null）。由 ExportDialog 预取后传入。 */

@@ -96,52 +96,43 @@ export async function captureNodeAsPng(
   // 4. 序列化 DOM → foreignObject SVG
   const svg = buildSvg(node, width, height, css);
 
-  // dev-only 自检：XMLSerializer 产物应是合法 XML。只在开发构建跑，生产导出不加这层解析开销。
-  // 若哪天失效（例如 CSS 里混入 "]]>"），这里会打出浏览器 XML 解析器的精确报错，而不是让
-  // 后面的 <img>.onerror 只回一句空泛的「渲染失败」。
-  if (import.meta.env.DEV) {
-    const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
-    const perr = parsed.querySelector("parsererror");
-    if (perr) console.error("[export] SVG 非合法 XML：", perr.textContent);
+  // SVG 用 data URI 加载，不用 URL.createObjectURL(blob)：Chromium 下 blob URL + <foreignObject>
+  // 画到 canvas 会触发污染（getImageData 抛 SecurityError）；data URI 与内部图片/样式同为
+  // data URI，整条链同源、canvas 保持 clean。encodeURIComponent 会把非 ASCII 展开（中文
+  // 一字 9 字符），体积略大于 base64；当前总量可控，若日后变大可改 base64 data URI。
+  const svgUrl = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  // 临时诊断：打印最终 data URI 长度，确认量级（验证通过后删）。
+  console.log("[export] SVG data URI 长度:", svgUrl.length, "字符");
+
+  const img = await loadImage(svgUrl);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("无法创建 canvas 2D 上下文");
+
+  // 设备像素比：canvas 的 width/height 属性直接定 bitmap 原始像素，与 CSS 尺寸无关；
+  // drawImage 按目标尺寸铺满，输出 PNG 即精确 width×height。显式断言，不假设。
+  if (canvas.width !== width || canvas.height !== height) {
+    throw new Error(
+      `canvas 尺寸异常：期望 ${width}×${height}，实际 ${canvas.width}×${canvas.height}`,
+    );
   }
 
-  const svgUrl = URL.createObjectURL(
-    new Blob([svg], { type: "image/svg+xml;charset=utf-8" }),
-  );
+  ctx.drawImage(img, 0, 0, width, height);
 
+  // 5. 显式验证 canvas 未被污染（getImageData 对被污染 canvas 会同步抛 SecurityError）。
+  //    所有 <img> 都是 data URI，正常不触发；若未来引入跨域图片，这里给明确报错而非静默。
   try {
-    const img = await loadImage(svgUrl);
-
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("无法创建 canvas 2D 上下文");
-
-    // 设备像素比：canvas 的 width/height 属性直接定 bitmap 原始像素，与 CSS 尺寸无关；
-    // drawImage 按目标尺寸铺满，输出 PNG 即精确 width×height。显式断言，不假设。
-    if (canvas.width !== width || canvas.height !== height) {
-      throw new Error(
-        `canvas 尺寸异常：期望 ${width}×${height}，实际 ${canvas.width}×${canvas.height}`,
-      );
-    }
-
-    ctx.drawImage(img, 0, 0, width, height);
-
-    // 5. 显式验证 canvas 未被污染（getImageData 对被污染 canvas 会同步抛 SecurityError）。
-    //    所有 <img> 都是 data URI，正常不触发；若未来引入跨域图片，这里给明确报错而非静默。
-    try {
-      ctx.getImageData(0, 0, 1, 1);
-    } catch {
-      throw new Error("导出图 canvas 被污染：存在跨域图片资源");
-    }
-
-    const blob = await canvasToBlob(canvas);
-    const buf = await blob.arrayBuffer();
-    return new Uint8Array(buf);
-  } finally {
-    URL.revokeObjectURL(svgUrl);
+    ctx.getImageData(0, 0, 1, 1);
+  } catch {
+    throw new Error("导出图 canvas 被污染：存在跨域图片资源");
   }
+
+  const blob = await canvasToBlob(canvas);
+  const buf = await blob.arrayBuffer();
+  return new Uint8Array(buf);
 }
 
 function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
