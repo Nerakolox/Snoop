@@ -166,6 +166,21 @@ export function intensityByHourFromBuckets(buckets: RawBucket[]): Intensity[] {
 }
 
 /**
+ * 按**本地小时**把桶分组，返回每小时的并集前台时长（ms），定长 24，无数据的小时为 0。
+ * 供「今日节奏」用品牌紫深浅编码时长（替代原强度分档的暖色轴）。
+ *
+ * 与 intensityByHourFromBuckets 同源：吃已按 appId 过滤好的 RawBucket[]，有无筛选同一条路径。
+ */
+export function durationByHourFromBuckets(buckets: RawBucket[]): number[] {
+  const groups: RawBucket[][] = Array.from({ length: 24 }, () => []);
+  for (const b of buckets) {
+    const h = new Date(b.bucket_start).getHours();
+    groups[h].push(b);
+  }
+  return groups.map((g) => unionDurationMs(g));
+}
+
+/**
  * 按**本地日期**把桶分组，返回 [startMs, endMs) 内每一天的
  * { dayMs, foregroundMs, intensity }，按日期升序，包含无数据的空天
  * （空天 foregroundMs=0、intensity=0），调用方不用自己补洞。

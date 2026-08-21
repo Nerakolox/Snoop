@@ -210,6 +210,20 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 节奏面板标题：flex 布局，右端挂「合计」（与分类占比标题同一套路） */
+.rhythm-panel-title {
+  display: flex;
+  align-items: baseline;
+}
+
+.rhythm-total {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
 .app-list {
   display: flex;
   flex-direction: column;
@@ -292,32 +306,55 @@
   white-space: nowrap;
 }
 
-/* ④ 24h 热力条 ---------------------------------------------------------- */
+/* ④ 今日节奏：24 格竖长条 ----------------------------------------------- */
 
-.heat-strip {
+.hour-bars {
   display: grid;
   grid-template-columns: repeat(24, 1fr);
   gap: 3px;
-  height: 32px;
+  height: 28px;
 }
 
-.heat-cell {
+.hour-bar {
   appearance: none;
   border: none;
   padding: 0;
   cursor: pointer;
-  border-radius: var(--radius-sm);
+  border-radius: 5px;
   transition: transform var(--dur-fast) var(--ease-smooth);
 }
 
-.heat-cell:hover {
-  transform: scale(1.15);
+.hour-bar:hover {
+  transform: scaleY(1.25);
 }
 
-.heat-cell:hover,
-.heat-cell:focus-visible {
+.hour-bar:hover,
+.hour-bar:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
+}
+
+/* 零活跃（有采集但无输入）：最浅一档实色 */
+.hour-bar--idle {
+  background: var(--duration-1);
+}
+
+/* 无数据（未采集）：透明底 + 1px 描边 */
+.hour-bar--no-data {
+  background: transparent;
+  border: 1px solid var(--color-border);
+}
+
+/* 未到来（今日视图中当前时刻之后）：比无数据更弱 */
+.hour-bar--future {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  opacity: 0.45;
+}
+
+/* 当前小时：外圈品牌色环标记，不用填充色（颜色已让给时长） */
+.hour-bar--now {
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
 
 /* 刻度带跟热力条共用同一份 24 列网格（含 gap），每个 tick 显式 grid-column
@@ -346,61 +383,110 @@
   justify-self: end;
 }
 
-/* 周形态：7 天柱状 ------------------------------------------------------- */
+/* 周形态：7 方格 ---------------------------------------------------------- */
 
-.week-bars {
+.rhythm-week {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.week-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: var(--space-3);
-  height: 140px;
 }
 
-.week-bar {
+.week-cell {
+  position: relative;
   appearance: none;
-  background: none;
   border: none;
   padding: 0;
   cursor: pointer;
+  aspect-ratio: 1;
+  border-radius: 5px;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-2);
-  font: inherit;
-  color: inherit;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  transition: transform var(--dur-fast) var(--ease-smooth);
 }
 
-.week-bar-track {
-  width: 100%;
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  background: var(--color-surface-2);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+.week-cell:hover {
+  transform: scale(1.05);
 }
 
-/* 空天：无采集数据，虚线边框 + 无填充，与"有数据但强度 0"（灰色实心柱）区分 */
-.week-bar--empty .week-bar-track {
+.week-cell:hover,
+.week-cell:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.week-cell-num {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-text);          /* 浅色格：深灰字 */
+}
+
+/* 深色格：白字（深色主题下 --color-surface 是深色，自动翻成暗字） */
+.week-cell.is-deep .week-cell-num {
+  color: var(--color-surface);
+}
+
+/* 零活跃（有采集但无输入）：最浅一档实色 */
+.week-cell--idle {
+  background: var(--duration-1);
+}
+
+/* 无数据（未采集）：透明底 + 1px 描边 */
+.week-cell--no-data {
   background: transparent;
-  border: 1px dashed var(--color-border);
+  border: 1px solid var(--color-border);
 }
 
-.week-bar-fill {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  transition:
-    height var(--dur-base) var(--ease-smooth),
-    filter var(--dur-fast) var(--ease-smooth);
+/* 今天：外圈品牌色环标记，不用填充色（颜色已让给时长） */
+.week-cell--today {
+  box-shadow: 0 0 0 2px var(--color-accent);
 }
 
-.week-bar:hover .week-bar-fill,
-.week-bar:focus-visible .week-bar-fill {
-  filter: brightness(1.07);
+.week-labels {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: var(--space-3);
 }
 
-.week-bar-label {
+.week-label {
+  text-align: center;
   font-size: var(--text-xs);
   color: var(--color-text-3);
+}
+
+/* 图例：少 → 多 + 无数据示意 */
+.rhythm-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.rhythm-legend-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+}
+
+.rhythm-legend-swatch--empty {
+  background: transparent;
+  border: 1px solid var(--color-border);
+  margin-left: var(--space-2);
+}
+
+.rhythm-legend-caption {
+  line-height: 1;
 }
 
 /* 月形态：日历热力 ------------------------------------------------------- */

@@ -36,6 +36,17 @@
   --share-6: #C9C4F9;
   --share-7: #E8E5FC;  /* 占比最低 → 最浅 */
 
+  /* 时长色阶（品牌紫深浅阶）：颜色只编码「时长多少」，深=时长多。
+     与 --share-* 同属品牌紫，但语义独立（时长 vs 排名），故单列一套。
+     浅色态：--duration-1 最浅（零活跃/极少）→ --duration-6 最深（时长最多）。
+     端点手写，中间按感知均匀拉开，避免前几档挤成同一种紫。 */
+  --duration-1: #E8E5FC;
+  --duration-2: #C9C4F9;
+  --duration-3: #ABA2F5;
+  --duration-4: #8B7DF0;
+  --duration-5: #6D5AE6;
+  --duration-6: #3C2FB9;
+
   /* 泳道空轨道底色 —— 与 --color-surface 区分开的极淡暖白，肉眼可辨「无数据空轨道」vs「渲染失败」 */
   --color-track: #FCFCFD;
 
@@ -110,6 +121,14 @@
   --share-5:         #5749BC;
   --share-6:         #433794;
   --share-7:         #332A72;  /* 占比最低 → 最暗 */
+  /* 时长色阶：深色态对比方向与浅色相反 —— 时长越多越亮（深色背景上「更亮」才读作「更多」）。
+     数值手写，不走 filter/invert/opacity 派生。 */
+  --duration-1:         #332A72;
+  --duration-2:         #433794;
+  --duration-3:         #5749BC;
+  --duration-4:         #6F61DF;
+  --duration-5:         #8B7CF0;
+  --duration-6:         #CDC5FF;
   --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
   --shadow-md: 0 4px 16px rgba(0,0,0,.4);
 }
@@ -140,6 +159,13 @@
   --share-5: #ABA2F5;
   --share-6: #C9C4F9;
   --share-7: #E8E5FC;
+  /* 时长色阶：同 :root，浅色态深=时长多。 */
+  --duration-1: #E8E5FC;
+  --duration-2: #C9C4F9;
+  --duration-3: #ABA2F5;
+  --duration-4: #8B7DF0;
+  --duration-5: #6D5AE6;
+  --duration-6: #3C2FB9;
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
   --shadow-md: 0 4px 16px rgba(0,0,0,.12);
 }

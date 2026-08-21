@@ -7,7 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   aggregateByApp,
   daysWithDataOf,
-  intensityByHourFromBuckets,
+  durationByHourFromBuckets,
   intensityVar,
   statsByDayFromBuckets,
   type Intensity,
@@ -21,11 +21,12 @@ import { useToast } from "../components/shared/Toast";
 import Tooltip from "../components/shared/Tooltip";
 import type { NavKey } from "../components/Sidebar";
 import { useRangeData } from "../data/useRangeData";
+import { fetchHourlyHeartbeats } from "../data/client";
 import { getCategoryBreakdown } from "../ai/client";
 import { useTodayNotice } from "../ai/notice";
 import { CATEGORY_LABEL, shareColorVar } from "../ai/categories";
 import type { CategoryShare } from "../ai/types";
-import { formatAnchor, toMs } from "../data/ranges";
+import { formatAnchor, parseAnchor, toMs } from "../data/ranges";
 import {
   adaptKind,
   normalizeAnchor,
@@ -77,6 +78,36 @@ function formatDurationPlain(ms: number): string {
   return formatDuration(ms).map((p) => p.text).join("");
 }
 
+/** 紧凑时长：周视图格内文字。小于 1 分钟显示秒、小于 1 小时显示分、否则显示「N.Nh」。
+ *  例：45s / 12m / 3.2h。 */
+function formatCompactDuration(ms: number): string {
+  if (ms < 60_000) return `${Math.max(1, Math.round(ms / 1000))}s`;
+  const totalMin = Math.round(ms / 60_000);
+  if (totalMin < 60) return `${totalMin}m`;
+  return `${(totalMin / 60).toFixed(1)}h`;
+}
+
+/** 时长 → 0..5 六档（品牌紫深浅阶索引）。sqrt 感知分档，把小值多拉开几档。 */
+function durationLevel(ms: number, maxMs: number): number {
+  if (ms <= 0 || maxMs <= 0) return 0;
+  return Math.min(5, Math.round(Math.sqrt(ms / maxMs) * 5));
+}
+
+/** 档位 → 主题感知的品牌紫 CSS 变量引用。 */
+function durationColorVar(level: number): string {
+  return `var(--duration-${level + 1})`;
+}
+
+/** 周视图 tooltip 的星期标签：「周三」。 */
+function weekdayLabelOf(dayMs: number): string {
+  return `周${WEEKDAY_LABELS[mondayIndex(dayMs)]}`;
+}
+
+/** 小时 → 「14:00」。 */
+function formatHour(hour: number): string {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
 /** 格式化数字：加千分位 */
 function formatNumber(n: number): string {
   return n.toLocaleString("zh-CN");
@@ -113,6 +144,9 @@ function judgeLabel(avgHours: number): string {
 }
 
 const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
+
+/** 时长深浅阶的 6 个档位索引，供图例逐一渲染色块。 */
+const DURATION_LEVELS = [0, 1, 2, 3, 4, 5] as const;
 
 /** JS getDay(): 周日=0..周六=6 → 周一为第一列的索引 0..6，与 analytics/aggregate.ts 的 mondayIndex 同一约定 */
 function mondayIndex(dayMs: number): number {
@@ -311,14 +345,76 @@ export default function Overview() {
     }));
   const maxMinutes = Math.max(...apps.map((a) => a.minutes), 1);
 
-  const hourly = intensityByHourFromBuckets(buckets);
-
   const rhythmRange = useMemo(() => toMs(viewKind, viewAnchor), [viewKind, viewAnchor]);
   const dailyStats = useMemo(() => {
     const stats = statsByDayFromBuckets(buckets, rhythmRange.start_ms, rhythmRange.end_ms);
     return stats.map((s) => ({ ...s, hasData: s.foregroundMs > 0 }));
   }, [buckets, rhythmRange]);
   const maxDayForegroundMs = Math.max(...dailyStats.map((d) => d.foregroundMs), 1);
+
+  // 心跳（Snoop 是否在运行）按本地整点 —— 用于区分「零活跃(有采集但无输入)」与「无数据(未采集)」。
+  // 与 Insights 作息画像同源：get_hourly_heartbeats 不接 app 参数，但心跳是「应用是否在跑」的全局事实，
+  // 与前台 App 无关，故 appId 筛选下仍成立（零活跃 = 有采集却没有任何前台桶）。
+  const [heartbeatHours, setHeartbeatHours] = useState<Set<number>>(new Set());
+  useEffect(() => {
+    let cancelled = false;
+    fetchHourlyHeartbeats(rhythmRange)
+      .then((list) => {
+        if (cancelled) return;
+        const s = new Set<number>();
+        for (const hb of list) if (hb.has_heartbeat) s.add(hb.hour_start);
+        setHeartbeatHours(s);
+      })
+      .catch((e) => console.error("概览心跳数据获取失败:", e));
+    return () => { cancelled = true; };
+  }, [rhythmRange]);
+
+  // 「今日节奏」的 24 个时段。状态四态：future(未到来,仅今日) > idle(零活跃) > no_data(无数据) > 有数据。
+  // 此处不能引用下面才声明的 isCurrentAnchor（TDZ），直接等价地内联其判据。
+  const isTodayView = viewKind === "day" && viewAnchor === normalizeAnchor(viewKind, today);
+  const currentHour = new Date().getHours();
+  const hourlyDuration = useMemo(() => durationByHourFromBuckets(buckets), [buckets]);
+  const hourCells = useMemo(() => {
+    const HOUR_MS = 60 * 60 * 1000;
+    const maxMs = Math.max(...hourlyDuration, 1);
+    return Array.from({ length: 24 }, (_, h) => {
+      const durationMs = hourlyDuration[h];
+      const future = isTodayView && h > currentHour;
+      const hasData = durationMs > 0;
+      const idle = !future && !hasData && heartbeatHours.has(rhythmRange.start_ms + h * HOUR_MS);
+      const state = future ? "future" : hasData ? "has_data" : idle ? "idle" : "no_data";
+      return { hour: h, durationMs, level: hasData ? durationLevel(durationMs, maxMs) : 0, state };
+    });
+  }, [hourlyDuration, isTodayView, currentHour, heartbeatHours, rhythmRange.start_ms]);
+
+  // 「本周节奏」的 7 天：在 dailyStats 上补状态 + 格内文字 + 深浅档位。
+  const dayCells = useMemo(() => {
+    const HOUR_MS = 60 * 60 * 1000;
+    const todayMs = parseAnchor(today).getTime();
+    return dailyStats.map((d) => {
+      const hasData = d.hasData;
+      // 整日无前台，但该日有任一整点心跳 → 零活跃（有采集无输入）
+      let idle = false;
+      if (!hasData) {
+        for (let h = 0; h < 24; h++) {
+          if (heartbeatHours.has(d.dayMs + h * HOUR_MS)) { idle = true; break; }
+        }
+      }
+      const level = hasData ? durationLevel(d.foregroundMs, maxDayForegroundMs) : 0;
+      return {
+        dayMs: d.dayMs,
+        foregroundMs: d.foregroundMs,
+        hasData,
+        idle,
+        level,
+        isDeep: hasData && level >= 4,
+        isToday: d.dayMs === todayMs,
+        label: hasData ? formatCompactDuration(d.foregroundMs) : "",
+      };
+    });
+  }, [dailyStats, heartbeatHours, maxDayForegroundMs, today]);
+
+  const rhythmTotalLabel = foregroundDuration > 0 ? `合计 ${fmtDuration(foregroundDuration)}` : null;
 
   // 分类占比：后端按范围聚合各分类活跃时长（有输入，未分类计入 other）。
   // 依赖 allBuckets，使 live 30s 轮询刷新 buckets 时占比也一并刷新。
@@ -566,23 +662,39 @@ export default function Overview() {
         )}
       </section>
 
-      {/* ④ 节奏 —— 日=24 格热力条 / 周=7 柱 / 月=日历热力 */}
+      {/* ④ 节奏 —— 日=24 格时长条 / 周=7 方格(品牌紫深浅) / 月=日历强度(保持暖色) */}
       <section className="panel">
-        <h3 className="panel-title">{rhythmTitle}</h3>
+        <h3 className="panel-title rhythm-panel-title">
+          <span>{rhythmTitle}</span>
+          {rhythmTotalLabel && <span className="rhythm-total">{rhythmTotalLabel}</span>}
+        </h3>
 
         {viewKind === "day" && (
           <>
-            <div className="heat-strip">
-              {hourly.map((level, hour) => (
-                <Tooltip key={hour} content={`${hour}:00 · 强度 ${level}`}>
-                  <button
-                    type="button"
-                    className="heat-cell"
-                    style={{ background: intensityVar(level) }}
-                    onClick={() => goToHour(hour)}
-                  />
-                </Tooltip>
-              ))}
+            <div className="hour-bars">
+              {hourCells.map((cell) => {
+                const isNow = isTodayView && cell.hour === currentHour;
+                const cls =
+                  "hour-bar" +
+                  (cell.state === "idle" ? " hour-bar--idle" : "") +
+                  (cell.state === "no_data" ? " hour-bar--no-data" : "") +
+                  (cell.state === "future" ? " hour-bar--future" : "") +
+                  (isNow ? " hour-bar--now" : "");
+                const style = cell.state === "has_data" ? { background: durationColorVar(cell.level) } : undefined;
+                const tip =
+                  cell.state === "has_data"
+                    ? `${formatHour(cell.hour)} · ${fmtDuration(cell.durationMs)}`
+                    : cell.state === "idle"
+                      ? `${formatHour(cell.hour)} · 无输入`
+                      : cell.state === "future"
+                        ? `${formatHour(cell.hour)} · 未到来`
+                        : `${formatHour(cell.hour)} · 无数据`;
+                return (
+                  <Tooltip key={cell.hour} content={tip}>
+                    <button type="button" className={cls} style={style} onClick={() => goToHour(cell.hour)} />
+                  </Tooltip>
+                );
+              })}
             </div>
             <div className="heat-scale">
               <span className="heat-scale-tick heat-scale-tick--edge-start" style={{ gridColumn: 1 }}>
@@ -605,37 +717,46 @@ export default function Overview() {
         )}
 
         {viewKind === "week" && (
-          <div className="week-bars">
-            {dailyStats.map((d) => {
-              const pct = d.hasData ? Math.max((d.foregroundMs / maxDayForegroundMs) * 100, 4) : 0;
-              return (
-                <Tooltip
-                  key={d.dayMs}
-                  content={
-                    d.hasData
-                      ? `${dateLabelOf(d.dayMs)} · ${formatDurationPlain(d.foregroundMs)}`
-                      : `${dateLabelOf(d.dayMs)} · 无采集数据`
-                  }
-                >
-                  <button
-                    type="button"
-                    className={`week-bar${d.hasData ? "" : " week-bar--empty"}`}
-                    onClick={() => goToDay(d.dayMs)}
-                  >
-                    <span className="week-bar-track">
-                      {d.hasData && (
-                        <span
-                          className="week-bar-fill"
-                          style={{ height: `${pct}%`, background: intensityVar(d.intensity) }}
-                        />
-                      )}
-                    </span>
-                    <span className="week-bar-label">{WEEKDAY_LABELS[mondayIndex(d.dayMs)]}</span>
-                  </button>
-                </Tooltip>
-              );
-            })}
-          </div>
+          <>
+            <div className="rhythm-week">
+              <div className="week-grid">
+                {dayCells.map((d) => {
+                  const cls =
+                    "week-cell" +
+                    (d.isDeep ? " is-deep" : "") +
+                    (d.idle ? " week-cell--idle" : d.hasData ? "" : " week-cell--no-data") +
+                    (d.isToday ? " week-cell--today" : "");
+                  const style = d.hasData ? { background: durationColorVar(d.level) } : undefined;
+                  const tip = d.hasData
+                    ? `${weekdayLabelOf(d.dayMs)} · ${fmtDuration(d.foregroundMs)}`
+                    : d.idle
+                      ? `${weekdayLabelOf(d.dayMs)} · 无输入`
+                      : `${weekdayLabelOf(d.dayMs)} · 无数据`;
+                  return (
+                    <Tooltip key={d.dayMs} content={tip}>
+                      <button type="button" className={cls} style={style} onClick={() => goToDay(d.dayMs)}>
+                        {d.label && <span className="week-cell-num">{d.label}</span>}
+                      </button>
+                    </Tooltip>
+                  );
+                })}
+              </div>
+              <div className="week-labels">
+                {dayCells.map((d) => (
+                  <span key={d.dayMs} className="week-label">{WEEKDAY_LABELS[mondayIndex(d.dayMs)]}</span>
+                ))}
+              </div>
+            </div>
+            <div className="rhythm-legend">
+              <span className="rhythm-legend-caption">少</span>
+              {DURATION_LEVELS.map((l) => (
+                <span key={l} className="rhythm-legend-swatch" style={{ background: durationColorVar(l) }} />
+              ))}
+              <span className="rhythm-legend-caption">多</span>
+              <span className="rhythm-legend-swatch rhythm-legend-swatch--empty" />
+              <span className="rhythm-legend-caption">无数据</span>
+            </div>
+          </>
         )}
 
         {viewKind === "month" && (
