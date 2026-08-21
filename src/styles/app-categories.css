@@ -168,48 +168,71 @@
   border-radius: var(--radius-full);
   overflow: hidden;
   background: var(--color-surface-2);
-  gap: 1px;
+  gap: 2px; /* 段间用背景色细分隔，避免右端极小段连成一片 */
 }
 
 .cat-stack-seg {
   height: 100%;
-  min-width: 2px;
+  min-width: 3px; /* 极小段也保有可 hover 的宽度 */
 }
 
-.cat-legend {
+/* 结论句：第一名的占比 + 类别 + 时长。占比大字，其余正文。 */
+.cat-verdict {
+  margin: var(--space-3) 0 0;
   display: flex;
-  flex-direction: column;
-  margin-top: var(--space-3);
-  gap: var(--space-2);
+  align-items: baseline;
+  gap: var(--space-1);
 }
 
-.cat-legend-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.cat-verdict-pct {
+  font-size: 24px;
+  font-weight: 680;
+  letter-spacing: -0.02em;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.cat-verdict-rest {
+  font-size: var(--text-base);
+  color: var(--color-text-2);
+}
+
+/* 次要行：其余 N 类合计 */
+.cat-rest-line {
+  margin: var(--space-1) 0 0;
   font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
-.cat-legend-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
+/* chip 行：第 2 名之后压成圆角 chip，横向可换行 */
+.cat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.cat-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+}
+
+.cat-chip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   flex-shrink: 0;
 }
 
-.cat-legend-label {
-  color: var(--color-text-2);
-}
-
-.cat-legend-time {
-  margin-left: auto;
-  color: var(--color-text-3);
+.cat-chip-pct {
   font-variant-numeric: tabular-nums;
-}
-
-.cat-legend-pct {
-  color: var(--color-text-2);
-  font-variant-numeric: tabular-nums;
-  width: 52px;
-  text-align: right;
+  font-weight: 600;
+  color: var(--color-text);
 }

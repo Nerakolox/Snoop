@@ -33,13 +33,13 @@ export const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
  * 必须与 `tokens.css` 里的 `--share-1..7`（`:root` / `[data-theme="light"]`）保持一致。
  */
 export const SHARE_RAMP_LIGHT: readonly string[] = [
-  "#4F3DCE", // 1 占比最高 → 最深
-  "#5B48D4",
+  "#3C2FB9", // 1 占比最高 → 最深
+  "#5644D9",
   "#6D5AE6", // 品牌主紫（中间档）
-  "#8578EE",
-  "#A49BF4",
-  "#C5BEF9",
-  "#E4E1FB", // 7 占比最低 → 最浅
+  "#8B7DF0",
+  "#ABA2F5",
+  "#C9C4F9",
+  "#E8E5FC", // 7 占比最低 → 最浅（接近背景）
 ];
 
 const SHARE_RAMP_LEVELS = SHARE_RAMP_LIGHT.length;

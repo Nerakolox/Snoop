@@ -155,6 +155,57 @@ function OverviewHeader({
   );
 }
 
+/** 分类占比的「结论句 + chip」块（D 方案）：
+ *  第一名用结论句大字突出（占比 + 类别 + 时长），其余压成可换行的圆角 chip。
+ *  删掉原逐行图例，只保留这一种形态。 */
+function CategoryVerdict({
+  categories,
+  totalMs,
+}: {
+  categories: CategoryShare[];
+  totalMs: number;
+}) {
+  if (categories.length === 0) return null;
+  const top = categories[0];
+  const rest = categories.slice(1);
+  const restTotalMs = rest.reduce((s, x) => s + x.duration_ms, 0);
+  const topPct = totalMs > 0 ? (top.duration_ms / totalMs) * 100 : 0;
+
+  const labelOf = (c: string) => CATEGORY_LABEL[c] ?? c;
+  const tipOf = (s: CategoryShare, pct: number) =>
+    `${labelOf(s.category)} · ${fmtDuration(s.duration_ms)} · ${formatSharePct(pct)}`;
+
+  return (
+    <>
+      <p className="cat-verdict">
+        <span className="cat-verdict-pct">{formatSharePct(topPct)}</span>
+        <span className="cat-verdict-rest">
+          是{labelOf(top.category)}，{fmtDuration(top.duration_ms)}
+        </span>
+      </p>
+      {rest.length > 0 && (
+        <>
+          <p className="cat-rest-line">其余 {rest.length} 类合计 {fmtDuration(restTotalMs)}</p>
+          <div className="cat-chips">
+            {rest.map((s, i) => {
+              const pct = totalMs > 0 ? (s.duration_ms / totalMs) * 100 : 0;
+              return (
+                <Tooltip key={s.category} content={tipOf(s, pct)}>
+                  <span className="cat-chip">
+                    <span className="cat-chip-dot" style={{ background: shareColorVar(i + 1) }} />
+                    <span className="cat-chip-label">{labelOf(s.category)}</span>
+                    <span className="cat-chip-pct">{formatSharePct(pct)}</span>
+                  </span>
+                </Tooltip>
+              );
+            })}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 export default function Overview() {
   const { kind, anchor, appId } = useContextState();
   const actions = useContextActions();
@@ -476,7 +527,7 @@ export default function Overview() {
         </div>
       </section>
 
-      {/* ③½ 分类占比 —— 水平堆叠条 + 图例，颜色只编码占比排名（品牌紫深浅阶） */}
+      {/* ③½ 分类占比 —— 水平堆叠条 + 结论句 + chip，颜色只编码占比排名（品牌紫深浅阶） */}
       <section className="panel">
         <h3 className="panel-title cat-panel-title">
           <span>{categoryTitle}</span>
@@ -510,29 +561,7 @@ export default function Overview() {
                 );
               })}
             </div>
-            <div className="cat-legend">
-              {shownCategories.map((s, i) => {
-                const pct = totalCategoryMs > 0 ? (s.duration_ms / totalCategoryMs) * 100 : 0;
-                const tip = `${CATEGORY_LABEL[s.category] ?? s.category} · ${fmtDuration(
-                  s.duration_ms,
-                )} · ${formatSharePct(pct)}`;
-                return (
-                  <Tooltip key={s.category} content={tip}>
-                    <div className="cat-legend-row">
-                      <span
-                        className="cat-legend-swatch"
-                        style={{ background: shareColorVar(i) }}
-                      />
-                      <span className="cat-legend-label">
-                        {CATEGORY_LABEL[s.category] ?? s.category}
-                      </span>
-                      <span className="cat-legend-time">{fmtDuration(s.duration_ms)}</span>
-                      <span className="cat-legend-pct">{formatSharePct(pct)}</span>
-                    </div>
-                  </Tooltip>
-                );
-              })}
-            </div>
+            <CategoryVerdict categories={shownCategories} totalMs={totalCategoryMs} />
           </>
         )}
       </section>
