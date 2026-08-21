@@ -40,3 +40,23 @@
   语义一致），或反过来统一为前台口径；改一处 SQL/过滤即可，但需同步两页标题旁的说明。
 - **优先级**：低（已有说明文字兜底，用户不深究不会察觉）。
 - **来源**：统一时长口径命名（小批次，拍板点 1）。
+
+## 报告导出走 SVG foreignObject，平台原生截图是退路
+
+- **现状**：报告导出成图（批次 7）用的是**前端自截图**——SVG `<foreignObject>` 包真实 DOM
+  → `<canvas>` → PNG 字节 → Rust 写盘（`src/report/export.ts` 的 `captureNodeAsPng`）。
+  当时「Rust 开隐藏窗口 + 截图」的原方案走不通：实测 `tauri-2.11.5` / `wry-0.55.1` 源码里
+  `screenshot`/`capture`/`snapshot`/`print-to-image` 全部 0 命中；官方 `tauri-plugin-screenshot`
+  是新依赖且只截整屏、不支持隐藏窗口。
+- **影响**：foreignObject 的渲染保真度依赖 WebView 的实现细节，跨平台/跨版本可能有差异
+  （如 `-webkit-line-clamp`、`box-shadow`、复杂字体排版在截图里表现不一致）。本批已用
+  「只用安全 CSS 特性 + 方版叙事改字符截断」提前规避，但**没有双平台运行时真机验证**——
+  若某个平台 WebView 的 foreignObject 实现有 bug，导出的图会缺样式或走样，且难以在
+  编译期发现。
+- **建议修法**：若真遇到保真度问题，退路是**平台原生截图**：Windows 用
+  `ICoreWebView2::CapturePreview`、macOS 用 `WKWebView.takeSnapshotWithConfiguration:`。
+  这需要把 `wry` 提为直接依赖、写两套平台代码（并具备双平台运行时验证条件）——
+  正是本批**主动避开**的路径（之前在 macOS 的 CFRunLoop / Keychain 上栽过）。只有 foreignObject
+  方案确实跑不通、且具备验证条件时，才值得回头走这条路。
+- **优先级**：低（foreignObject 是确定性机制，当前未发现问题；仅作保真度出问题时的退路）。
+- **来源**：批次 7（报告导出成图，方案拍板点：Option C 被否决，A 落地）。
