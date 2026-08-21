@@ -3,7 +3,7 @@
  * 定位：消费全局 (kind, anchor, appId)，是当前范围的快照 + 猫的实时陪伴。
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import {
   aggregateByApp,
   daysWithDataOf,
@@ -147,6 +147,9 @@ const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
 /** 时长深浅阶的 6 个档位索引，供图例逐一渲染色块。 */
 const DURATION_LEVELS = [0, 1, 2, 3, 4, 5] as const;
+
+/** 月视图每行格数：31 天 = 16 + 15 两行，格子用 1fr 平分容器宽度、随窗口自适应。 */
+const MONTH_ROW_SIZE = 16;
 
 /** JS getDay(): 周日=0..周六=6 → 周一为第一列的索引 0..6，与 analytics/aggregate.ts 的 mondayIndex 同一约定 */
 function mondayIndex(dayMs: number): number {
@@ -773,35 +776,38 @@ export default function Overview() {
         {viewKind === "month" && (
           <>
             <div className="month-grid">
-              {dayCells.map((d) => {
-                const dayOfMonth = new Date(d.dayMs).getDate();
-                const cls =
-                  "month-cell" +
-                  (d.future
-                    ? " month-cell--future"
-                    : d.idle
-                      ? " month-cell--idle"
-                      : d.hasData
-                        ? ""
-                        : " month-cell--no-data") +
-                  (d.isToday ? " month-cell--today" : "");
-                const style = d.hasData ? { background: durationColorVar(d.level) } : undefined;
-                const tip = d.hasData
-                  ? `${dateLabelOf(d.dayMs)} · ${fmtDuration(d.foregroundMs)}`
-                  : d.future
-                    ? `${dateLabelOf(d.dayMs)} · 未到来`
-                    : d.idle
-                      ? `${dateLabelOf(d.dayMs)} · 无输入`
-                      : `${dateLabelOf(d.dayMs)} · 无数据`;
-                // 刻度只在每行首格标起始日（8 格一行 → 1 / 9 / 17 / 25），其余靠 hover
-                const showTick = (dayOfMonth - 1) % 8 === 0;
+              {Array.from({ length: Math.ceil(dayCells.length / MONTH_ROW_SIZE) }, (_, r) => {
+                const rowStart = dayCells[r * MONTH_ROW_SIZE];
                 return (
-                  <div className="month-slot" key={d.dayMs}>
-                    <Tooltip content={tip}>
-                      <button type="button" className={cls} style={style} onClick={() => goToDay(d.dayMs)} />
-                    </Tooltip>
-                    {showTick && <span className="month-tick">{dayOfMonth}</span>}
-                  </div>
+                  <Fragment key={rowStart.dayMs}>
+                    {/* 行首日期标签：占 grid 第一列（auto），结构上与首格对齐 */}
+                    <span className="month-row-label">{new Date(rowStart.dayMs).getDate()}</span>
+                    {dayCells.slice(r * MONTH_ROW_SIZE, r * MONTH_ROW_SIZE + MONTH_ROW_SIZE).map((d) => {
+                      const cls =
+                        "month-cell" +
+                        (d.future
+                          ? " month-cell--future"
+                          : d.idle
+                            ? " month-cell--idle"
+                            : d.hasData
+                              ? ""
+                              : " month-cell--no-data") +
+                        (d.isToday ? " month-cell--today" : "");
+                      const style = d.hasData ? { background: durationColorVar(d.level) } : undefined;
+                      const tip = d.hasData
+                        ? `${dateLabelOf(d.dayMs)} · ${fmtDuration(d.foregroundMs)}`
+                        : d.future
+                          ? `${dateLabelOf(d.dayMs)} · 未到来`
+                          : d.idle
+                            ? `${dateLabelOf(d.dayMs)} · 无输入`
+                            : `${dateLabelOf(d.dayMs)} · 无数据`;
+                      return (
+                        <Tooltip key={d.dayMs} content={tip}>
+                          <button type="button" className={cls} style={style} onClick={() => goToDay(d.dayMs)} />
+                        </Tooltip>
+                      );
+                    })}
+                  </Fragment>
                 );
               })}
             </div>

@@ -502,21 +502,23 @@
   line-height: 1;
 }
 
-/* 月形态：紧凑连续格子带（不按星期对齐，1 号顺排到月末） -------------------- */
+/* 月形态：连续格子带（不按星期对齐，1 号顺排到月末），每行 16 格平分容器 -------------------- */
 
 .month-grid {
   display: grid;
-  grid-template-columns: repeat(8, 26px);
+  /* 第一列 auto = 行首日期标签；其余 16 列 1fr 平分宽度，格子随容器自适应撑满 */
+  grid-template-columns: auto repeat(16, 1fr);
   gap: var(--space-1);
-  justify-content: start;
 }
 
-/* 每个格子槽：上=色块、下=每 5 天的日期刻度；无刻度时只有色块，槽高自适应 */
-.month-slot {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+/* 行首日期标签：占第一列（auto），与首格的结构对齐不靠 margin/padding 计算 */
+.month-row-label {
+  align-self: center;
+  justify-self: end;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .month-cell {
@@ -524,14 +526,14 @@
   border: none;
   padding: 0;
   cursor: pointer;
-  width: 26px;
-  height: 26px;
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 4px;
   transition: transform var(--dur-fast) var(--ease-smooth);
 }
 
 .month-cell:hover {
-  transform: scale(1.1);
+  transform: scale(1.05);
 }
 
 .month-cell:hover,
@@ -561,13 +563,5 @@
 /* 今天：外圈品牌色环标记，不用填充色（颜色已让给时长） */
 .month-cell--today {
   box-shadow: 0 0 0 2px var(--color-accent);
-}
-
-/* 每 5 天的日期刻度 */
-.month-tick {
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-  font-variant-numeric: tabular-nums;
-  line-height: 1;
 }
 
