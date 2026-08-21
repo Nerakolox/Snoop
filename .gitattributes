@@ -1,0 +1,56 @@
+# 行尾统一：文本一律 LF 入库并 LF 检出，二进制靠 git 自动检测 + 下方显式 binary 兜底。
+# 目的：Windows 与 macOS 之间切换开发时不再产生 LF/CRLF 假 diff。
+
+* text=auto eol=lf
+
+# Windows 专用脚本保留 CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 图片（binary = -text -diff -merge：不做换行转换、不尝试文本 diff）
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.bmp binary
+*.ico binary
+*.icns binary
+
+# 字体
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+*.eot binary
+
+# 数据库与本地存储
+*.db binary
+*.sqlite binary
+*.sqlite3 binary
+*.db-journal binary
+*.db-wal binary
+*.db-shm binary
+
+# 归档 / 二进制产物
+*.zip binary
+*.tar binary
+*.gz binary
+*.tgz binary
+*.7z binary
+*.rar binary
+*.pdf binary
+*.wasm binary
+*.bin binary
+*.exe binary
+*.dll binary
+*.dylib binary
+*.so binary
+*.node binary
+
+# 音视频 / 设计源文件
+*.mp3 binary
+*.mp4 binary
+*.mov binary
+*.psd binary
+*.ai binary
