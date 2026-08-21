@@ -23,7 +23,7 @@ import type { NavKey } from "../components/Sidebar";
 import { useRangeData } from "../data/useRangeData";
 import { getCategoryBreakdown } from "../ai/client";
 import { useTodayNotice } from "../ai/notice";
-import { CATEGORY_COLOR, CATEGORY_LABEL } from "../ai/categories";
+import { CATEGORY_LABEL, shareColorVar } from "../ai/categories";
 import type { CategoryShare } from "../ai/types";
 import { formatAnchor, toMs } from "../data/ranges";
 import {
@@ -35,7 +35,7 @@ import {
   useToday,
   type RangeKind,
 } from "../store/context";
-import { anchorLabel } from "../utils/format";
+import { anchorLabel, formatDuration as fmtDuration, formatSharePct } from "../utils/format";
 
 type KpiPart = { kind: "num" | "unit"; text: string };
 type Kpi = {
@@ -280,6 +280,14 @@ export default function Overview() {
     return () => { cancelled = true; };
   }, [rhythmRange.start_ms, rhythmRange.end_ms, allBuckets]);
   const totalCategoryMs = categoryBreakdown.reduce((s, x) => s + x.duration_ms, 0);
+  // 零值类别不渲染：后端已过滤 duration_ms <= 0，这里再兜底，并确保排名颜色按占比降序。
+  const shownCategories = useMemo(
+    () =>
+      categoryBreakdown
+        .filter((s) => s.duration_ms > 0)
+        .sort((a, b) => b.duration_ms - a.duration_ms),
+    [categoryBreakdown],
+  );
 
   const appName =
     appId === null
@@ -468,47 +476,60 @@ export default function Overview() {
         </div>
       </section>
 
-      {/* ③½ 分类占比 —— 水平堆叠条 + 图例，用独立分类色板 */}
+      {/* ③½ 分类占比 —— 水平堆叠条 + 图例，颜色只编码占比排名（品牌紫深浅阶） */}
       <section className="panel">
-        <h3 className="panel-title">
-          {categoryTitle}
+        <h3 className="panel-title cat-panel-title">
+          <span>{categoryTitle}</span>
           <span className="cat-note">按活跃时长统计</span>
+          {totalCategoryMs > 0 && (
+            <span className="cat-total">合计 {fmtDuration(totalCategoryMs)}</span>
+          )}
         </h3>
-        {categoryBreakdown.length === 0 ? (
+        {shownCategories.length === 0 ? (
           <div className="overview-empty-note">
             {loading ? "加载中…" : "该范围还没有分类数据"}
           </div>
         ) : (
           <>
             <div className="cat-stack">
-              {categoryBreakdown.map((s) => {
+              {shownCategories.map((s, i) => {
                 const pct = totalCategoryMs > 0 ? (s.duration_ms / totalCategoryMs) * 100 : 0;
+                const tip = `${CATEGORY_LABEL[s.category] ?? s.category} · ${fmtDuration(
+                  s.duration_ms,
+                )} · ${formatSharePct(pct)}`;
                 return (
-                  <div
-                    key={s.category}
-                    className="cat-stack-seg"
-                    style={{
-                      width: `${pct}%`,
-                      background: CATEGORY_COLOR[s.category] ?? "#94a3b8",
-                    }}
-                    title={`${CATEGORY_LABEL[s.category] ?? s.category} · ${formatDurationPlain(s.duration_ms)}`}
-                  />
+                  <Tooltip key={s.category} content={tip}>
+                    <div
+                      className="cat-stack-seg"
+                      style={{
+                        width: `${pct}%`,
+                        background: shareColorVar(i),
+                      }}
+                    />
+                  </Tooltip>
                 );
               })}
             </div>
             <div className="cat-legend">
-              {categoryBreakdown.map((s) => {
+              {shownCategories.map((s, i) => {
                 const pct = totalCategoryMs > 0 ? (s.duration_ms / totalCategoryMs) * 100 : 0;
+                const tip = `${CATEGORY_LABEL[s.category] ?? s.category} · ${fmtDuration(
+                  s.duration_ms,
+                )} · ${formatSharePct(pct)}`;
                 return (
-                  <div key={s.category} className="cat-legend-row">
-                    <span
-                      className="cat-legend-swatch"
-                      style={{ background: CATEGORY_COLOR[s.category] ?? "#94a3b8" }}
-                    />
-                    <span className="cat-legend-label">{CATEGORY_LABEL[s.category] ?? s.category}</span>
-                    <span className="cat-legend-time">{formatDurationPlain(s.duration_ms)}</span>
-                    <span className="cat-legend-pct">{pct.toFixed(1)}%</span>
-                  </div>
+                  <Tooltip key={s.category} content={tip}>
+                    <div className="cat-legend-row">
+                      <span
+                        className="cat-legend-swatch"
+                        style={{ background: shareColorVar(i) }}
+                      />
+                      <span className="cat-legend-label">
+                        {CATEGORY_LABEL[s.category] ?? s.category}
+                      </span>
+                      <span className="cat-legend-time">{fmtDuration(s.duration_ms)}</span>
+                      <span className="cat-legend-pct">{formatSharePct(pct)}</span>
+                    </div>
+                  </Tooltip>
                 );
               })}
             </div>

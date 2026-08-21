@@ -196,6 +196,20 @@
   color: var(--color-text-3);
 }
 
+/* 分类占比标题行：flex 布局，右端挂「合计」，给百分比一个分母参照 */
+.cat-panel-title {
+  display: flex;
+  align-items: baseline;
+}
+
+.cat-total {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
 .app-list {
   display: flex;
   flex-direction: column;

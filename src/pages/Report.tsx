@@ -13,8 +13,8 @@ import PageShell from "../components/PageShell";
 import AppIcon from "../components/AppIcon";
 import Tooltip from "../components/shared/Tooltip";
 import { useToast } from "../components/shared/Toast";
-import { CATEGORY_COLOR, CATEGORY_LABEL } from "../ai/categories";
-import { formatDuration } from "../utils/format";
+import { CATEGORY_LABEL, shareColorVar } from "../ai/categories";
+import { formatDuration, formatSharePct } from "../utils/format";
 import { getReport, getReportList, regenerateReport } from "../report/client";
 import { DOW_LABELS, dateLabel, formatSleepMin, monthLabel, weekRangeLabel } from "../report/format";
 import ExportDialog from "../report/ExportDialog";
@@ -617,7 +617,8 @@ function SleepBlock({
 }
 
 function CategoryDeltaBars({ categories }: { categories: CategoryDelta[] }) {
-  if (categories.length === 0) {
+  const shown = categories.filter((c) => c.active_ms > 0);
+  if (shown.length === 0) {
     return (
       <section className="report-section">
         <h4 className="report-section-title">分类占比</h4>
@@ -631,15 +632,15 @@ function CategoryDeltaBars({ categories }: { categories: CategoryDelta[] }) {
         分类占比（vs 前 4 周）<span className="report-note">按活跃时长统计</span>
       </h4>
       <div className="report-cat-legend">
-        {categories.map((c) => (
+        {shown.map((c, i) => (
           <div key={c.category} className="report-cat-row">
             <span
               className="report-cat-swatch"
-              style={{ background: CATEGORY_COLOR[c.category] ?? "#94a3b8" }}
+              style={{ background: shareColorVar(i) }}
             />
             <span className="report-cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
             <span className="report-cat-time">{formatDuration(c.active_ms)}</span>
-            <span className="report-cat-pct">{c.share_pct.toFixed(0)}%</span>
+            <span className="report-cat-pct">{formatSharePct(c.share_pct)}</span>
             <span className="report-cat-delta">
               {c.share_delta_pp >= 0 ? "↑" : "↓"}
               {Math.abs(c.share_delta_pp).toFixed(1)}pp
@@ -890,7 +891,8 @@ function AppBars({ apps }: { apps: AppRank[] }) {
 }
 
 function CategoryStack({ categories }: { categories: CategoryShare[] }) {
-  if (categories.length === 0) {
+  const shown = categories.filter((c) => c.active_ms > 0);
+  if (shown.length === 0) {
     return (
       <section className="report-section">
         <h4 className="report-section-title">分类占比</h4>
@@ -904,28 +906,28 @@ function CategoryStack({ categories }: { categories: CategoryShare[] }) {
         分类占比<span className="report-note">按活跃时长统计</span>
       </h4>
       <div className="report-cat-stack">
-        {categories.map((c) => (
+        {shown.map((c, i) => (
           <div
             key={c.category}
             className="report-cat-seg"
             style={{
               width: `${c.share_pct}%`,
-              background: CATEGORY_COLOR[c.category] ?? "#94a3b8",
+              background: shareColorVar(i),
             }}
-            title={`${CATEGORY_LABEL[c.category] ?? c.category} · ${c.share_pct.toFixed(1)}%`}
+            title={`${CATEGORY_LABEL[c.category] ?? c.category} · ${formatSharePct(c.share_pct)}`}
           />
         ))}
       </div>
       <div className="report-cat-legend">
-        {categories.map((c) => (
+        {shown.map((c, i) => (
           <div key={c.category} className="report-cat-row">
             <span
               className="report-cat-swatch"
-              style={{ background: CATEGORY_COLOR[c.category] ?? "#94a3b8" }}
+              style={{ background: shareColorVar(i) }}
             />
             <span className="report-cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
             <span className="report-cat-time">{formatDuration(c.active_ms)}</span>
-            <span className="report-cat-pct">{c.share_pct.toFixed(1)}%</span>
+            <span className="report-cat-pct">{formatSharePct(c.share_pct)}</span>
           </div>
         ))}
       </div>

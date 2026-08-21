@@ -52,6 +52,11 @@ export function formatDuration(ms: number): string {
   return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
 }
 
+/** 占比百分比：小于 0.1% 显示「<0.1%」，避免「0.0%」看起来像没有数据。 */
+export function formatSharePct(pct: number): string {
+  return pct > 0 && pct < 0.1 ? "<0.1%" : `${pct.toFixed(1)}%`;
+}
+
 export function fmtHours(h: number): string {
   return Number.isInteger(h) ? `${h}` : h.toFixed(1);
 }

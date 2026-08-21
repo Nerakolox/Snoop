@@ -25,6 +25,16 @@
   --intensity-3: #E68A3C;
   --intensity-4: #D1602C;
 
+  /* 分类占比色阶（品牌紫深浅阶）：颜色只编码占比排名，排名越靠前越深。
+     与 ai/categories.ts 的 SHARE_RAMP_LIGHT 严格一致。 */
+  --share-1: #4F3DCE;  /* 占比最高 → 最深 */
+  --share-2: #5B48D4;
+  --share-3: #6D5AE6;
+  --share-4: #8578EE;
+  --share-5: #A49BF4;
+  --share-6: #C5BEF9;
+  --share-7: #E4E1FB;  /* 占比最低 → 最浅 */
+
   /* 泳道空轨道底色 —— 与 --color-surface 区分开的极淡暖白，肉眼可辨「无数据空轨道」vs「渲染失败」 */
   --color-track: #FCFCFD;
 
@@ -90,6 +100,15 @@
   --intensity-2:         #B36A38;
   --intensity-3:         #E08A3C;
   --intensity-4:         #FF9670;
+  /* 分类占比色阶：深色态对比方向与浅色相反 —— 排名越靠前越亮（深色背景上「更亮」才读作「更靠前」）。
+     数值手写，不走 filter/invert/opacity 派生。 */
+  --share-1:         #B6ACF9;  /* 占比最高 → 最亮 */
+  --share-2:         #A296F4;
+  --share-3:         #8B7CF0;
+  --share-4:         #7668E0;
+  --share-5:         #6053BE;
+  --share-6:         #4A4093;
+  --share-7:         #3A326E;  /* 占比最低 → 最暗 */
   --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
   --shadow-md: 0 4px 16px rgba(0,0,0,.4);
 }
@@ -112,6 +131,14 @@
   --intensity-2: #F0B77A;
   --intensity-3: #E68A3C;
   --intensity-4: #D1602C;
+  /* 分类占比色阶：同 :root，浅色态排名越靠前越深。 */
+  --share-1: #4F3DCE;
+  --share-2: #5B48D4;
+  --share-3: #6D5AE6;
+  --share-4: #8578EE;
+  --share-5: #A49BF4;
+  --share-6: #C5BEF9;
+  --share-7: #E4E1FB;
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
   --shadow-md: 0 4px 16px rgba(0,0,0,.12);
 }

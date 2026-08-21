@@ -22,8 +22,8 @@ import type {
   RhythmDay,
   RhythmSummary,
 } from "./types";
-import { formatDuration } from "../utils/format";
-import { CATEGORY_COLOR, CATEGORY_LABEL } from "../ai/categories";
+import { formatDuration, formatSharePct } from "../utils/format";
+import { CATEGORY_LABEL, shareColorLight } from "../ai/categories";
 import { DOW_LABELS, dateLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
 import { EXPORT_SIZES, type ExportSize } from "./export";
 import snoopIconInline from "../assets/snoop-icon-64.png?inline";
@@ -103,28 +103,29 @@ function ExportAppBars({ apps, icons }: { apps: AppRank[]; icons: ResolvedIconMa
 }
 
 function ExportCategoryStack({ categories }: { categories: CategoryShare[] }) {
-  if (categories.length === 0) return <p className="export-empty">无数据</p>;
+  const shown = categories.filter((c) => c.active_ms > 0);
+  if (shown.length === 0) return <p className="export-empty">无数据</p>;
   return (
     <>
       <div className="export-cat-stack">
-        {categories.map((c) => (
+        {shown.map((c, i) => (
           <div
             key={c.category}
             className="export-cat-seg"
-            style={{ width: `${c.share_pct}%`, background: CATEGORY_COLOR[c.category] ?? "#94a3b8" }}
+            style={{ width: `${c.share_pct}%`, background: shareColorLight(i) }}
           />
         ))}
       </div>
       <div className="export-cat-legend">
-        {categories.map((c) => (
+        {shown.map((c, i) => (
           <div key={c.category} className="export-cat-row">
             <span
               className="export-cat-swatch"
-              style={{ background: CATEGORY_COLOR[c.category] ?? "#94a3b8" }}
+              style={{ background: shareColorLight(i) }}
             />
             <span className="export-cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
             <span className="export-cat-time">{formatDuration(c.active_ms)}</span>
-            <span className="export-cat-pct">{c.share_pct.toFixed(1)}%</span>
+            <span className="export-cat-pct">{formatSharePct(c.share_pct)}</span>
           </div>
         ))}
       </div>
@@ -133,18 +134,19 @@ function ExportCategoryStack({ categories }: { categories: CategoryShare[] }) {
 }
 
 function ExportCategoryDeltaBars({ categories }: { categories: CategoryDelta[] }) {
-  if (categories.length === 0) return <p className="export-empty">无数据</p>;
+  const shown = categories.filter((c) => c.active_ms > 0);
+  if (shown.length === 0) return <p className="export-empty">无数据</p>;
   return (
     <div className="export-cat-legend">
-      {categories.map((c) => (
+      {shown.map((c, i) => (
         <div key={c.category} className="export-cat-row">
           <span
             className="export-cat-swatch"
-            style={{ background: CATEGORY_COLOR[c.category] ?? "#94a3b8" }}
+            style={{ background: shareColorLight(i) }}
           />
           <span className="export-cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
           <span className="export-cat-time">{formatDuration(c.active_ms)}</span>
-          <span className="export-cat-pct">{c.share_pct.toFixed(0)}%</span>
+          <span className="export-cat-pct">{formatSharePct(c.share_pct)}</span>
           <span className="export-cat-delta">
             {c.share_delta_pp >= 0 ? "↑" : "↓"}
             {Math.abs(c.share_delta_pp).toFixed(1)}pp
