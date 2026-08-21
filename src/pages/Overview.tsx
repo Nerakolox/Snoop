@@ -22,6 +22,7 @@ import Tooltip from "../components/shared/Tooltip";
 import type { NavKey } from "../components/Sidebar";
 import { useRangeData } from "../data/useRangeData";
 import { getCategoryBreakdown } from "../ai/client";
+import { useTodayNotice } from "../ai/notice";
 import { CATEGORY_COLOR, CATEGORY_LABEL } from "../ai/categories";
 import type { CategoryShare } from "../ai/types";
 import { formatAnchor, toMs } from "../data/ranges";
@@ -160,6 +161,10 @@ export default function Overview() {
   const toast = useToast();
   const today = useToday();
 
+  // 是否正停在「今天」（日视图 + 今天）。留意卡片只在此时计算与展示。
+  const isLive = kind === "day" && anchor === today;
+  const notice = useTodayNotice(isLive);
+
   const { kind: viewKind, anchor: viewAnchor, note } = adaptKind("overview", { kind, anchor }, today);
   const { buckets: allBuckets, loading, refetch } = useRangeData(viewKind, viewAnchor, null);
   const buckets = useMemo(
@@ -192,8 +197,6 @@ export default function Overview() {
 
   // 读全局基准而非自己读钟：跨日时 today 与 anchor 同步前进，isLive 保持 true，
   // 下面的 30s 轮询不会被 cleanup 清掉（旧写法会在午夜后把自己的 interval 清死）。
-  const isLive = kind === "day" && anchor === today;
-
   useEffect(() => {
     if (!isLive) return; // 看历史数据没必要轮询
     const timer = setInterval(() => refetch(), 30_000);
@@ -384,6 +387,9 @@ export default function Overview() {
         />
       }
     >
+      {/* ⓪ 留意 —— 顶部一条最弱的静默句子，命中才出现，无图标无红点 */}
+      {notice && <p className="notice-card">{notice}</p>}
+
       {/* ① 核心数字 */}
       <section className="kpi-row">
         {kpis.map((k) => (

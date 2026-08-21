@@ -54,6 +54,16 @@
   color: var(--color-text-3);
 }
 
+/* ⓪' 留意（Batch 8）—— 顶部一条最弱的静默句子，命中才出现。
+   刻意比 .overview-summary 更弱：无背景、无边框、无图标，仅一行次色文本。 */
+.notice-card {
+  margin: 0;
+  padding: 0;
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  color: var(--color-text-2);
+}
+
 /* ②' 周期总结卡（Batch 5 C4 新增，从规律页的猫周报迁入，最朴素排版） -------- */
 
 .overview-summary {

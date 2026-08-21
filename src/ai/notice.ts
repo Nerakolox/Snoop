@@ -333,13 +333,16 @@ export function writeDisabledNoticeRules(rules: NoticeRuleId[]): void {
  * 今天要展示的一句「留意」，或 null（不展示）。
  *
  * 概览页挂载 / 跨日（`useToday` 变化）时按需计算一次，非后台轮询。
+ * `active` 表示「当前正在看今天」——概览停在今天（日视图 + 今天）时才计算与记「已展示」，
+ * 否则既不计算也不标记，避免用户看历史/周月视图时被今天的一句留意打扰、或白白消耗当天配额。
  * 每天最多一条；命中后立即记「已展示」，当天不再重复。
  */
-export function useTodayNotice(): string | null {
+export function useTodayNotice(active: boolean): string | null {
   const today = useToday();
   const [sentence, setSentence] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!active) return;
     let cancelled = false;
 
     (async () => {
@@ -388,7 +391,7 @@ export function useTodayNotice(): string | null {
     return () => {
       cancelled = true;
     };
-  }, [today]);
+  }, [today, active]);
 
   return sentence;
 }
