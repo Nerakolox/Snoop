@@ -96,7 +96,11 @@ Windows 版特意不用 low-level hook，改用 Raw Input（游戏本身收键�
 
 ## 想自己编译？
 
-需要 Node 18+、Rust stable，以及各平台的构建工具链。
+需要 Node 22+、Rust stable，以及各平台的构建工具链。
+
+> **Node 版本**：Vite 7 要求 Node 20.19+ / 22.12+。用 Node 18 会报
+> `crypto.hash is not a function`，vite dev server 起不来。用
+> `nvm use 22`（或等价方式）切到 Node 22 再跑。
 
 ```bash
 npm ci
