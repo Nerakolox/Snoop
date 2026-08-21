@@ -131,7 +131,7 @@ export default function SwimLane({
                     bundleId: lane.app_bundle_id,
                     startMs: scale.pctToTime(s.startPct),
                     endMs: scale.pctToTime(s.startPct + s.widthPct),
-                    activeMs: s.activeMs,
+                    foregroundMs: s.foregroundMs,
                     avgIntensity: s.avgIntensity,
                     anchorX: rect.left + rect.width / 2,
                     anchorY: rect.top,

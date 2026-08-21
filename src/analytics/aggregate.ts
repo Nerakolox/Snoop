@@ -147,14 +147,14 @@ export function intensityByHourFromBuckets(buckets: RawBucket[]): Intensity[] {
 
 /**
  * 按**本地日期**把桶分组，返回 [startMs, endMs) 内每一天的
- * { dayMs, activeMs, intensity }，按日期升序，包含无数据的空天
- * （空天 activeMs=0、intensity=0），调用方不用自己补洞。
+ * { dayMs, foregroundMs, intensity }，按日期升序，包含无数据的空天
+ * （空天 foregroundMs=0、intensity=0），调用方不用自己补洞。
  */
 export function statsByDayFromBuckets(
   buckets: RawBucket[],
   startMs: number,
   endMs: number
-): Array<{ dayMs: number; activeMs: number; intensity: Intensity }> {
+): Array<{ dayMs: number; foregroundMs: number; intensity: Intensity }> {
   const byDay = new Map<number, RawBucket[]>();
   for (const b of buckets) {
     const d = new Date(b.bucket_start);
@@ -167,12 +167,12 @@ export function statsByDayFromBuckets(
   const dayStart = new Date(startMs);
   dayStart.setHours(0, 0, 0, 0);
 
-  const out: Array<{ dayMs: number; activeMs: number; intensity: Intensity }> = [];
+  const out: Array<{ dayMs: number; foregroundMs: number; intensity: Intensity }> = [];
   for (let t = dayStart.getTime(); t < endMs; t += DAY_MS) {
     const dayBuckets = byDay.get(t) ?? [];
     out.push({
       dayMs: t,
-      activeMs: unionDurationMs(dayBuckets),
+      foregroundMs: unionDurationMs(dayBuckets),
       intensity: computeIntensity(dayBuckets),
     });
   }
@@ -262,10 +262,10 @@ export function aggregateWeekHourGrid(
 }
 
 /**
- * 按天聚合。返回按 day_ms 升序的每日活跃。
+ * 按天聚合。返回按 day_ms 升序的每日前台时长。
  * 若某天没有任何桶，就不会出现在结果里；调用方需要"补齐 7 天"时可用返回值填空。
  *
- * active_ms 用区间并集去重求和（见 unionDurationMs），而非各桶 duration_ms 直接相加，
+ * foreground_ms 用区间并集去重求和（见 unionDurationMs），而非各桶 duration_ms 直接相加，
  * 防御任何时间重叠导致的时长虚高——正常情况下（落库端单一归因生效）两者应几乎相等。
  */
 export function aggregateByDay(buckets: RawBucket[]): DayStat[] {
@@ -302,7 +302,7 @@ export function aggregateByDay(buckets: RawBucket[]): DayStat[] {
     .sort((a, b) => a.day_ms - b.day_ms)
     .map(({ buckets: dayBuckets, ...rest }) => {
       warnIfDivergent(dayBuckets, `aggregateByDay day_ms=${rest.day_ms}`);
-      return { ...rest, active_ms: unionDurationMs(dayBuckets) };
+      return { ...rest, foreground_ms: unionDurationMs(dayBuckets) };
     });
 }
 

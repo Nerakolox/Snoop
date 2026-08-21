@@ -22,7 +22,7 @@ export type HoveredSegment = {
   bundleId: string;
   startMs: number;
   endMs: number;
-  activeMs: number;
+  foregroundMs: number;
   avgIntensity: number;
   anchorX: number;
   anchorY: number;
@@ -73,7 +73,7 @@ export default function TimelineTooltip({ hovered, onClose }: TimelineTooltipPro
           {formatTime(hovered.startMs)} – {formatTime(hovered.endMs)}
         </div>
         <div className="swimlane-tooltip-duration">
-          {formatDuration(hovered.activeMs)}
+          {formatDuration(hovered.foregroundMs)}
         </div>
         <div className="swimlane-tooltip-intensity">
           平均强度 {hovered.avgIntensity.toFixed(1)}

@@ -142,7 +142,7 @@ export default function Dev() {
           hourlyIntensity: hourStats.map((h) => h.intensity),
           dailyActive: dayStats.map((d) => ({
             day_of_week: d.day_of_week,
-            hours: +(d.active_ms / 3_600_000).toFixed(2),
+            hours: +(d.foreground_ms / 3_600_000).toFixed(2),
           })),
           weekGridPreview: weekGrid
             .map((row) => row.join(""))

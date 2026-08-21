@@ -75,8 +75,8 @@ export type DayStat = {
   day_ms: number;
   /** 0=周一 … 6=周日 */
   day_of_week: number;
-  /** 该天总活跃时长（ms） */
-  active_ms: number;
+  /** 该天总前台时长（ms） */
+  foreground_ms: number;
   key_total: number;
   mouse_total: number;
 };

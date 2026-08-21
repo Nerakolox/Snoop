@@ -206,13 +206,13 @@ export default function Insights() {
     toast.show({ message: "已跳转到时间线", undoLabel: "返回" });
   }
 
-  // ---- 卡 A · 活跃对比 ------------------------------------------------------
+  // ---- 卡 A · 前台时长对比 ------------------------------------------------------
 
-  const activeDurationMs = useMemo(() => unionDurationMs(buckets), [buckets]);
-  const prevActiveDurationMs = useMemo(() => unionDurationMs(prevBuckets), [prevBuckets]);
-  const activeCurrentMin = Math.round(activeDurationMs / 60_000);
-  const activePreviousMin = Math.round(prevActiveDurationMs / 60_000);
-  const avgActiveMs = daysWithData > 0 ? activeDurationMs / daysWithData : 0;
+  const foregroundDurationMs = useMemo(() => unionDurationMs(buckets), [buckets]);
+  const prevForegroundDurationMs = useMemo(() => unionDurationMs(prevBuckets), [prevBuckets]);
+  const foregroundCurrentMin = Math.round(foregroundDurationMs / 60_000);
+  const foregroundPreviousMin = Math.round(prevForegroundDurationMs / 60_000);
+  const avgForegroundMs = daysWithData > 0 ? foregroundDurationMs / daysWithData : 0;
 
   // ---- 卡 B · 键鼠比 --------------------------------------------------------
 
@@ -268,13 +268,13 @@ export default function Insights() {
   }, [appId, today]);
   const maxTrend14Ratio = Math.max(...trend14.map((d) => d.ratio), 0.0001);
 
-  // ---- 活跃趋势柱状图 --------------------------------------------------------
+  // ---- 前台时长趋势柱状图 --------------------------------------------------------
 
   const dailyStats = useMemo(
     () => statsByDayFromBuckets(buckets, range.start_ms, range.end_ms),
     [buckets, range]
   );
-  const maxDayActiveMs = Math.max(...dailyStats.map((d) => d.activeMs), 1);
+  const maxDayForegroundMs = Math.max(...dailyStats.map((d) => d.foregroundMs), 1);
 
   // ---- App 排行 --------------------------------------------------------------
 
@@ -413,21 +413,21 @@ export default function Insights() {
         />
       }
     >
-      {/* ⓪ 顶部两张卡：活跃对比 · 键鼠比 */}
+      {/* ⓪ 顶部两张卡：前台时长对比 · 键鼠比 */}
       <section className="ins-top-cards">
         <div className="panel ins-card">
           <h3 className="panel-title">前台时长对比</h3>
-          <div className="ins-card-value">{fmtHours(activeDurationMs / (60 * 60 * 1000))} 小时</div>
+          <div className="ins-card-value">{fmtHours(foregroundDurationMs / (60 * 60 * 1000))} 小时</div>
           <DeltaBadge
-            current={activeCurrentMin}
-            previous={activePreviousMin}
+            current={foregroundCurrentMin}
+            previous={foregroundPreviousMin}
             vsLabel={vsLabel}
             baseThreshold={baseThreshold}
           />
           <div className="ins-card-sub">
             {daysWithData > 0 ? (
               <>
-                日均 {fmtHours(avgActiveMs / (60 * 60 * 1000))} 小时 ·{" "}
+                日均 {fmtHours(avgForegroundMs / (60 * 60 * 1000))} 小时 ·{" "}
                 <Tooltip content="平均值只除以有采集数据的天数，不含缺数据的天，避免被拉低">
                   <span className="ins-card-sub-hint">分母 {daysWithData} 天</span>
                 </Tooltip>
@@ -487,16 +487,16 @@ export default function Insights() {
 
       {/* ②③ 中间左右分栏：趋势图 · App 排行 */}
       <div className="ins-split">
-        {/* ② 活跃趋势 */}
+        {/* ② 前台时长趋势 */}
         <section className="panel ins-trend-panel">
           <h3 className="panel-title">
             {isCurrentAnchor ? (viewKind === "week" ? "本周" : "本月") : "该范围"}前台时长趋势
           </h3>
           <div className="ins-trend" style={{ gridTemplateColumns: `repeat(${dailyStats.length}, 1fr)` }}>
             {dailyStats.map((d, i) => {
-              const hasData = d.activeMs > 0;
-              const pct = hasData ? (d.activeMs / maxDayActiveMs) * 100 : 0;
-              const level = bucketSimple(d.activeMs, maxDayActiveMs);
+              const hasData = d.foregroundMs > 0;
+              const pct = hasData ? (d.foregroundMs / maxDayForegroundMs) * 100 : 0;
+              const level = bucketSimple(d.foregroundMs, maxDayForegroundMs);
               const isToday = d.dayMs === todayMs;
               const barStyle: CSSProperties = {
                 height: `${pct}%`,
@@ -512,7 +512,7 @@ export default function Insights() {
                   key={d.dayMs}
                   content={
                     hasData
-                      ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.activeMs / (60 * 60 * 1000))}h`
+                      ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.foregroundMs / (60 * 60 * 1000))}h`
                       : `${dateLabelOf(d.dayMs)} · 无采集数据`
                   }
                 >
@@ -521,7 +521,7 @@ export default function Insights() {
                       {hasData && <div className="ins-trend-bar" style={barStyle} />}
                     </div>
                     {hasData && (
-                      <div className="ins-trend-value">{fmtHours(d.activeMs / (60 * 60 * 1000))}h</div>
+                      <div className="ins-trend-value">{fmtHours(d.foregroundMs / (60 * 60 * 1000))}h</div>
                     )}
                     <div className="ins-trend-label">{showLabel ? label : ""}</div>
                   </button>

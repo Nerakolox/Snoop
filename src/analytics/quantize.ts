@@ -25,8 +25,8 @@ export type VirtQuantizedSegment = {
   startVirt: number;
   endVirt: number;
   level: QuantLevel;
-  /** 该段合并后的总活跃时长(真实 ms,供 hover 气泡) */
-  activeMs: number;
+  /** 该段合并后的总前台时长(真实 ms,供 hover 气泡) */
+  foregroundMs: number;
   /** 该段加权平均强度档(0..4,未做覆盖率衰减的原始平均,供 hover 气泡) */
   avgIntensity: number;
 };
@@ -38,7 +38,7 @@ export type QuantizedSegment = {
   startPct: number;
   widthPct: number;
   level: QuantLevel;
-  activeMs: number;
+  foregroundMs: number;
   avgIntensity: number;
 };
 
@@ -112,7 +112,7 @@ export function quantizeLaneVirtual(
     cellEnd[i] = virtToTime(ve, segments);
   }
 
-  const activeMs = new Float64Array(cellCount);
+  const foregroundMs = new Float64Array(cellCount);
   const weighted = new Float64Array(cellCount);
 
   for (const b of blocks) {
@@ -127,7 +127,7 @@ export function quantizeLaneVirtual(
         Math.min(b.end_ms, cellEnd[i]) - Math.max(b.start_ms, cellStart[i])
       );
       if (overlap > 0) {
-        activeMs[i] += overlap;
+        foregroundMs[i] += overlap;
         weighted[i] += overlap * b.intensity;
       }
     }
@@ -136,7 +136,7 @@ export function quantizeLaneVirtual(
   const result: VirtQuantizedSegment[] = [];
   let runStart = -1;
   let runLevel: QuantLevel = 0;
-  let runActive = 0;
+  let runForeground = 0;
   let runWeighted = 0;
 
   const flush = (endCell: number) => {
@@ -147,28 +147,28 @@ export function quantizeLaneVirtual(
       startVirt: cellStartVirt[runStart],
       endVirt: cellEndVirt[endCell - 1],
       level: runLevel,
-      activeMs: runActive,
-      avgIntensity: runActive > 0 ? runWeighted / runActive : 0,
+      foregroundMs: runForeground,
+      avgIntensity: runForeground > 0 ? runWeighted / runForeground : 0,
     });
     runStart = -1;
-    runActive = 0;
+    runForeground = 0;
     runWeighted = 0;
   };
 
   for (let i = 0; i < cellCount; i++) {
     // 定档(修正 B):
-    //   activeMs===0 → null(无覆盖,露出轨道底色)
+    //   foregroundMs===0 → null(无覆盖,露出轨道底色)
     //   weighted===0 → 0(覆盖到的 block 全是挂机)
     //   否则活跃格下限恒为 1,覆盖率衰减只压档不压成挂机
     let level: QuantLevel | null;
-    if (activeMs[i] === 0) {
+    if (foregroundMs[i] === 0) {
       level = null;
     } else if (weighted[i] === 0) {
       level = 0;
     } else {
-      const avg = weighted[i] / activeMs[i]; // 0..4
+      const avg = weighted[i] / foregroundMs[i]; // 0..4
       const cellDur = cellEnd[i] - cellStart[i];
-      const cov = cellDur > 0 ? Math.min(1, activeMs[i] / cellDur) : 0;
+      const cov = cellDur > 0 ? Math.min(1, foregroundMs[i] / cellDur) : 0;
       level = Math.max(1, Math.min(4, Math.round(avg * (0.4 + 0.6 * cov)))) as QuantLevel;
     }
 
@@ -179,16 +179,16 @@ export function quantizeLaneVirtual(
     if (runStart < 0) {
       runStart = i;
       runLevel = level;
-      runActive = activeMs[i];
+      runForeground = foregroundMs[i];
       runWeighted = weighted[i];
     } else if (level === runLevel) {
-      runActive += activeMs[i];
+      runForeground += foregroundMs[i];
       runWeighted += weighted[i];
     } else {
       flush(i);
       runStart = i;
       runLevel = level;
-      runActive = activeMs[i];
+      runForeground = foregroundMs[i];
       runWeighted = weighted[i];
     }
   }
@@ -219,7 +219,7 @@ export function sliceQuantized(
       startPct: left,
       widthPct: width,
       level: seg.level,
-      activeMs: seg.activeMs,
+      foregroundMs: seg.foregroundMs,
       avgIntensity: seg.avgIntensity,
     });
   }

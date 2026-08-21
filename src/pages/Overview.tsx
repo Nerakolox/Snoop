@@ -200,7 +200,7 @@ export default function Overview() {
     return () => clearInterval(timer);
   }, [isLive, refetch]);
 
-  const activeDuration = unionDurationMs(buckets);
+  const foregroundDuration = unionDurationMs(buckets);
   let totalKeys = 0;
   let totalClicks = 0;
   let totalMouseDist = 0;
@@ -210,13 +210,13 @@ export default function Overview() {
     totalMouseDist += b.mouse_move_dist || 0;
   }
   const daysWithData = daysWithDataOf(buckets);
-  const avgMs = daysWithData > 0 ? activeDuration / daysWithData : 0;
+  const avgMs = daysWithData > 0 ? foregroundDuration / daysWithData : 0;
   const avgLabel = formatDurationPlain(avgMs);
 
   const kpis: Kpi[] = [
     {
       label: "前台时长",
-      parts: formatDuration(activeDuration),
+      parts: formatDuration(foregroundDuration),
       target: "timeline",
       targetLabel: "时间线",
       sub: viewKind !== "day" ? `日均 ${avgLabel} · 分母 ${daysWithData} 天` : undefined,
@@ -262,9 +262,9 @@ export default function Overview() {
   const rhythmRange = useMemo(() => toMs(viewKind, viewAnchor), [viewKind, viewAnchor]);
   const dailyStats = useMemo(() => {
     const stats = statsByDayFromBuckets(buckets, rhythmRange.start_ms, rhythmRange.end_ms);
-    return stats.map((s) => ({ ...s, hasData: s.activeMs > 0 }));
+    return stats.map((s) => ({ ...s, hasData: s.foregroundMs > 0 }));
   }, [buckets, rhythmRange]);
-  const maxDayActiveMs = Math.max(...dailyStats.map((d) => d.activeMs), 1);
+  const maxDayForegroundMs = Math.max(...dailyStats.map((d) => d.foregroundMs), 1);
 
   // 分类占比：后端按范围聚合各分类前台时长（未分类计入 other）。
   // 依赖 allBuckets，使 live 30s 轮询刷新 buckets 时占比也一并刷新。
@@ -288,7 +288,7 @@ export default function Overview() {
   const isEmpty = !loading && buckets.length === 0;
 
   // 周期总结卡：纯展示，不可点、不弹 toast，X/Y/Z/W 复用上面已算好的数字，不重算。
-  const avgActiveHours = daysWithData > 0 ? activeDuration / daysWithData / (60 * 60 * 1000) : 0;
+  const avgForegroundHours = daysWithData > 0 ? foregroundDuration / daysWithData / (60 * 60 * 1000) : 0;
   const summaryText = useMemo(() => {
     const introParts = [anchorLabel(viewKind, viewAnchor, today)];
     if (viewKind !== "day") introParts.push(`共 ${daysWithData} 天有数据`);
@@ -301,11 +301,11 @@ export default function Overview() {
         : "";
 
     return (
-      `${introParts.join("，")}，你在前台待了 ${formatDurationPlain(activeDuration)}，` +
+      `${introParts.join("，")}，你在前台待了 ${formatDurationPlain(foregroundDuration)}，` +
       `敲下 ${formatNumber(totalKeys)} 次按键、点出 ${formatNumber(totalClicks)} 次点击，` +
       `鼠标跑了 ${formatMouseDistance(totalMouseDist).map((p) => p.text).join("")}。` +
       homeSentence +
-      judgeLabel(avgActiveHours)
+      judgeLabel(avgForegroundHours)
     );
   }, [
     viewKind,
@@ -315,11 +315,11 @@ export default function Overview() {
     appId,
     appName,
     apps,
-    activeDuration,
+    foregroundDuration,
     totalKeys,
     totalClicks,
     totalMouseDist,
-    avgActiveHours,
+    avgForegroundHours,
   ]);
 
   const isCurrentAnchor = viewAnchor === normalizeAnchor(viewKind, today);
@@ -551,13 +551,13 @@ export default function Overview() {
         {viewKind === "week" && (
           <div className="week-bars">
             {dailyStats.map((d) => {
-              const pct = d.hasData ? Math.max((d.activeMs / maxDayActiveMs) * 100, 4) : 0;
+              const pct = d.hasData ? Math.max((d.foregroundMs / maxDayForegroundMs) * 100, 4) : 0;
               return (
                 <Tooltip
                   key={d.dayMs}
                   content={
                     d.hasData
-                      ? `${dateLabelOf(d.dayMs)} · ${formatDurationPlain(d.activeMs)}`
+                      ? `${dateLabelOf(d.dayMs)} · ${formatDurationPlain(d.foregroundMs)}`
                       : `${dateLabelOf(d.dayMs)} · 无采集数据`
                   }
                 >
