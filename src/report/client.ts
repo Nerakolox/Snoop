@@ -17,3 +17,11 @@ export function getReport(reportDate: string, reportType: ReportKind): Promise<R
 export function regenerateReport(reportDate: string, reportType: ReportKind): Promise<ReportView> {
   return invoke<ReportView>("regenerate_report", { reportDate, reportType });
 }
+
+/**
+ * 导出报告成图：把前端渲染好的 PNG 字节（base64）交给 Rust 弹保存对话框落盘。
+ * 返回保存路径；用户取消则返回 null。
+ */
+export function saveReportPng(dataB64: string, suggestedName: string): Promise<string | null> {
+  return invoke<string | null>("save_report_png", { dataB64, suggestedName });
+}
