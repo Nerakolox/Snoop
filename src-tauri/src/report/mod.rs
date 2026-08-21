@@ -9,6 +9,7 @@ pub mod common;
 pub mod daily;
 pub mod narrative;
 pub mod store;
+pub mod weekly;
 
 use std::path::Path;
 use std::sync::Mutex;
