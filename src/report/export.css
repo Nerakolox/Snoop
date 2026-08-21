@@ -1,0 +1,532 @@
+/* 报告导出版式 —— 自包含样式，硬编码浅色中性 + accent 单色。
+ *
+ * 被两处消费：主文档正常引入（ExportDialog 预览缩略图）、`export.css?inline`（foreignObject 内嵌，
+ * 独立渲染拿不到主文档 <style>，必须连 box-sizing / 字体栈一起内嵌）。
+ *
+ * 配色刻意**不复用**时间线的暖色强度轴（--intensity-1..4）：条形/节奏柱一律 accent 单色，
+ * 分类占比用 categories.ts 的离散色板。时长口径在文案里标清「活跃时长（有输入）」/「前台时长」。
+ *
+ * foreignObject 里会静默丢失的特性一律避开：backdrop-filter / filter / mix-blend-mode / mask /
+ * position:fixed|sticky / clip-path。只用 flex / gap / border-radius / background-color / box-shadow。
+ */
+
+.report-export {
+  --x-text: #2a2730;
+  --x-text-2: #6b6670;
+  --x-text-3: #9b96a0;
+  --x-border: #e8e3d9;
+  --x-track: #f3f0ea;
+  --x-accent: #6d5ae6;
+  --x-accent-deep: #4f3dce;
+  --x-accent-soft: #ece9fb;
+
+  box-sizing: border-box;
+  background: #ffffff;
+  color: var(--x-text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", sans-serif;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.report-export *,
+.report-export *::before,
+.report-export *::after {
+  box-sizing: border-box;
+}
+
+/* ── 主体 ────────────────────────────────────────────────────────────────── */
+
+.report-export__main {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 44px;
+  padding: 64px 72px 48px;
+  overflow: hidden;
+}
+
+/* ── 头部 ────────────────────────────────────────────────────────────────── */
+
+.export-head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.export-head__title {
+  font-size: 44px;
+  font-weight: 600;
+  color: var(--x-text-2);
+}
+
+.export-head__label {
+  font-size: 26px;
+  color: var(--x-text-3);
+}
+
+.export-head__active {
+  font-size: 96px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--x-accent);
+}
+
+.export-head__sub {
+  margin-top: 8px;
+  font-size: 30px;
+  color: var(--x-text-2);
+}
+
+.export-head__delta {
+  margin-top: 20px;
+  display: flex;
+  gap: 48px;
+}
+
+/* ── 叙事 ────────────────────────────────────────────────────────────────── */
+
+.export-narrative {
+  font-size: 32px;
+  line-height: 1.6;
+  color: var(--x-text);
+  margin: 0;
+}
+
+.export-narrative__source {
+  display: inline-block;
+  margin-left: 16px;
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--x-text-3);
+  border: 1px solid var(--x-border);
+  border-radius: 999px;
+  padding: 2px 16px;
+  vertical-align: middle;
+}
+
+/* ── 通用区块 ────────────────────────────────────────────────────────────── */
+
+.export-section {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.export-section__title {
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--x-text-3);
+  margin: 0;
+}
+
+.export-section__note {
+  font-size: 22px;
+  font-weight: 400;
+  color: var(--x-text-3);
+  margin-left: 12px;
+  letter-spacing: 0;
+}
+
+.export-empty {
+  font-size: 28px;
+  color: var(--x-text-3);
+  margin: 0;
+}
+
+/* ── 应用排行 ────────────────────────────────────────────────────────────── */
+
+.export-apps {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.export-app-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.export-app-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 20%;
+  object-fit: contain;
+}
+
+.export-app-icon--fallback {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 20%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.export-app-name {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 32px;
+  color: var(--x-text);
+  overflow: hidden;
+}
+
+.export-app-name span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.export-app-track {
+  flex: 1;
+  height: 28px;
+  background: var(--x-track);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.export-app-fill {
+  height: 100%;
+  background: var(--x-accent);
+  border-radius: 8px;
+}
+
+.export-app-meta {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  font-size: 28px;
+  color: var(--x-text-2);
+}
+
+.export-app-pct {
+  color: var(--x-text);
+  font-weight: 600;
+}
+
+/* ── 分类占比条 ──────────────────────────────────────────────────────────── */
+
+.export-cat-stack {
+  display: flex;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.export-cat-seg {
+  height: 100%;
+}
+
+.export-cat-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.export-cat-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  font-size: 28px;
+}
+
+.export-cat-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.export-cat-label {
+  width: 180px;
+  flex-shrink: 0;
+  color: var(--x-text);
+}
+
+.export-cat-time {
+  color: var(--x-text-2);
+}
+
+.export-cat-pct {
+  margin-left: auto;
+  color: var(--x-text);
+  font-weight: 600;
+}
+
+.export-cat-delta {
+  width: 150px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--x-text);
+  font-weight: 600;
+}
+
+/* ── 24 小时节奏 ─────────────────────────────────────────────────────────── */
+
+.export-rhythm {
+  display: flex;
+  gap: 6px;
+  height: 200px;
+  align-items: flex-end;
+}
+
+.export-rhythm-col {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.export-rhythm-bar {
+  width: 100%;
+  background: var(--x-accent);
+  border-radius: 4px 4px 0 0;
+}
+
+.export-rhythm-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: 24px;
+  color: var(--x-text-3);
+}
+
+/* ── 7 天 / 按周条形 ─────────────────────────────────────────────────────── */
+
+.export-bars {
+  display: flex;
+  gap: 20px;
+}
+
+.export-bars-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.export-bars-track {
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 2px solid var(--x-border);
+}
+
+.export-bars-track--week {
+  height: 360px;
+}
+
+.export-bars-track--month {
+  height: 300px;
+}
+
+.report-export--square .export-bars-track--week {
+  height: 240px;
+}
+
+.report-export--square .export-bars-track--month {
+  height: 220px;
+}
+
+.export-bars-fill {
+  width: 62%;
+  background: var(--x-accent);
+  border-radius: 10px 10px 0 0;
+}
+
+.export-bars-fill--max {
+  background: var(--x-accent-deep);
+}
+
+.export-bars-day {
+  font-size: 26px;
+  color: var(--x-text-2);
+}
+
+.export-bars-legend {
+  font-size: 24px;
+  color: var(--x-text-3);
+  margin: 0;
+}
+
+/* ── 作息块 ──────────────────────────────────────────────────────────────── */
+
+.export-sleep {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.export-sleep-row {
+  display: flex;
+  gap: 24px;
+  font-size: 28px;
+}
+
+.export-sleep-day {
+  width: 100px;
+  flex-shrink: 0;
+  color: var(--x-text-3);
+}
+
+.export-sleep-times {
+  color: var(--x-text);
+}
+
+.export-sleep-note {
+  color: var(--x-text-3);
+}
+
+.export-sleep-avg {
+  font-size: 26px;
+  color: var(--x-text-2);
+  margin: 8px 0 0;
+}
+
+/* ── 上下半月 / 工作日周末 ───────────────────────────────────────────────── */
+
+.export-halfshift {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.export-halfshift-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: 28px;
+}
+
+.export-halfshift-name {
+  width: 160px;
+  flex-shrink: 0;
+  color: var(--x-text);
+}
+
+.export-halfshift-values {
+  color: var(--x-text-2);
+}
+
+.export-halfshift-delta {
+  margin-left: auto;
+  color: var(--x-text);
+  font-weight: 600;
+}
+
+.export-weekend {
+  display: flex;
+  gap: 64px;
+  font-size: 28px;
+  color: var(--x-text);
+}
+
+/* ── 应用增删行 ──────────────────────────────────────────────────────────── */
+
+.export-app-change {
+  display: flex;
+  gap: 20px;
+  font-size: 26px;
+  color: var(--x-text-2);
+}
+
+.export-app-change-label {
+  color: var(--x-text-3);
+  flex-shrink: 0;
+}
+
+/* ── 对比增减 ────────────────────────────────────────────────────────────── */
+
+.export-compare-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.export-compare-label {
+  font-size: 26px;
+  color: var(--x-text-3);
+}
+
+.export-compare-value {
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--x-text);
+}
+
+/* ── 水印 footer ─────────────────────────────────────────────────────────── */
+
+.report-export__footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 72px;
+  border-top: 2px solid var(--x-border);
+}
+
+.report-export--vertical .report-export__footer {
+  height: 96px;
+}
+
+.report-export--square .report-export__footer {
+  height: 88px;
+}
+
+.export-footer__brand {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.export-footer__brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.export-footer__brand-name {
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--x-text-2);
+}
+
+.export-footer__link {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.export-footer__url {
+  font-size: 26px;
+  color: var(--x-text-3);
+}
+
+.export-footer__qr {
+  width: 80px;
+  height: 80px;
+}
+
+.report-export--vertical .export-footer__qr {
+  width: 84px;
+  height: 84px;
+}
