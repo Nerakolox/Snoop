@@ -10,6 +10,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "../components/shared/Toast";
 import type { ReportView } from "./types";
@@ -103,7 +104,9 @@ export default function ExportDialog({
     }
   }
 
-  return (
+  // 用 portal 挂到 document.body，position:fixed 相对真实视口定位（同设置页开发模式确认弹窗），
+  // 不受 .page-layer 的 transform 包含块影响，居中即视口居中、不会跑到标题栏/侧栏外。
+  return createPortal(
     <div className="export-dialog-overlay" onClick={onClose}>
       <div className="export-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="export-dialog__head">
@@ -157,6 +160,7 @@ export default function ExportDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

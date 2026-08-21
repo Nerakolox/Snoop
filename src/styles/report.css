@@ -710,22 +710,21 @@
    后者在子项比容器高时会向两侧等量溢出、顶部被裁进顶栏；margin:auto 在装不下时归零、
    配合 overlay 的 overflow:auto 让内容留在 overlay 内滚动。 */
 .export-dialog-overlay {
-  /* 弹层挂在 .page-layer 内，而 .page-layer 有 transform: translateY(0) + will-change，
-     构成 fixed 的包含块，故 inset:0 只铺满主内容区（顶栏 46px 拖拽区之下、侧栏之右），
-     天然避开自定义标题栏，无需再手动加 top 偏移。 */
+  /* 与设置页开发模式确认弹窗（modal.css 的 .dev-confirm-overlay）同一套定位：
+     经 portal 挂到 document.body，fixed 相对真实视口，flex 居中即视口居中。 */
   position: fixed;
   inset: 0;
   z-index: 1000;
   background: rgba(0, 0, 0, 0.45);
   display: flex;
-  overflow: auto;
+  align-items: center;
+  justify-content: center;
   padding: var(--space-6);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
 }
 
 .export-dialog {
-  margin: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -734,7 +733,8 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-md);
   padding: var(--space-6);
-  max-height: 80vh;
+  /* 视口内留白 + 内部滚动：对话框再高也不超出视口，flex 居中不会被撑破 */
+  max-height: calc(100vh - var(--space-8));
   max-width: 100%;
   overflow: auto;
 }
