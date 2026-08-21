@@ -36,23 +36,26 @@ export interface UseAIResult {
  * @param template    T0 本地模板函数：AI 不可用时用它生成同样形状的文案。
  * @param jsonMode    是否要求 JSON 输出（传给 response_format）。
  *
- * 用法示例（占位，供后续功能照抄）：
+ * 用法示例（占位，演示「单发 + T0 模板」的通用用法）：
  * ```tsx
- * function CatQuip() {
+ * function ExampleFeature() {
  *   const { content, source } = useAI(
- *     "ai.cat-quip",
+ *     "ai.<你的功能-id>",
  *     () => ({ today: { keys: 1200, top_apps: [] } }),  // 完整 T3 形状
- *     () => "今天摸鱼摸得很充实。",                      // T0 本地模板
+ *     () => "本地兜底文案。",                            // T0 本地模板
  *   );
  *   if (content == null) return null;                    // 加载中，不渲染空态
  *   return (
- *     <div className="cat-quip">
+ *     <div className="example-feature">
  *       {content}
  *       {source === "template" && <span className="ai-local-badge">本地</span>}
  *     </div>
  *   );
  * }
  * ```
+ *
+ * 注意：`ai.cat-quip`（猫吐槽）已由 `src/ai/quip.ts` 独立实现（30 分钟批量生成 +
+ * 内存缓存，不经过本 hook）。需要批量/缓存语义照 `quip.ts`，单发语义才照这里。
  *
  * 结构化功能（AI 返回 JSON）同理：模板函数返回一段同 schema 的 JSON 字符串，
  * 调用方对 `content` 与 `template()` 产物走同一条解析路径即可。
