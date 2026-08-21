@@ -2,34 +2,21 @@
  * 报告 —— 历史日报 / 周报 / 月报时间轴。
  * 消费全局 (kind, anchor)：顶栏的日/周/月 筛列表显示的报类型，日期导航滚到并高亮
  * 对应周期那份报告。三种报按日期倒序，点开在卡片原位展开详情。
- * 导出成图是批次 4b，本批只让详情卡固定宽度 + 最小高度、高度可往下长，结构上支持导出。
  *
- * 三种报回答三个问题：日报讲叙事、周报讲对比（7 天条形 + 作息偏差）、月报讲趋势
- * （按周走势 + 上下半月分类变化 + weekday×小时热力网格）。
+ * 详情卡与「导出成图」共用同一个 <ReportCard>（1000px 宽、内容自适应高度），
+ * 应用内只是少一条 footer、多一行底部操作按钮（导出成图 / 重新生成）。
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import PageShell from "../components/PageShell";
-import AppIcon from "../components/AppIcon";
-import Tooltip from "../components/shared/Tooltip";
 import { useToast } from "../components/shared/Toast";
-import { CATEGORY_LABEL, shareColorVar } from "../ai/categories";
-import { formatDuration, formatSharePct } from "../utils/format";
+import { formatDuration } from "../utils/format";
 import { getReport, getReportList, regenerateReport } from "../report/client";
-import { DOW_LABELS, dateLabel, formatSleepMin, monthLabel, weekRangeLabel } from "../report/format";
+import { dateLabel, monthLabel, weekRangeLabel } from "../report/format";
+import { useReportIcons } from "../report/icons";
+import ReportCard from "../report/ReportCard";
 import ExportDialog from "../report/ExportDialog";
-import type {
-  AppRank,
-  AppRef,
-  CategoryDelta,
-  CategoryShare,
-  GoneApp,
-  ReportMeta,
-  ReportView,
-} from "../report/types";
-import { fetchHourlyActivity, fetchHourlyHeartbeats } from "../data/client";
-import { aggregateDowHourGrid, type DowHourCell } from "../analytics/aggregate";
-import { toMs } from "../data/ranges";
+import type { ReportMeta, ReportView } from "../report/types";
 import { normalizeAnchor, useContextState } from "../store/context";
 import DatePicker from "../components/shared/DatePicker";
 
@@ -52,6 +39,9 @@ export default function Report() {
   const [generating, setGenerating] = useState(false);
   const toast = useToast();
   const listRef = useRef<HTMLDivElement>(null);
+
+  // 详情卡的 app 图标：与导出成图共用同一套预解析结果。
+  const reportIcons = useReportIcons(detail);
 
   useEffect(() => {
     let alive = true;
@@ -187,6 +177,7 @@ export default function Report() {
                 </button>
                 <ReportDetail
                   detail={detail}
+                  icons={reportIcons}
                   onRegenerate={handleRegenerate}
                   regenerating={regenerating}
                   onExport={() => setExporting(detail)}
@@ -246,691 +237,44 @@ function ReportHeader() {
   );
 }
 
+/**
+ * 展开的详情：统一的 ReportCard + 卡片外的操作按钮（不进导出图）。
+ * `detail` 可能为 null（getReport 返回中），先给一个等宽占位。
+ */
 function ReportDetail({
   detail,
+  icons,
   onRegenerate,
   regenerating,
   onExport,
 }: {
   detail: ReportView | null;
+  icons: ReturnType<typeof useReportIcons>;
   onRegenerate: () => void;
   regenerating: boolean;
   onExport: () => void;
 }) {
   if (!detail) {
-    return <div className="report-card report-card--loading">加载中…</div>;
-  }
-  if (detail.report_type === "week") {
-    return (
-      <WeeklyCard
-        detail={detail}
-        onRegenerate={onRegenerate}
-        regenerating={regenerating}
-        onExport={onExport}
-      />
-    );
-  }
-  if (detail.report_type === "month") {
-    return (
-      <MonthlyCard
-        detail={detail}
-        onRegenerate={onRegenerate}
-        regenerating={regenerating}
-        onExport={onExport}
-      />
-    );
+    return <div className="report-card-loading">加载中…</div>;
   }
   return (
-    <DailyCard
-      detail={detail}
-      onRegenerate={onRegenerate}
-      regenerating={regenerating}
-      onExport={onExport}
-    />
-  );
-}
-
-/** 叙事来源小标，三种报共用。 */
-function Narrative({
-  text,
-  source,
-}: {
-  text: string | null;
-  source: string | null;
-}) {
-  if (!text) return null;
-  return (
-    <p className="report-card-narrative">
-      {text}
-      {source && (
-        <span className="report-card-source">
-          {source === "ai" ? "由 AI 生成" : "本地模板"}
-        </span>
-      )}
-    </p>
-  );
-}
-
-/** 中性箭头增减。正数 = 多 / 高 / 晚，一律不带红绿色彩语义。 */
-function Delta({ label, pct }: { label: string; pct: number }) {
-  const up = pct >= 0;
-  return (
-    <div className="report-compare-item">
-      <span className="report-compare-label">{label}</span>
-      <span className="report-compare-value">
-        {up ? "↑" : "↓"} {Math.abs(pct).toFixed(0)}%
-      </span>
-    </div>
-  );
-}
-
-function RegenerateButton({
-  onRegenerate,
-  regenerating,
-}: {
-  onRegenerate: () => void;
-  regenerating: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      className="report-regen"
-      onClick={onRegenerate}
-      disabled={regenerating}
-    >
-      {regenerating ? "重新生成中…" : "重新生成"}
-    </button>
-  );
-}
-
-/** 详情卡底部操作行：导出成图 + 重新生成。导出仅在 status==="ok" 时可用。 */
-function CardActions({
-  canExport,
-  onExport,
-  onRegenerate,
-  regenerating,
-}: {
-  canExport: boolean;
-  onExport: () => void;
-  onRegenerate: () => void;
-  regenerating: boolean;
-}) {
-  return (
-    <div className="report-card-actions">
-      {canExport && (
-        <button type="button" className="report-export-btn" onClick={onExport}>
-          导出成图
+    <div className="report-detail">
+      <ReportCard detail={detail} icons={icons} />
+      <div className="report-card-actions">
+        {detail.status === "ok" && (
+          <button type="button" className="report-export-btn" onClick={onExport}>
+            导出成图
+          </button>
+        )}
+        <button
+          type="button"
+          className="report-regen"
+          onClick={onRegenerate}
+          disabled={regenerating}
+        >
+          {regenerating ? "重新生成中…" : "重新生成"}
         </button>
-      )}
-      <RegenerateButton onRegenerate={onRegenerate} regenerating={regenerating} />
-    </div>
-  );
-}
-
-// ── 日报卡片（沿用 4a，字段不变） ──────────────────────────────────────────
-
-function DailyCard({
-  detail,
-  onRegenerate,
-  regenerating,
-  onExport,
-}: {
-  detail: Extract<ReportView, { report_type: "day" }>;
-  onRegenerate: () => void;
-  regenerating: boolean;
-  onExport: () => void;
-}) {
-  const d = detail.data;
-  const maxHourMs = Math.max(...d.hourly.map((h) => h.active_ms), 1);
-
-  return (
-    <div className="report-card">
-      <div className="report-card-head">
-        <div className="report-card-date">{dateLabel(d.date)}</div>
-        <div className="report-card-active">{formatDuration(d.active_ms)}</div>
-        <div className="report-card-sub">
-          活跃时长 {formatDuration(d.active_ms)} · 前台 {formatDuration(d.foreground_ms)}
-        </div>
       </div>
-
-      <Narrative text={detail.narrative} source={detail.narrative_source} />
-
-      <section className="report-section">
-        <h4 className="report-section-title">应用 Top 5</h4>
-        <AppBars apps={d.top_apps} />
-      </section>
-
-      <CategoryStack categories={d.categories} />
-
-      <section className="report-section">
-        <h4 className="report-section-title">24 小时节奏</h4>
-        <div className="report-rhythm">
-          {d.hourly.map((h) => (
-            <Tooltip key={h.hour} content={`${h.hour}:00 · ${formatDuration(h.active_ms)}`}>
-              <div className="report-rhythm-col">
-                <div
-                  className="report-rhythm-bar"
-                  style={{
-                    height: `${Math.max((h.active_ms / maxHourMs) * 100, h.active_ms > 0 ? 4 : 0)}%`,
-                  }}
-                />
-              </div>
-            </Tooltip>
-          ))}
-        </div>
-        <div className="report-rhythm-scale">
-          <span>0</span>
-          <span>6</span>
-          <span>12</span>
-          <span>18</span>
-          <span>24</span>
-        </div>
-      </section>
-
-      <section className="report-section">
-        <h4 className="report-section-title">近 7 天对比</h4>
-        {d.vs_7d.avg_active_ms > 0 ? (
-          <div className="report-compare">
-            <Delta label="活跃时长" pct={d.vs_7d.active_delta_pct} />
-            <Delta label="切换次数" pct={d.vs_7d.switch_delta_pct} />
-          </div>
-        ) : (
-          <p className="report-empty-inline">还没有足够的历史数据对比</p>
-        )}
-      </section>
-
-      <CardActions
-        canExport={detail.status === "ok"}
-        onExport={onExport}
-        onRegenerate={onRegenerate}
-        regenerating={regenerating}
-      />
     </div>
-  );
-}
-
-// ── 周报卡片 ───────────────────────────────────────────────────────────────
-
-function WeeklyCard({
-  detail,
-  onRegenerate,
-  regenerating,
-  onExport,
-}: {
-  detail: Extract<ReportView, { report_type: "week" }>;
-  onRegenerate: () => void;
-  regenerating: boolean;
-  onExport: () => void;
-}) {
-  const d = detail.data;
-  const maxDayMs = Math.max(...d.days.map((x) => x.active_ms), 1);
-
-  return (
-    <div className="report-card report-card--weekly">
-      <div className="report-card-head">
-        <div className="report-card-date">{weekRangeLabel(d.week_start)}</div>
-        <div className="report-card-active">{formatDuration(d.active_ms)}</div>
-        <div className="report-card-sub">
-          活跃时长 {formatDuration(d.active_ms)} · 前台 {formatDuration(d.foreground_ms)} · 日均{" "}
-          {formatDuration(d.avg_daily_active_ms)}
-        </div>
-        {d.baseline.avg_daily_active_ms > 0 && (
-          <div className="report-compare">
-            <Delta label="vs 前 4 周日均" pct={d.baseline.daily_delta_pct} />
-          </div>
-        )}
-      </div>
-
-      <Narrative text={detail.narrative} source={detail.narrative_source} />
-
-      {/* 7 天条形是周报的主视觉 */}
-      <section className="report-section">
-        <h4 className="report-section-title">这一周</h4>
-        <div className="report-week-bars">
-          {d.days.map((day) => (
-            <Tooltip
-              key={day.date}
-              content={`${DOW_LABELS[day.dow]} ${dateLabel(day.date)} · ${formatDuration(
-                day.active_ms,
-              )}`}
-            >
-              <div className="report-week-bar-col">
-                <div className="report-week-bar-track">
-                  <div
-                    className={`report-week-bar${
-                      d.max_day === day.date ? " report-week-bar--max" : ""
-                    }${d.min_day === day.date ? " report-week-bar--min" : ""}`}
-                    style={{ height: `${Math.max((day.active_ms / maxDayMs) * 100, 2)}%` }}
-                  />
-                </div>
-                <span className="report-week-bar-day">{DOW_LABELS[day.dow]}</span>
-              </div>
-            </Tooltip>
-          ))}
-        </div>
-        {d.max_day && d.min_day && (
-          <p className="report-week-legend">
-            最高 {dateLabel(d.max_day)} · 最低 {dateLabel(d.min_day)}
-          </p>
-        )}
-      </section>
-
-      {/* 作息块：周报独有的价值，要显眼 */}
-      <SleepBlock days={d.rhythm} summary={d.rhythm_summary} />
-
-      {/* 分类占比 + 与前 4 周偏差 */}
-      <CategoryDeltaBars categories={d.categories} />
-
-      {/* 应用 */}
-      <section className="report-section">
-        <h4 className="report-section-title">应用 Top 5</h4>
-        <AppBars apps={d.top_apps} />
-        <AppChangeRow label="本周新出现" apps={d.new_apps} />
-        <GoneRow apps={d.gone_apps} />
-      </section>
-
-      {/* 工作日 vs 周末 */}
-      <section className="report-section">
-        <h4 className="report-section-title">工作日 vs 周末</h4>
-        <div className="report-weekend">
-          <span>工作日日均 {formatDuration(d.weekday_weekend.weekday_avg_active_ms)}</span>
-          <span>周末日均 {formatDuration(d.weekday_weekend.weekend_avg_active_ms)}</span>
-        </div>
-      </section>
-
-      <CardActions
-        canExport={detail.status === "ok"}
-        onExport={onExport}
-        onRegenerate={onRegenerate}
-        regenerating={regenerating}
-      />
-    </div>
-  );
-}
-
-function SleepBlock({
-  days,
-  summary,
-}: {
-  days: import("../report/types").RhythmDay[];
-  summary: import("../report/types").RhythmSummary;
-}) {
-  if (summary.days_counted < 3) return null;
-
-  return (
-    <section className="report-section">
-      <h4 className="report-section-title">作息</h4>
-      <div className="report-sleep">
-        {days.map((d, i) => {
-          const start =
-            d.start_min != null
-              ? formatSleepMin(d.start_min)
-              : d.overnight
-                ? "（承前）"
-                : "—";
-          const end =
-            d.overnight && d.overnight_end_min != null
-              ? `通宵（至 ${formatSleepMin(d.overnight_end_min)}）`
-              : d.end_min != null
-                ? formatSleepMin(d.end_min)
-                : "—";
-          return (
-            <div
-              key={d.date}
-              className={`report-sleep-row${
-                d.overnight && d.start_min == null ? " report-sleep-row--carried" : ""
-              }`}
-              title={d.overnight ? `${DOW_LABELS[i]}与相邻日合并为一段，未计入均值` : undefined}
-            >
-              <span className="report-sleep-day">{DOW_LABELS[i]}</span>
-              <span className="report-sleep-times">
-                {start} → {end}
-              </span>
-              {!d.counted && d.active_ms > 0 && (
-                <span className="report-sleep-note">未计入均值</span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-      <p className="report-sleep-avg">
-        平均 {formatSleepMin(summary.avg_start_min ?? 0)} 开工、
-        {formatSleepMin(summary.avg_end_min ?? 0)} 停下（基于 {summary.days_counted} 天）
-        {summary.end_delta_min != null && (
-          <>
-            {" "}
-            · 比平时
-            {summary.end_delta_min >= 0
-              ? `晚 ${summary.end_delta_min} 分`
-              : `早 ${-summary.end_delta_min} 分`}
-            {summary.baseline_days_counted < 7
-              ? `（平时 = 前 4 周的 ${summary.baseline_days_counted} 天）`
-              : ""}
-          </>
-        )}
-      </p>
-      {summary.overnight_days > 0 && (
-        <p className="report-sleep-avg">另有 {summary.overnight_days} 天通宵，未计入均值</p>
-      )}
-    </section>
-  );
-}
-
-function CategoryDeltaBars({ categories }: { categories: CategoryDelta[] }) {
-  const shown = categories.filter((c) => c.active_ms > 0);
-  if (shown.length === 0) {
-    return (
-      <section className="report-section">
-        <h4 className="report-section-title">分类占比</h4>
-        <p className="report-empty-inline">无数据</p>
-      </section>
-    );
-  }
-  return (
-    <section className="report-section">
-      <h4 className="report-section-title">
-        分类占比（vs 前 4 周）<span className="report-note">按活跃时长统计</span>
-      </h4>
-      <div className="report-cat-legend">
-        {shown.map((c, i) => (
-          <div key={c.category} className="report-cat-row">
-            <span
-              className="report-cat-swatch"
-              style={{ background: shareColorVar(i) }}
-            />
-            <span className="report-cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
-            <span className="report-cat-time">{formatDuration(c.active_ms)}</span>
-            <span className="report-cat-pct">{formatSharePct(c.share_pct)}</span>
-            <span className="report-cat-delta">
-              {c.share_delta_pp >= 0 ? "↑" : "↓"}
-              {Math.abs(c.share_delta_pp).toFixed(1)}pp
-            </span>
-          </div>
-        ))}
-      </div>
-    </section>
-  );
-}
-
-function AppChangeRow({ label, apps }: { label: string; apps: AppRef[] }) {
-  if (apps.length === 0) return null;
-  return (
-    <div className="report-app-change">
-      <span className="report-app-change-label">{label}</span>
-      <span className="report-app-change-names">{apps.map((a) => a.name).join(" · ")}</span>
-    </div>
-  );
-}
-
-function GoneRow({ apps }: { apps: GoneApp[] }) {
-  if (apps.length === 0) return null;
-  return (
-    <div className="report-app-change">
-      <span className="report-app-change-label">本周消失</span>
-      <span className="report-app-change-names">
-        {apps.map((a) => (
-          <Tooltip key={a.bundle_id} content={`前 4 周共 ${formatDuration(a.baseline_active_ms)}`}>
-            <span className="report-gone-name">{a.name}</span>
-          </Tooltip>
-        ))}
-      </span>
-    </div>
-  );
-}
-
-// ── 月报卡片 ───────────────────────────────────────────────────────────────
-
-function MonthlyCard({
-  detail,
-  onRegenerate,
-  regenerating,
-  onExport,
-}: {
-  detail: Extract<ReportView, { report_type: "month" }>;
-  onRegenerate: () => void;
-  regenerating: boolean;
-  onExport: () => void;
-}) {
-  const d = detail.data;
-  const maxWeekMs = Math.max(...d.weeks.map((w) => w.active_ms), 1);
-
-  return (
-    <div className="report-card report-card--monthly">
-      <div className="report-card-head">
-        <div className="report-card-date">{monthLabel(d.month_start)}</div>
-        <div className="report-card-active">{formatDuration(d.active_ms)}</div>
-        <div className="report-card-sub">
-          活跃时长 {formatDuration(d.active_ms)} · 前台 {formatDuration(d.foreground_ms)} · 日均{" "}
-          {formatDuration(d.avg_daily_active_ms)} · 有记录 {d.days_with_data} 天
-        </div>
-        {d.prev_month.avg_daily_active_ms > 0 && (
-          <div className="report-compare">
-            <Delta label="vs 上月日均" pct={d.prev_month.daily_delta_pct} />
-          </div>
-        )}
-      </div>
-
-      <Narrative text={detail.narrative} source={detail.narrative_source} />
-
-      {/* 按周趋势是月报的主视觉 */}
-      <section className="report-section">
-        <h4 className="report-section-title">按周走势</h4>
-        <div className="report-month-weeks">
-          {d.weeks.map((w) => (
-            <Tooltip
-              key={w.week_start}
-              content={`${dateLabel(w.clip_from)}–${dateLabel(w.clip_to)} · ${formatDuration(
-                w.active_ms,
-              )}${w.partial ? ` · 覆盖 ${w.days_in_month} 天` : ""}`}
-            >
-              <div className="report-month-week-col">
-                <div className="report-month-week-track">
-                  <div
-                    className={`report-month-week-bar${w.partial ? " report-month-week-bar--partial" : ""}`}
-                    style={{ height: `${Math.max((w.active_ms / maxWeekMs) * 100, 2)}%` }}
-                  />
-                </div>
-                {w.partial ? (
-                  <span className="report-month-week-label">{w.days_in_month}天</span>
-                ) : (
-                  <span className="report-month-week-label"> </span>
-                )}
-              </div>
-            </Tooltip>
-          ))}
-        </div>
-      </section>
-
-      {/* 上下半月分类变化 */}
-      {d.half_shift.length > 0 && (
-        <section className="report-section">
-          <h4 className="report-section-title">上半月 vs 下半月</h4>
-          <div className="report-halfshift">
-            {d.half_shift.slice(0, 5).map((h) => (
-              <div key={h.category} className="report-halfshift-row">
-                <span className="report-halfshift-name">
-                  {CATEGORY_LABEL[h.category] ?? h.category}
-                </span>
-                <span className="report-halfshift-values">
-                  {h.first_half_share_pct.toFixed(0)}% → {h.second_half_share_pct.toFixed(0)}%
-                </span>
-                <span className="report-halfshift-delta">
-                  {h.delta_pp >= 0 ? "↑" : "↓"}
-                  {Math.abs(h.delta_pp).toFixed(1)}pp
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 最活跃 / 最安静的一天：只给日期和数字 */}
-      {d.max_day && d.min_day && (
-        <section className="report-section">
-          <h4 className="report-section-title">峰值日</h4>
-          <div className="report-weekend">
-            <span>最活跃 {dateLabel(d.max_day.date)} · {formatDuration(d.max_day.active_ms)}</span>
-            <span>最安静 {dateLabel(d.min_day.date)} · {formatDuration(d.min_day.active_ms)}</span>
-          </div>
-        </section>
-      )}
-
-      {/* weekday × 小时热力网格：复用规律页的聚合函数，渲染用报告自己的配色 */}
-      <MonthHeatGrid monthStart={d.month_start} />
-
-      <CategoryStack categories={d.categories} />
-
-      <section className="report-section">
-        <h4 className="report-section-title">应用 Top 10</h4>
-        <AppBars apps={d.top_apps} />
-        <AppChangeRow label="整月新增" apps={d.new_apps} />
-      </section>
-
-      <CardActions
-        canExport={detail.status === "ok"}
-        onExport={onExport}
-        onRegenerate={onRegenerate}
-        regenerating={regenerating}
-      />
-    </div>
-  );
-}
-
-/**
- * 月报的热力网格。取数与规律页一致（`get_hourly_activity` + `get_hourly_heartbeats`），
- * 复用 `aggregateDowHourGrid`。注意：这张网格用的是规律页的 intensity 口径
- * （含 `mouse_move_dist`），与报告主体的「活跃时长（有输入）」口径不同 ——
- * 这是复用优先于口径纯粹的有意取舍；配色也不用 `intensityVar()`（时间线暖色轴），
- * 改用 accent 单色按档位映射透明度。
- */
-function MonthHeatGrid({ monthStart }: { monthStart: string }) {
-  const range = useMemo(() => toMs("month", monthStart), [monthStart]);
-  const [grid, setGrid] = useState<DowHourCell[][] | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    Promise.all([fetchHourlyActivity(range), fetchHourlyHeartbeats(range)])
-      .then(([hourly, heartbeatList]) => {
-        if (cancelled) return;
-        const heartbeatMap = new Map<number, boolean>();
-        for (const hb of heartbeatList) {
-          heartbeatMap.set(hb.hour_start, hb.has_heartbeat);
-        }
-        setGrid(aggregateDowHourGrid(hourly, heartbeatMap, range.start_ms, range.end_ms));
-      })
-      .catch((e) => console.error("月报作息网格获取失败:", e));
-    return () => {
-      cancelled = true;
-    };
-  }, [range]);
-
-  return (
-    <section className="report-section">
-      <h4 className="report-section-title">作息网格（周一 → 周日）</h4>
-      {!grid ? (
-        <p className="report-empty-inline">加载中…</p>
-      ) : (
-        <div className="report-grid-wrap">
-          <div className="report-grid">
-            {grid.map((row, ri) =>
-              row.map((cell, ci) => (
-                <Tooltip
-                  key={`${ri}-${ci}`}
-                  content={`${DOW_LABELS[ri]} ${ci}:00 · ${
-                    cell.state === "active"
-                      ? `强度 ${cell.intensity}`
-                      : cell.state === "idle"
-                        ? "挂机（无输入）"
-                        : "未采集"
-                  }`}
-                >
-                  <div
-                    className={`report-grid-cell report-grid-cell--${cell.state}`}
-                    style={
-                      cell.state === "active"
-                        ? { opacity: 0.15 + cell.intensity * 0.2125 }
-                        : undefined
-                    }
-                  />
-                </Tooltip>
-              )),
-            )}
-          </div>
-        </div>
-      )}
-      <p className="report-grid-note">网格口径与规律页一致，含纯鼠标位移；主体时长仍按有输入口径。</p>
-    </section>
-  );
-}
-
-// ── 共享小组件 ─────────────────────────────────────────────────────────────
-
-function AppBars({ apps }: { apps: AppRank[] }) {
-  if (apps.length === 0) return <p className="report-empty-inline">无数据</p>;
-  const maxAppMs = Math.max(...apps.map((a) => a.active_ms), 1);
-  return (
-    <div className="report-apps">
-      {apps.map((a) => (
-        <div key={a.bundle_id} className="report-app-row">
-          <div className="report-app-name">
-            <AppIcon bundleId={a.bundle_id} appName={a.name} size={16} />
-            <span>{a.name}</span>
-          </div>
-          <div className="report-app-track">
-            <div
-              className="report-app-fill"
-              style={{ width: `${(a.active_ms / maxAppMs) * 100}%` }}
-            />
-          </div>
-          <div className="report-app-time">{formatDuration(a.active_ms)}</div>
-          <div className="report-app-pct">{a.share_pct.toFixed(0)}%</div>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function CategoryStack({ categories }: { categories: CategoryShare[] }) {
-  const shown = categories.filter((c) => c.active_ms > 0);
-  if (shown.length === 0) {
-    return (
-      <section className="report-section">
-        <h4 className="report-section-title">分类占比</h4>
-        <p className="report-empty-inline">无数据</p>
-      </section>
-    );
-  }
-  return (
-    <section className="report-section">
-      <h4 className="report-section-title">
-        分类占比<span className="report-note">按活跃时长统计</span>
-      </h4>
-      <div className="report-cat-stack">
-        {shown.map((c, i) => (
-          <div
-            key={c.category}
-            className="report-cat-seg"
-            style={{
-              width: `${c.share_pct}%`,
-              background: shareColorVar(i),
-            }}
-            title={`${CATEGORY_LABEL[c.category] ?? c.category} · ${formatSharePct(c.share_pct)}`}
-          />
-        ))}
-      </div>
-      <div className="report-cat-legend">
-        {shown.map((c, i) => (
-          <div key={c.category} className="report-cat-row">
-            <span
-              className="report-cat-swatch"
-              style={{ background: shareColorVar(i) }}
-            />
-            <span className="report-cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
-            <span className="report-cat-time">{formatDuration(c.active_ms)}</span>
-            <span className="report-cat-pct">{formatSharePct(c.share_pct)}</span>
-          </div>
-        ))}
-      </div>
-    </section>
   );
 }

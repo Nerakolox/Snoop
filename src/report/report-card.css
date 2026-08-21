@@ -1,0 +1,550 @@
+/* 报告卡片版式 —— 应用内详情卡与导出成图共用的**唯一**样式。
+ *
+ * 被三处消费：ReportCard.tsx 正常引入（应用内卡片 + 导出对话框预览）、
+ * `report-card.css?inline`（foreignObject 内嵌，独立渲染拿不到主文档 <style>，
+ * 必须连 box-sizing / 字体栈 / 全部 token 一起内嵌）。
+ *
+ * 版式规范收敛为 `--rc-*` token，散落各处的硬编码全部删除：
+ *   --rc-margin-x  左右边距 64px（所有模块左右对齐到同一条线）
+ *   --rc-gap-section 模块间距 40px；--rc-gap-item 模块内元素间距 16px
+ *   --rc-fs-* 字号 5 档：hero 大数字 / title 模块标题 / body 正文 / aux 辅助 / value 数值
+ *   --rc-font-mono 数字一律等宽
+ *
+ * 固定浅色：这是发给别人看的「报告纸」，应用内即便深色模式也保持浅色，与导出图一致。
+ * foreignObject 里会静默丢失的特性一律避开：backdrop-filter / filter / mix-blend-mode / mask /
+ * position:fixed|sticky / clip-path。只用 flex / gap / border-radius / background-color / border。
+ */
+
+.report-card {
+  /* —— 版式 —— */
+  --rc-margin-x: 64px;
+  --rc-gap-section: 40px;
+  --rc-gap-item: 16px;
+  --rc-pad-y: 64px;
+
+  /* —— 字号层级（5 档）—— */
+  --rc-fs-hero: 84px; /* 大数字 */
+  --rc-fs-title: 32px; /* 模块标题 / 报头日期 */
+  --rc-fs-body: 26px; /* 正文 */
+  --rc-fs-aux: 22px; /* 辅助文字 */
+  --rc-fs-value: 26px; /* 数值 */
+
+  /* —— 数字等宽 —— */
+  --rc-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+
+  /* —— 颜色（固定浅色）—— */
+  --rc-text: #2a2730;
+  --rc-text-2: #6b6670;
+  --rc-text-3: #9b96a0;
+  --rc-border: #e8e3d9;
+  --rc-track: #f3f0ea;
+  --rc-surface: #ffffff;
+  --rc-accent: #6d5ae6;
+  --rc-accent-deep: #4f3dce;
+
+  box-sizing: border-box;
+  background: var(--rc-surface);
+  color: var(--rc-text);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", sans-serif;
+  font-synthesis: none;
+  -webkit-font-smoothing: antialiased;
+  display: flex;
+  flex-direction: column;
+}
+
+.report-card *,
+.report-card *::before,
+.report-card *::after {
+  box-sizing: border-box;
+}
+
+/* ── 主体 ────────────────────────────────────────────────────────────────── */
+
+.report-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rc-gap-section);
+  padding: var(--rc-pad-y) var(--rc-margin-x) 48px;
+}
+
+/* ── 头部 ────────────────────────────────────────────────────────────────── */
+
+.report-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.report-card__head-title {
+  font-size: var(--rc-fs-title);
+  font-weight: 600;
+  color: var(--rc-text-2);
+}
+
+.report-card__head-label {
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-3);
+}
+
+.report-card__head-active {
+  font-size: var(--rc-fs-hero);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -1px;
+  color: var(--rc-accent);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__head-sub {
+  margin-top: 8px;
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-2);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__head-delta {
+  margin-top: 20px;
+  display: flex;
+  gap: 48px;
+}
+
+/* ── 叙事 ────────────────────────────────────────────────────────────────── */
+
+.report-card__narrative {
+  font-size: var(--rc-fs-body);
+  line-height: 1.6;
+  color: var(--rc-text);
+  margin: 0;
+}
+
+.report-card__narrative-source {
+  display: inline-block;
+  margin-left: var(--rc-gap-item);
+  font-size: var(--rc-fs-aux);
+  font-weight: 400;
+  color: var(--rc-text-3);
+  border: 1px solid var(--rc-border);
+  border-radius: 999px;
+  padding: 2px 16px;
+  vertical-align: middle;
+}
+
+/* ── 通用区块 ────────────────────────────────────────────────────────────── */
+
+.report-card__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rc-gap-item);
+}
+
+.report-card__section-title {
+  font-size: var(--rc-fs-title);
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  color: var(--rc-text-3);
+  margin: 0;
+}
+
+.report-card__section-note {
+  font-size: var(--rc-fs-aux);
+  font-weight: 400;
+  color: var(--rc-text-3);
+  margin-left: 12px;
+  letter-spacing: 0;
+}
+
+.report-card__empty {
+  font-size: var(--rc-fs-body);
+  color: var(--rc-text-3);
+  margin: 0;
+}
+
+/* ── 应用排行 ────────────────────────────────────────────────────────────── */
+
+.report-card__apps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rc-gap-item);
+}
+
+.report-card__app-row {
+  display: flex;
+  align-items: center;
+  gap: var(--rc-gap-item);
+}
+
+.report-card__app-icon {
+  flex-shrink: 0;
+  width: 48px;
+  height: 48px;
+  border-radius: 20%;
+  object-fit: contain;
+}
+
+.report-card__app-icon--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 600;
+}
+
+.report-card__app-name {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--rc-gap-item);
+  font-size: var(--rc-fs-body);
+  color: var(--rc-text);
+  overflow: hidden;
+}
+
+.report-card__app-name span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-card__app-track {
+  flex: 1;
+  height: 28px;
+  background: var(--rc-track);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.report-card__app-fill {
+  height: 100%;
+  background: var(--rc-accent);
+  border-radius: 8px;
+}
+
+.report-card__app-meta {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--rc-gap-item);
+  font-size: var(--rc-fs-value);
+  color: var(--rc-text-2);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__app-pct {
+  color: var(--rc-text);
+  font-weight: 600;
+}
+
+/* ── 分类占比条 ──────────────────────────────────────────────────────────── */
+
+.report-card__cat-stack {
+  display: flex;
+  height: 56px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.report-card__cat-seg {
+  height: 100%;
+}
+
+.report-card__cat-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--rc-gap-item);
+  margin-top: 4px;
+}
+
+.report-card__cat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--rc-gap-item);
+  font-size: var(--rc-fs-value);
+}
+
+.report-card__cat-swatch {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.report-card__cat-label {
+  width: 180px;
+  flex-shrink: 0;
+  color: var(--rc-text);
+}
+
+.report-card__cat-time {
+  color: var(--rc-text-2);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__cat-pct {
+  margin-left: auto;
+  color: var(--rc-text);
+  font-weight: 600;
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__cat-delta {
+  width: 150px;
+  flex-shrink: 0;
+  text-align: right;
+  color: var(--rc-text);
+  font-weight: 600;
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 24 小时节奏 ─────────────────────────────────────────────────────────── */
+
+.report-card__rhythm {
+  display: flex;
+  gap: 6px;
+  height: 200px;
+  align-items: flex-end;
+}
+
+.report-card__rhythm-col {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.report-card__rhythm-bar {
+  width: 100%;
+  background: var(--rc-accent);
+  border-radius: 4px 4px 0 0;
+}
+
+.report-card__rhythm-scale {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-3);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 7 天 / 按周条形 ─────────────────────────────────────────────────────── */
+
+.report-card__bars {
+  display: flex;
+  gap: 20px;
+}
+
+.report-card__bars-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--rc-gap-item);
+}
+
+.report-card__bars-track {
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-bottom: 2px solid var(--rc-border);
+}
+
+.report-card__bars-track--week {
+  height: 360px;
+}
+
+.report-card__bars-track--month {
+  height: 300px;
+}
+
+.report-card__bars-fill {
+  width: 62%;
+  background: var(--rc-accent);
+  border-radius: 10px 10px 0 0;
+}
+
+.report-card__bars-fill--max {
+  background: var(--rc-accent-deep);
+}
+
+.report-card__bars-day {
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-2);
+}
+
+.report-card__bars-legend {
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-3);
+  margin: 0;
+}
+
+/* ── 作息块 ──────────────────────────────────────────────────────────────── */
+
+.report-card__sleep {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.report-card__sleep-row {
+  display: flex;
+  gap: 24px;
+  font-size: var(--rc-fs-body);
+}
+
+.report-card__sleep-day {
+  width: 100px;
+  flex-shrink: 0;
+  color: var(--rc-text-3);
+}
+
+.report-card__sleep-times {
+  color: var(--rc-text);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__sleep-note {
+  color: var(--rc-text-3);
+}
+
+.report-card__sleep-avg {
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-2);
+  margin: 8px 0 0;
+}
+
+/* ── 上下半月 / 工作日周末 ───────────────────────────────────────────────── */
+
+.report-card__halfshift {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.report-card__halfshift-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  font-size: var(--rc-fs-body);
+}
+
+.report-card__halfshift-name {
+  width: 160px;
+  flex-shrink: 0;
+  color: var(--rc-text);
+}
+
+.report-card__halfshift-values {
+  color: var(--rc-text-2);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__halfshift-delta {
+  margin-left: auto;
+  color: var(--rc-text);
+  font-weight: 600;
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__weekend {
+  display: flex;
+  gap: 64px;
+  font-size: var(--rc-fs-body);
+  color: var(--rc-text);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 应用增删行 ──────────────────────────────────────────────────────────── */
+
+.report-card__app-change {
+  display: flex;
+  gap: 20px;
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-2);
+}
+
+.report-card__app-change-label {
+  color: var(--rc-text-3);
+  flex-shrink: 0;
+}
+
+/* ── 对比增减 ────────────────────────────────────────────────────────────── */
+
+.report-card__compare-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.report-card__compare-label {
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-3);
+}
+
+.report-card__compare-value {
+  font-size: 40px;
+  font-weight: 700;
+  color: var(--rc-text);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── footer ──────────────────────────────────────────────────────────────── */
+
+.report-card__footer {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  /* 左右与内容区同一条线（64px）；上留白 32px、下留白略小，分隔线用最淡一档 */
+  padding: 32px var(--rc-margin-x) 24px;
+  border-top: 1px solid var(--rc-border);
+}
+
+.report-card__footer-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--rc-gap-item);
+}
+
+.report-card__footer-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.report-card__footer-name {
+  font-size: var(--rc-fs-title);
+  font-weight: 700;
+  color: var(--rc-text-2);
+}
+
+.report-card__footer-link {
+  display: flex;
+  align-items: center;
+  gap: var(--rc-gap-item);
+}
+
+.report-card__footer-url {
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-3);
+}
+
+.report-card__footer-qr {
+  width: 80px;
+  height: 80px;
+}

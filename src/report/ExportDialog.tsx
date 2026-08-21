@@ -1,24 +1,24 @@
 /**
- * 导出成图对话框（批次 7）—— 预览 + 选尺寸 + 保存。
+ * 导出成图对话框 —— 预览 + 保存。
  *
- * 预览与导出走**同一个** <ReportExportCard>（foreignObject 方案的优势：所见即所得）。
- * 预览把固定 1080×H 的卡片用 transform:scale 缩到 300px 宽展示；保存时取卡片根节点
- * 的 outerHTML 交给 captureNodeAsPng 生成真 1080×H PNG，预览缩放不影响导出像素。
+ * 预览与导出走**同一个** <ReportCard>（foreignObject 方案的优势：所见即所得）。
+ * 卡片固定 1000px 宽、高度按内容自适应；预览把卡片用 transform:scale 缩到 300px 宽展示，
+ * 保存时取卡片根节点的 offsetWidth/offsetHeight 作为 canvas 尺寸，生成真 1000×H PNG，
+ * 预览缩放不影响导出像素。
  *
- * 图标在打开对话框时一次性预解析（Promise.all(get_app_icon)），保存按钮等图标就绪后才可用，
- * 避免把字母兜底块截进成品图。
+ * 图标用 useReportIcons 在打开对话框时一次性预解析（Promise.all(get_app_icon)），
+ * 就绪后才渲染卡片、才允许保存，避免把字母兜底块截进成品图。
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { invoke } from "@tauri-apps/api/core";
 import { useToast } from "../components/shared/Toast";
 import type { ReportView } from "./types";
-import { EXPORT_SIZES, bytesToBase64, captureNodeAsPng, type ExportSize } from "./export";
+import { EXPORT_WIDTH, bytesToBase64, captureNodeAsPng } from "./export";
 import { saveReportPng } from "./client";
-import ReportExportCard, { type ResolvedIconMap } from "./ReportExportCard";
-import "./export.css";
-import exportCss from "./export.css?inline";
+import { useReportIcons } from "./icons";
+import ReportCard from "./ReportCard";
+import reportCardCss from "./report-card.css?inline";
 
 const PREVIEW_W = 300;
 
@@ -35,21 +35,6 @@ function canonicalDate(detail: ReportView): string {
   return detail.data.month_start;
 }
 
-/** 收集报告里出现过的所有 app bundleId（top / 新增 / 消失），用于预解析图标。 */
-function collectBundleIds(detail: ReportView): string[] {
-  const ids = new Set<string>();
-  const push = (list: { bundle_id: string }[]) => list.forEach((x) => ids.add(x.bundle_id));
-  if (detail.report_type === "week") {
-    push(detail.data.top_apps);
-    push(detail.data.new_apps);
-    push(detail.data.gone_apps);
-  } else {
-    push(detail.data.top_apps);
-    push(detail.data.new_apps);
-  }
-  return [...ids];
-}
-
 export default function ExportDialog({
   detail,
   onClose,
@@ -58,38 +43,31 @@ export default function ExportDialog({
   onClose: () => void;
 }) {
   const toast = useToast();
-  const [size, setSize] = useState<ExportSize>("vertical");
-  const [icons, setIcons] = useState<ResolvedIconMap | null>(null);
+  const icons = useReportIcons(detail);
   const [capturing, setCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cardH, setCardH] = useState(0);
   const cardRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let alive = true;
-    const ids = collectBundleIds(detail);
-    Promise.all(
-      ids.map((id) => invoke<string | null>("get_app_icon", { bundleId: id }).catch(() => null)),
-    ).then((results) => {
-      if (!alive) return;
-      const map: ResolvedIconMap = new Map();
-      ids.forEach((id, i) => map.set(id, results[i]));
-      setIcons(map);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [detail]);
+  const scale = PREVIEW_W / EXPORT_WIDTH;
 
-  const { width, height } = EXPORT_SIZES[size];
-  const scale = PREVIEW_W / width;
+  // 卡片高度按内容自适应，预览容器高度要跟着实测高度走（transform:scale 不改 offsetHeight，
+  // 所以取的是未缩放的布局高度，再乘 scale 换算成预览里的展示高度）。
+  useLayoutEffect(() => {
+    if (!icons) return;
+    const el = cardRef.current?.querySelector<HTMLElement>(".report-card");
+    if (el) setCardH(el.offsetHeight);
+  }, [icons, detail]);
 
   async function handleSave() {
-    const root = cardRef.current?.querySelector<HTMLElement>(".report-export");
+    const root = cardRef.current?.querySelector<HTMLElement>(".report-card");
     if (!root) return;
+    const width = root.offsetWidth;
+    const height = root.offsetHeight;
     setCapturing(true);
     setError(null);
     try {
-      const bytes = await captureNodeAsPng(root, width, height, exportCss);
+      const bytes = await captureNodeAsPng(root, width, height, reportCardCss);
       const name = `snoop-${KIND_CN[detail.report_type]}-${canonicalDate(detail)}.png`;
       const savedPath = await saveReportPng(bytesToBase64(bytes), name);
       if (savedPath) {
@@ -116,27 +94,14 @@ export default function ExportDialog({
           </button>
         </div>
 
-        <div className="export-dialog__sizes">
-          {(Object.keys(EXPORT_SIZES) as ExportSize[]).map((s) => (
-            <button
-              key={s}
-              type="button"
-              className={`export-dialog__size${size === s ? " is-active" : ""}`}
-              onClick={() => setSize(s)}
-            >
-              {EXPORT_SIZES[s].label}
-            </button>
-          ))}
-        </div>
-
         <div
           className="export-dialog__preview"
-          style={{ height: Math.round(height * scale) }}
+          style={{ height: Math.round(cardH * scale) }}
         >
           {icons ? (
             <div className="export-dialog__scaled" style={{ transform: `scale(${scale})` }}>
               <div ref={cardRef}>
-                <ReportExportCard detail={detail} size={size} icons={icons} />
+                <ReportCard detail={detail} icons={icons} showFooter />
               </div>
             </div>
           ) : (

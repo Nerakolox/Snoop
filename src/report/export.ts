@@ -1,22 +1,16 @@
-// 报告导出成图（批次 7）—— 前端自截图工具。
+// 报告导出成图 —— 前端自截图工具。
 //
 // 方案（已确认）：SVG <foreignObject> 包真实 DOM → <canvas> → PNG 字节。
 // Tauri 2 / wry 均无窗口截图 API，官方插件是新依赖且不支持隐藏窗口；foreignObject 是
 // 唯一零依赖、跨平台、像素精确（canvas 位图定死，免疫系统 DPI 缩放）的路径。
 // 导出图所有资源都是 data URI（app 图标 / Snoop 图标 ?inline / 二维码 ?inline），canvas 不会被污染。
+//
+// 版式统一后导出图与应用内是**同一张** ReportCard：固定宽度、高度按内容自适应，
+// 不锁比例、不裁切。宽度由 ReportCard 根节点内联写入，导出时以节点的 offsetWidth /
+// offsetHeight 作为 canvas 尺寸，内容超了不会像旧固定 1920 那样被切掉。
 
-export interface ExportSizeSpec {
-  width: number;
-  height: number;
-  label: string;
-}
-
-export type ExportSize = "vertical" | "square";
-
-export const EXPORT_SIZES: Record<ExportSize, ExportSizeSpec> = {
-  vertical: { width: 1080, height: 1920, label: "竖版 1080×1920" },
-  square: { width: 1080, height: 1350, label: "方版 1080×1350" },
-};
+/** 导出图（及应用内详情卡）的固定宽度，与 ReportCard 根节点内联宽度一致。 */
+export const EXPORT_WIDTH = 1000;
 
 /** Uint8Array → base64（JSON IPC 传给 Rust 写盘，比直接传数字数组省、稳）。 */
 export function bytesToBase64(bytes: Uint8Array): string {
@@ -47,7 +41,7 @@ function buildSvg(node: HTMLElement, width: number, height: number, css: string)
   // 序列化必须用 XMLSerializer，不能用 node.outerHTML：outerHTML 走 HTML 序列化，
   // void 元素（<img>/<br>/<input>）不会补斜杠，产出的字符串不是合法 XML，SVG 会加载失败。
   // XMLSerializer 走 XHTML 序列化，自动 <img/> 自闭合、自动把文本/属性里的 & < > 转义
-  // （如应用名 "AT&T" 会变 AT&amp;T）。样式是纯字符串（export.css?inline），不进 DOM、
+  // （如应用名 "AT&T" 会变 AT&amp;T）。样式是纯字符串（report-card.css?inline），不进 DOM、
   // 不会被 serializer 二次转义，手动包 <![CDATA[]]>（CSS 里只忌出现 "]]>"，本文件没有）。
   const body = new XMLSerializer().serializeToString(node);
   return [
@@ -69,7 +63,7 @@ function buildSvg(node: HTMLElement, width: number, height: number, css: string)
  *   document.fonts.ready → 节点内所有 <img> decode/complete → 两帧 rAF → foreignObject → canvas。
  * 任何一条没等到就截图，产出的图会缺字体或空白图标。
  *
- * @param css 导出卡的自包含样式文本（`export.css?inline`）。foreignObject 独立渲染，
+ * @param css 导出卡的自包含样式文本（`report-card.css?inline`）。foreignObject 独立渲染，
  *            拿不到主文档的 <style>，必须把样式连同 box-sizing / 字体栈一起内嵌。
  */
 export async function captureNodeAsPng(

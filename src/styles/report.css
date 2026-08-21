@@ -1,6 +1,6 @@
-/* 报告页 —— 历史日报时间轴 + 日报详情卡。
-   详情卡固定宽度 + 最小高度、高度可往下长（为 4b 导出成图预留，不锁 aspect-ratio）。
-   配色：分类用分类色板；节奏/条形用品牌 accent 单色，不复用时间线暖色强度轴。 */
+/* 报告页 —— 历史日报时间轴 + 报告详情卡。
+   详情卡与「导出成图」共用 <ReportCard>（见 src/report/report-card.css），
+   本文件只管页面 chrome（页头 / 工具栏 / 列表 / 展开容器 / 底部操作按钮 / 导出对话框）。 */
 
 .report-page {
   gap: var(--space-6);
@@ -167,521 +167,33 @@
   color: var(--color-accent);
 }
 
-/* ---- 详情卡（导出预留：固定宽度 + 最小高度，高度可往下长） ---- */
-.report-card {
-  width: 420px;
-  min-height: 560px;
+/* ---- 展开详情：卡片 + 底部操作按钮，1000px 容器内居中 ---- */
+.report-detail {
+  width: 1000px;
+  max-width: 100%;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
-  gap: var(--space-6);
-  padding: var(--space-6);
+  gap: var(--space-4);
+}
+
+/* getReport 返回中的等宽占位，与卡片同宽同圆角 */
+.report-card-loading {
+  width: 1000px;
+  max-width: 100%;
+  margin: 0 auto;
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
-}
-
-.report-card--loading {
-  justify-content: center;
-  align-items: center;
   color: var(--color-text-3);
 }
 
-.report-card-head {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.report-card-date {
-  font-size: var(--text-base);
-  color: var(--color-text-2);
-}
-
-.report-card-active {
-  font-size: var(--text-2xl);
-  font-weight: 700;
-  letter-spacing: -0.01em;
-  color: var(--color-text);
-}
-
-.report-card-sub {
-  font-size: var(--text-sm);
-  color: var(--color-text-3);
-}
-
-.report-card-narrative {
-  margin: 0;
-  color: var(--color-text);
-  line-height: 1.6;
-}
-
-.report-card-source {
-  margin-left: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-}
-
-.report-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.report-section-title {
-  margin: 0;
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--color-text-2);
-}
-
-/* 分类占比标题旁的极小口径说明（「按活跃时长统计」） */
-.report-note {
-  margin-left: var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: 400;
-  color: var(--color-text-3);
-}
-
-.report-empty-inline {
-  margin: 0;
-  color: var(--color-text-3);
-  font-size: var(--text-sm);
-}
-
-/* ---- 应用 Top 5 条形 ---- */
-.report-apps {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.report-app-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.report-app-name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  color: var(--color-text);
-}
-
-.report-app-name > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.report-app-track {
-  height: 8px;
-  background: var(--color-surface-2);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.report-app-fill {
-  height: 100%;
-  background: var(--color-accent);
-  border-radius: var(--radius-full);
-}
-
-.report-app-time {
-  color: var(--color-text-2);
-  font-size: var(--text-sm);
-}
-
-.report-app-pct {
-  color: var(--color-text-3);
-  font-size: var(--text-sm);
-  min-width: 3ch;
-  text-align: right;
-}
-
-/* ---- 分类占比 ---- */
-.report-cat-stack {
-  display: flex;
-  height: 10px;
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.report-cat-seg {
-  height: 100%;
-}
-
-.report-cat-legend {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.report-cat-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-}
-
-.report-cat-swatch {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--radius-sm);
-  flex-shrink: 0;
-}
-
-.report-cat-label {
-  color: var(--color-text);
-}
-
-.report-cat-time {
-  margin-left: auto;
-  color: var(--color-text-2);
-}
-
-.report-cat-pct {
-  color: var(--color-text-3);
-  min-width: 5ch;
-  text-align: right;
-}
-
-/* ---- 24 小时节奏 ---- */
-.report-rhythm {
-  display: flex;
-  gap: 2px;
-  height: 72px;
-  align-items: flex-end;
-}
-
-.report-rhythm-col {
-  flex: 1;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
-}
-
-.report-rhythm-bar {
-  width: 100%;
-  background: var(--color-accent);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-
-.report-rhythm-scale {
-  display: flex;
-  justify-content: space-between;
-  color: var(--color-text-3);
-  font-size: var(--text-xs);
-}
-
-/* ---- 近 7 天对比（中性箭头，不用红绿） ---- */
-.report-compare {
-  display: flex;
-  gap: var(--space-6);
-}
-
-.report-compare-item {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.report-compare-label {
-  color: var(--color-text-3);
-  font-size: var(--text-xs);
-}
-
-.report-compare-value {
-  color: var(--color-text);
-  font-weight: 600;
-  font-size: var(--text-lg);
-}
-
-/* ---- 重新生成 ---- */
-.report-regen {
-  appearance: none;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  cursor: pointer;
-}
-
-.report-regen:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
-
-.report-regen:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* ---- 周报 / 月报卡片（比日报宽，同样固定宽度 + 最小高度、不锁 aspect-ratio） ---- */
-.report-card--weekly,
-.report-card--monthly {
-  width: 560px;
-  min-height: 560px;
-}
-
-/* ---- 周报：7 天条形（主视觉） ---- */
-.report-week-bars {
-  display: flex;
-  gap: var(--space-2);
-  height: 120px;
-  align-items: stretch;
-}
-
-.report-week-bar-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  height: 100%;
-}
-
-.report-week-bar-track {
-  flex: 1;
-  width: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.report-week-bar {
-  width: 60%;
-  min-height: 2px;
-  background: var(--color-accent);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-  opacity: 0.85;
-}
-
-.report-week-bar--max {
-  opacity: 1;
-  outline: 1px solid var(--color-text-2);
-  outline-offset: 1px;
-}
-
-.report-week-bar--min {
-  opacity: 0.45;
-}
-
-.report-week-bar-day {
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-}
-
-.report-week-legend {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-}
-
-/* ---- 周报：作息块（第二视觉重点） ---- */
-.report-sleep {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.report-sleep-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--text-sm);
-  padding-left: var(--space-3);
-  position: relative;
-}
-
-/* 通宵的次日：左侧画一道竖线，表示与上一行合并，不是漏了一格 */
-.report-sleep-row--carried::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: -6px;
-  bottom: 50%;
-  width: 2px;
-  background: var(--color-border);
-}
-
-.report-sleep-day {
-  color: var(--color-text-2);
-  min-width: 3ch;
-}
-
-.report-sleep-times {
-  color: var(--color-text);
-}
-
-.report-sleep-note {
-  margin-left: auto;
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-}
-
-.report-sleep-avg {
-  margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-text-2);
-}
-
-/* ---- 周报：分类偏差 ---- */
-.report-cat-delta {
-  color: var(--color-text-2);
-  font-size: var(--text-sm);
-  min-width: 7ch;
-  text-align: right;
-}
-
-/* ---- 周报 / 月报：应用变化行 ---- */
-.report-app-change {
-  display: flex;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
-}
-
-.report-app-change-label {
-  color: var(--color-text-3);
-  flex-shrink: 0;
-}
-
-.report-app-change-names {
-  color: var(--color-text-2);
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.report-gone-name {
-  cursor: default;
-  border-bottom: 1px dashed var(--color-text-3);
-}
-
-/* ---- 周报：工作日 vs 周末 / 月报：峰值日 ---- */
-.report-weekend {
-  display: flex;
-  gap: var(--space-6);
-  font-size: var(--text-sm);
-  color: var(--color-text-2);
-}
-
-/* ---- 月报：按周走势（主视觉） ---- */
-.report-month-weeks {
-  display: flex;
-  gap: var(--space-2);
-  height: 120px;
-  align-items: stretch;
-}
-
-.report-month-week-col {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
-  height: 100%;
-}
-
-.report-month-week-track {
-  flex: 1;
-  width: 100%;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.report-month-week-bar {
-  width: 60%;
-  min-height: 2px;
-  background: var(--color-accent);
-  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-}
-
-/* 半截周用斜纹暗示「不完整」，避免看起来像活跃度暴跌 */
-.report-month-week-bar--partial {
-  opacity: 0.5;
-  background: repeating-linear-gradient(
-    135deg,
-    var(--color-accent) 0 4px,
-    transparent 4px 8px
-  );
-}
-
-.report-month-week-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-  min-height: 1em;
-}
-
-/* ---- 月报：上下半月变化 ---- */
-.report-halfshift {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.report-halfshift-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  font-size: var(--text-sm);
-}
-
-.report-halfshift-name {
-  color: var(--color-text);
-}
-
-.report-halfshift-values {
-  color: var(--color-text-2);
-}
-
-.report-halfshift-delta {
-  margin-left: auto;
-  color: var(--color-text-2);
-}
-
-/* ---- 月报：weekday × 小时热力网格（复用规律页聚合函数，配色本地化） ---- */
-.report-grid-wrap {
-  overflow-x: auto;
-}
-
-.report-grid {
-  display: grid;
-  grid-template-columns: repeat(24, 1fr);
-  grid-template-rows: repeat(7, 1fr);
-  gap: 3px;
-  min-width: 300px;
-}
-
-.report-grid-cell {
-  aspect-ratio: 1 / 1;
-  min-height: 12px;
-  border-radius: var(--radius-sm);
-  background: var(--color-accent);
-}
-
-.report-grid-cell--idle {
-  background: var(--color-border);
-}
-
-.report-grid-cell--no_data {
-  background: var(--color-surface-2);
-}
-
-.report-grid-note {
-  margin: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-}
-
-/* ---- 详情卡底部操作行：导出成图 + 重新生成 ---- */
+/* ---- 详情卡底部操作行：导出成图 + 重新生成（卡片外，不进导出图） ---- */
 .report-card-actions {
-  margin-top: auto;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -703,7 +215,28 @@
   border-color: var(--color-accent-hover);
 }
 
-/* ---- 导出成图对话框（预览 + 选尺寸 + 保存） ----
+.report-regen {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  cursor: pointer;
+}
+
+.report-regen:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.report-regen:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- 导出成图对话框（预览 + 保存） ----
    overlay 是 .page-layer（含 transform，构成 containing block）的 fixed 子元素，
    因此 inset:0 已经落在「主内容区」（顶栏下方、侧栏右侧），不盖顶栏拖拽区。
    居中用「overlay display:flex + dialog margin:auto」，而不是 align/justify-content:center ——
@@ -767,38 +300,10 @@
   color: var(--color-text);
 }
 
-.export-dialog__sizes {
-  display: flex;
-  gap: var(--space-2);
-}
-
-.export-dialog__size {
-  appearance: none;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
-  color: var(--color-text-2);
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-}
-
-.export-dialog__size:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
-
-.export-dialog__size.is-active {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-  background: var(--color-accent-soft);
-}
-
 .export-dialog__preview {
   position: relative;
   /* 固定 300px 宽 + overflow:hidden：transform:scale 不改变布局尺寸，
-     内层卡片仍是 1080px 的布局宽，靠这里裁掉，避免把对话框横向撑爆。 */
+     内层卡片仍是 1000px 的布局宽，靠这里裁掉，避免把对话框横向撑爆。 */
   width: 300px;
   flex: none;
   overflow: hidden;
@@ -807,7 +312,7 @@
   background: var(--color-bg);
 }
 
-/* 内层缩放容器：绝对定位脱离文档流，1080px 布局尺寸不再参与预览容器排版，
+/* 内层缩放容器：绝对定位脱离文档流，1000px 布局尺寸不再参与预览容器排版，
    只靠 transform:scale 缩小呈现；预览容器固定 300px + overflow:hidden 裁剪。 */
 .export-dialog__scaled {
   position: absolute;
