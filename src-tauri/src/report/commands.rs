@@ -67,6 +67,7 @@ pub fn get_report(
                 serde_json::from_str(&r.data_json).map_err(|e| e.to_string())?;
             Ok(Some(ReportView {
                 report_type: r.report_type,
+                status: r.status,
                 data,
                 narrative: r.narrative,
                 narrative_source: r.narrative_source,

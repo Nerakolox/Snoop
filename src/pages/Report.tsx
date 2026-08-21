@@ -28,7 +28,8 @@ import type {
 import { fetchHourlyActivity, fetchHourlyHeartbeats } from "../data/client";
 import { aggregateDowHourGrid, type DowHourCell } from "../analytics/aggregate";
 import { parseAnchor, toMs } from "../data/ranges";
-import { useContextState } from "../store/context";
+import { normalizeAnchor, useContextState } from "../store/context";
+import DatePicker from "../components/shared/DatePicker";
 
 const DOW_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 
@@ -78,6 +79,9 @@ export default function Report() {
   );
   const [detail, setDetail] = useState<ReportView | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  // 手动生成：选一个日期，按当前 kind 归一到周期起点生成。默认当前浏览的 anchor。
+  const [genDate, setGenDate] = useState(anchor);
+  const [generating, setGenerating] = useState(false);
   const toast = useToast();
   const listRef = useRef<HTMLDivElement>(null);
 
@@ -150,8 +154,45 @@ export default function Report() {
     }
   }
 
+  // 手动生成：指定日期按当前 kind 归一周期起点，覆盖已存在的那份。
+  // 「记录太少」不是失败——后端已落库一行 too_little，这里明确告诉用户原因。
+  async function handleGenerate() {
+    const reportDate = normalizeAnchor(kind, genDate);
+    setGenerating(true);
+    try {
+      const v = await regenerateReport(reportDate, kind);
+      setReports(await getReportList());
+      if (v.status === "too_little") {
+        toast.show({ message: TOO_LITTLE_MSG[kind] });
+        setSelected(null);
+      } else {
+        toast.show({ message: "已生成" });
+        setSelected({ type: kind, date: reportDate });
+      }
+    } catch (e) {
+      console.error(e);
+      toast.show({ message: `生成失败：${String(e)}` });
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   return (
     <PageShell className="report-page" header={<ReportHeader />}>
+      <div className="report-toolbar">
+        <span className="report-toolbar-label">生成{KIND_LABEL[kind]}报</span>
+        <DatePicker value={genDate} onChange={setGenDate} />
+        <button
+          type="button"
+          className="report-gen-btn"
+          onClick={handleGenerate}
+          disabled={generating}
+        >
+          {generating ? "生成中…" : "生成"}
+        </button>
+        {generating && <span className="report-gen-hint">AI 生成中，稍等…</span>}
+      </div>
+
       <div className="report-list" ref={listRef}>
         {filtered.length === 0 && (
           <p className="report-empty">还没有报告，明天回来看看喵～</p>
@@ -209,6 +250,13 @@ const KIND_LABEL: Record<ReportMeta["report_type"], string> = {
   day: "日",
   week: "周",
   month: "月",
+};
+
+/** 手动生成落到「记录太少」时的说明。阈值与后端 report 模块一致，这里只做提示文案。 */
+const TOO_LITTLE_MSG: Record<ReportMeta["report_type"], string> = {
+  day: "该日活跃时长不足 30 分钟，已记为「记录太少」",
+  week: "该周有活跃记录不足 3 天，已记为「记录太少」",
+  month: "该月有活跃记录不足 10 天，已记为「记录太少」",
 };
 
 function rowTitle(type: ReportMeta["report_type"], date: string): string {

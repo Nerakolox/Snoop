@@ -21,12 +21,46 @@
   color: var(--color-text-3);
 }
 
-/* ---- 工具栏：手动生成（Task 4 填充，此块先只留容器） ---- */
+/* ---- 工具栏：手动生成（指定日期，覆盖已存在） ---- */
 .report-toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-3);
   flex-wrap: wrap;
+}
+
+.report-toolbar-label {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.report-gen-btn {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth);
+}
+
+.report-gen-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.report-gen-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.report-gen-hint {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
 /* ---- 列表 ---- */

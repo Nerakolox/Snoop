@@ -65,9 +65,9 @@ export interface ReportMeta {
 export type ReportKind = "day" | "week" | "month";
 
 export type ReportView =
-  | { report_type: "day"; data: DailyReport; narrative: string | null; narrative_source: string | null }
-  | { report_type: "week"; data: WeeklyReport; narrative: string | null; narrative_source: string | null }
-  | { report_type: "month"; data: MonthlyReport; narrative: string | null; narrative_source: string | null };
+  | { report_type: "day"; status: "ok" | "too_little"; data: DailyReport; narrative: string | null; narrative_source: string | null }
+  | { report_type: "week"; status: "ok" | "too_little"; data: WeeklyReport; narrative: string | null; narrative_source: string | null }
+  | { report_type: "month"; status: "ok" | "too_little"; data: MonthlyReport; narrative: string | null; narrative_source: string | null };
 
 // ── 周报 ──────────────────────────────────────────────────────────────────
 

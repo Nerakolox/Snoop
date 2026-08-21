@@ -36,6 +36,9 @@ use store::MIN_ACTIVE_MS;
 pub struct ReportView {
     /// `day` | `week` | `month`。
     pub report_type: String,
+    /// `ok` | `too_little`。手动生成时前端靠它区分「生成成功」与「记录太少」，
+    /// 而不是把「记录太少」当成静默失败吞掉。
+    pub status: String,
     pub data: Value,
     pub narrative: Option<String>,
     pub narrative_source: Option<String>,
@@ -181,6 +184,7 @@ pub async fn generate_report(
 
     Ok(Some(ReportView {
         report_type: row.report_type.clone(),
+        status: status.to_string(),
         data: report.to_json(),
         narrative,
         narrative_source,
