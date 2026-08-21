@@ -102,6 +102,7 @@ pub fn run() {
             report::commands::get_report_list,
             report::commands::get_report,
             report::commands::regenerate_report,
+            report::export::save_report_png,
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]

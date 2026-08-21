@@ -10,6 +10,7 @@
 pub mod commands;
 pub mod common;
 pub mod daily;
+pub mod export;
 pub mod monthly;
 pub mod narrative;
 pub mod store;
