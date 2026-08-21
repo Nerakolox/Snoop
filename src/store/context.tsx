@@ -34,6 +34,26 @@ export const PAGE_KIND_CAP: Record<NavKey, RangeKind[]> = {
   "keymap-test": ["day", "week", "month"],
 };
 
+/** 顶栏对每页显示哪些全局控件。ai / settings 不消费时间范围与 App 筛选，隐藏之。 */
+export interface TopbarCap {
+  /** 时间范围选择器：日/周/月分段 + ← 今天 → 日期导航 + 日期标签 */
+  timeRange: boolean;
+  /** 应用筛选芯片（全部应用 / 指定 App） */
+  appFilter: boolean;
+}
+
+export const PAGE_TOPBAR_CAP: Record<NavKey, TopbarCap> = {
+  overview:      { timeRange: true,  appFilter: true },
+  timeline:      { timeRange: true,  appFilter: true },
+  input:         { timeRange: true,  appFilter: true },
+  patterns:      { timeRange: true,  appFilter: true },
+  report:        { timeRange: true,  appFilter: true },
+  ai:            { timeRange: false, appFilter: false },
+  settings:      { timeRange: false, appFilter: false },
+  dev:           { timeRange: true,  appFilter: true },
+  "keymap-test": { timeRange: true,  appFilter: true },
+};
+
 const HISTORY_MAX = 20;
 
 /** 含该日的那一周的周一。周日算作上一周的第 7 天，与 ranges.ts 的 thisWeekRange 一致。 */

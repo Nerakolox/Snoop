@@ -8,6 +8,7 @@ import {
   useToday,
   KIND_LABEL,
   PAGE_KIND_CAP,
+  PAGE_TOPBAR_CAP,
   normalizeAnchor,
   type RangeKind,
 } from "../store/context";
@@ -44,6 +45,7 @@ export default function TopBar() {
 
   const today = useToday();
   const cap = PAGE_KIND_CAP[page];
+  const topbarCap = PAGE_TOPBAR_CAP[page];
 
   const atCurrentAnchor = normalizeAnchor(kind, today) === anchor;
 
@@ -159,6 +161,8 @@ export default function TopBar() {
 
   return (
     <div className="topbar" data-tauri-drag-region>
+      {topbarCap.timeRange && (
+        <>
       <div className="topbar__kind" role="group" aria-label="时间粒度">
         {KIND_ORDER.map((k) => {
           const enabled = cap.includes(k);
@@ -214,7 +218,11 @@ export default function TopBar() {
       >
         今天
       </button>
+        </>
+      )}
 
+      {topbarCap.appFilter && (
+        <>
       <div className="topbar__divider" aria-hidden />
 
       <div className="topbar__app-filter" ref={menuRef}>
@@ -305,6 +313,8 @@ export default function TopBar() {
           </div>
         )}
       </div>
+        </>
+      )}
 
       <TopBarTools />
 
