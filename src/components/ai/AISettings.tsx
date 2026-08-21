@@ -413,7 +413,7 @@ export default function AISettings({ tab }: { tab: AiTab }) {
 
             {features.map((f) => {
               const overTier = config ? !tierAtLeast(config.tier, f.required_tier) : true;
-              const enabled = config ? (config.enabled_features[f.id] ?? true) : false;
+              const enabled = config ? (config.enabled_features[f.id] ?? f.default_enabled) : false;
               return (
                 <div key={f.id} className={`ai-row${overTier ? " is-disabled" : ""}`}>
                   <div className="ai-row-left">

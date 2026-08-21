@@ -10,6 +10,8 @@ export interface FeatureDecl {
   required_tier: Tier;
   label: string;
   description: string;
+  /** 缺省是否开启。`enabled_features` 没记录时用它（与后端 FeatureDecl 对齐）。 */
+  default_enabled: boolean;
 }
 
 /** 非密配置。字段名与后端 AiConfig 的 serde 输出一致（snake_case）。 */

@@ -42,9 +42,11 @@ impl Default for AiConfig {
 }
 
 impl AiConfig {
-    /// 功能是否被用户开启（缺省开启）。
-    pub fn feature_enabled(&self, id: &str) -> bool {
-        self.enabled_features.get(id).copied().unwrap_or(true)
+    /// 功能是否被用户开启。`enabled_features` 里没有记录时回落到该功能的声明默认值
+    /// （`FeatureDecl::default_enabled`，见 [`super::envelope::FEATURE_REGISTRY`]），
+    /// 而非一律 true —— 让「留意」这类默认关的功能不用在空 map 里显式写 false。
+    pub fn feature_enabled(&self, id: &str, default: bool) -> bool {
+        self.enabled_features.get(id).copied().unwrap_or(default)
     }
 }
 

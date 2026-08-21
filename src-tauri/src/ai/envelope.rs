@@ -60,13 +60,16 @@ impl Tier {
 
 // ─── 功能注册表 ───────────────────────────────────────────────────────────────
 
-/// 一个 AI 功能的声明（设置页展示用）。字段全为静态字符串，可直接放 `static`。
+/// 一个 AI 功能的声明（设置页展示用）。字段全为静态字符串 / bool，可直接放 `static`。
 #[derive(Clone, Debug, Serialize)]
 pub struct FeatureDecl {
     pub id: &'static str,
     pub required_tier: Tier,
     pub label: &'static str,
     pub description: &'static str,
+    /// 缺省是否开启。`enabled_features` 没记录时用它（见 [`super::config::AiConfig::feature_enabled`]）。
+    /// 绝大多数功能默认开；「留意」这类主动告知型的默认关，等用户自己打开。
+    pub default_enabled: bool,
 }
 
 /// 全部 AI 功能。本批只注册占位，不实现功能。
@@ -76,48 +79,56 @@ pub static FEATURE_REGISTRY: &[FeatureDecl] = &[
         required_tier: Tier::T2,
         label: "应用分类",
         description: "根据使用数据为应用归类（工作 / 娱乐等）",
+        default_enabled: true,
     },
     FeatureDecl {
         id: "ai.nl-query",
         required_tier: Tier::T1,
         label: "自然语言查询",
         description: "用自然语言问数据，只发数字统计",
+        default_enabled: true,
     },
     FeatureDecl {
         id: "ai.cat-quip",
         required_tier: Tier::T1,
         label: "猫的吐槽",
         description: "基于当日数字生成一句吐槽",
+        default_enabled: true,
     },
     FeatureDecl {
         id: "ai.daily-report",
         required_tier: Tier::T2,
         label: "日报",
         description: "生成当日使用报告，含应用名",
+        default_enabled: true,
     },
     FeatureDecl {
         id: "ai.weekly-report",
         required_tier: Tier::T2,
         label: "周报",
         description: "生成上周对比报告，含应用名",
+        default_enabled: true,
     },
     FeatureDecl {
         id: "ai.monthly-report",
         required_tier: Tier::T2,
         label: "月报",
         description: "生成上月趋势报告，含应用名",
+        default_enabled: true,
     },
     FeatureDecl {
         id: "ai.insights-explain",
         required_tier: Tier::T2,
         label: "洞察解释",
         description: "解释某个数据模式，含应用名",
+        default_enabled: true,
     },
     FeatureDecl {
         id: "ai.notice",
         required_tier: Tier::T1,
-        label: "提醒",
-        description: "基于数字生成提醒",
+        label: "留意",
+        description: "发现今天和最近一周明显不同的使用节奏时，说一句中性的事实",
+        default_enabled: false,
     },
 ];
 
@@ -362,7 +373,7 @@ pub async fn call_ai(
     }
 
     // 3) 功能开关
-    if !cfg.feature_enabled(&feature_id) {
+    if !cfg.feature_enabled(&feature_id, decl.default_enabled) {
         audit_not_sent(db_path, &feature_id, "feature_disabled");
         return degraded("该功能已被用户关闭");
     }
