@@ -387,19 +387,20 @@ export default function Overview() {
     });
   }, [hourlyDuration, isTodayView, currentHour, heartbeatHours, rhythmRange.start_ms]);
 
-  // 「本周节奏」的 7 天：在 dailyStats 上补状态 + 格内文字 + 深浅档位。
+  // 「本周/本月节奏」的逐日状态：在 dailyStats 上补状态 + 格内文字 + 深浅档位。
+  // 三态 + 有数据（渲染优先级：未到来 > 零活跃 > 有数据 > 无数据）：
+  //   future  未到来 = 日期在今天之后
+  //   idle    零活跃 = 有桶（有前台时长）但无活跃输入（强度 0，纯挂机）
+  //   no_data 无数据 = 完全没有桶（未采集）
+  //   hasData 有数据 = 有桶且有活跃输入 → 品牌紫深浅编码时长
+  // 判据用「桶存在性 + 强度」，不用心跳：心跳只说明 Snoop 在跑，区分不了「有桶没输入」。
   const dayCells = useMemo(() => {
-    const HOUR_MS = 60 * 60 * 1000;
     const todayMs = parseAnchor(today).getTime();
     return dailyStats.map((d) => {
-      const hasData = d.hasData;
-      // 整日无前台，但该日有任一整点心跳 → 零活跃（有采集无输入）
-      let idle = false;
-      if (!hasData) {
-        for (let h = 0; h < 24; h++) {
-          if (heartbeatHours.has(d.dayMs + h * HOUR_MS)) { idle = true; break; }
-        }
-      }
+      const hasBucket = d.foregroundMs > 0;   // 有采集到任何前台桶
+      const active = d.intensity > 0;         // 有活跃输入
+      const hasData = active;
+      const idle = hasBucket && !active;
       const level = hasData ? durationLevel(d.foregroundMs, maxDayForegroundMs) : 0;
       return {
         dayMs: d.dayMs,
@@ -413,9 +414,26 @@ export default function Overview() {
         label: hasData ? formatCompactDuration(d.foregroundMs) : "",
       };
     });
-  }, [dailyStats, heartbeatHours, maxDayForegroundMs, today]);
+  }, [dailyStats, maxDayForegroundMs, today]);
 
   const rhythmTotalLabel = foregroundDuration > 0 ? `合计 ${fmtDuration(foregroundDuration)}` : null;
+
+  // 节奏图例（周/月共用）：时长深浅阶 + 三态示意，逐项与格子实际渲染对齐。
+  const rhythmLegend = (
+    <div className="rhythm-legend">
+      <span className="rhythm-legend-caption">少</span>
+      {DURATION_LEVELS.map((l) => (
+        <span key={l} className="rhythm-legend-swatch" style={{ background: durationColorVar(l) }} />
+      ))}
+      <span className="rhythm-legend-caption">多</span>
+      <span className="rhythm-legend-swatch rhythm-legend-swatch--idle" />
+      <span className="rhythm-legend-caption">零活跃</span>
+      <span className="rhythm-legend-swatch rhythm-legend-swatch--empty" />
+      <span className="rhythm-legend-caption">无数据</span>
+      <span className="rhythm-legend-swatch rhythm-legend-swatch--future" />
+      <span className="rhythm-legend-caption">未到来</span>
+    </div>
+  );
 
   // 分类占比：后端按范围聚合各分类活跃时长（有输入，未分类计入 other）。
   // 依赖 allBuckets，使 live 30s 轮询刷新 buckets 时占比也一并刷新。
@@ -748,15 +766,7 @@ export default function Overview() {
                 ))}
               </div>
             </div>
-            <div className="rhythm-legend">
-              <span className="rhythm-legend-caption">少</span>
-              {DURATION_LEVELS.map((l) => (
-                <span key={l} className="rhythm-legend-swatch" style={{ background: durationColorVar(l) }} />
-              ))}
-              <span className="rhythm-legend-caption">多</span>
-              <span className="rhythm-legend-swatch rhythm-legend-swatch--empty" />
-              <span className="rhythm-legend-caption">无数据</span>
-            </div>
+            {rhythmLegend}
           </>
         )}
 
@@ -783,8 +793,8 @@ export default function Overview() {
                     : d.idle
                       ? `${dateLabelOf(d.dayMs)} · 无输入`
                       : `${dateLabelOf(d.dayMs)} · 无数据`;
-                // 刻度只打 1 / 5 / 10 / 15 / 20 / 25 / 30，其余靠 hover
-                const showTick = dayOfMonth === 1 || dayOfMonth % 5 === 0;
+                // 刻度只在每行首格标起始日（8 格一行 → 1 / 9 / 17 / 25），其余靠 hover
+                const showTick = (dayOfMonth - 1) % 8 === 0;
                 return (
                   <div className="month-slot" key={d.dayMs}>
                     <Tooltip content={tip}>
@@ -795,15 +805,7 @@ export default function Overview() {
                 );
               })}
             </div>
-            <div className="rhythm-legend">
-              <span className="rhythm-legend-caption">少</span>
-              {DURATION_LEVELS.map((l) => (
-                <span key={l} className="rhythm-legend-swatch" style={{ background: durationColorVar(l) }} />
-              ))}
-              <span className="rhythm-legend-caption">多</span>
-              <span className="rhythm-legend-swatch rhythm-legend-swatch--empty" />
-              <span className="rhythm-legend-caption">无数据</span>
-            </div>
+            {rhythmLegend}
           </>
         )}
 
