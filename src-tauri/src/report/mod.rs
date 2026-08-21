@@ -153,9 +153,16 @@ pub async fn generate_report(
                     narrative::generate_narrative(config, code_map, db_path, r).await;
                 ("ok", Some(text), Some(source))
             }
-            // 周报 / 月报的文案是批次 6 Task 4。本 commit 先把数据与图表落全 ——
-            // 图表本就不依赖 AI，缺文案不影响可用性。
-            _ => ("ok", None, None),
+            Computed::Week(r) => {
+                let (text, source) =
+                    narrative::generate_weekly_narrative(config, code_map, db_path, r).await;
+                ("ok", Some(text), Some(source))
+            }
+            Computed::Month(r) => {
+                let (text, source) =
+                    narrative::generate_monthly_narrative(config, code_map, db_path, r).await;
+                ("ok", Some(text), Some(source))
+            }
         }
     };
 

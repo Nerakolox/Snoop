@@ -96,6 +96,18 @@ pub static FEATURE_REGISTRY: &[FeatureDecl] = &[
         description: "生成当日使用报告，含应用名",
     },
     FeatureDecl {
+        id: "ai.weekly-report",
+        required_tier: Tier::T2,
+        label: "周报",
+        description: "生成上周对比报告，含应用名",
+    },
+    FeatureDecl {
+        id: "ai.monthly-report",
+        required_tier: Tier::T2,
+        label: "月报",
+        description: "生成上月趋势报告，含应用名",
+    },
+    FeatureDecl {
         id: "ai.insights-explain",
         required_tier: Tier::T2,
         label: "洞察解释",
