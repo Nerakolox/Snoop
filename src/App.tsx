@@ -6,6 +6,7 @@ import Overview from "./pages/Overview";
 import Timeline from "./pages/Timeline";
 import Keyboard from "./pages/Keyboard";
 import Insights from "./pages/Insights";
+import Report from "./pages/Report";
 import Settings from "./pages/Settings";
 import Ai from "./pages/Ai";
 import Dev from "./pages/Dev";
@@ -29,6 +30,8 @@ function renderPage(key: NavKey) {
       return <Keyboard />;
     case "patterns":
       return <Insights />;
+    case "report":
+      return <Report />;
     case "ai":
       return <Ai />;
     case "settings":

@@ -98,6 +98,9 @@ pub fn run() {
             app_classify::commands::set_app_category,
             app_classify::commands::reset_app_category,
             app_classify::commands::get_category_breakdown,
+            report::commands::get_report_list,
+            report::commands::get_report,
+            report::commands::regenerate_report,
         ])
         .setup(move |app| {
             #[cfg(target_os = "macos")]

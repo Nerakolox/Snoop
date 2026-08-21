@@ -1,0 +1,415 @@
+/* 报告页 —— 历史日报时间轴 + 日报详情卡。
+   详情卡固定宽度 + 最小高度、高度可往下长（为 4b 导出成图预留，不锁 aspect-ratio）。
+   配色：分类用分类色板；节奏/条形用品牌 accent 单色，不复用时间线暖色强度轴。 */
+
+.report-page {
+  gap: var(--space-6);
+}
+
+/* ---- 页头 ---- */
+.report-header-title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.report-header-subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+}
+
+/* ---- 工具栏：筛选 + 日期跳转 ---- */
+.report-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.report-filters {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.report-filter {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-full);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast), background var(--dur-fast);
+}
+
+.report-filter.is-active {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.report-filter:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.report-jump {
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.report-jump-input {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font: inherit;
+}
+
+.report-jump-btn {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  cursor: pointer;
+}
+
+.report-jump-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---- 列表 ---- */
+.report-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.report-empty {
+  margin: 0;
+  color: var(--color-text-3);
+  padding: var(--space-6) 0;
+}
+
+.report-row {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-4) var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.report-row:hover {
+  border-color: var(--color-accent);
+}
+
+.report-row-date {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.report-row-total {
+  margin-left: auto;
+  color: var(--color-text-2);
+}
+
+.report-row-arrow {
+  color: var(--color-text-3);
+}
+
+/* 「记录太少」：极简灰色条目，不可点开 */
+.report-skip-row {
+  padding: var(--space-3) var(--space-6);
+  color: var(--color-text-3);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+
+.report-expanded {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.report-collapse {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--color-text-2);
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+
+.report-collapse:hover {
+  color: var(--color-accent);
+}
+
+/* ---- 详情卡（导出预留：固定宽度 + 最小高度，高度可往下长） ---- */
+.report-card {
+  width: 420px;
+  min-height: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  padding: var(--space-6);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.report-card--loading {
+  justify-content: center;
+  align-items: center;
+  color: var(--color-text-3);
+}
+
+.report-card-head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.report-card-date {
+  font-size: var(--text-base);
+  color: var(--color-text-2);
+}
+
+.report-card-active {
+  font-size: var(--text-2xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.report-card-sub {
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+}
+
+.report-card-narrative {
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.6;
+}
+
+.report-card-source {
+  margin-left: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.report-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.report-section-title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.report-empty-inline {
+  margin: 0;
+  color: var(--color-text-3);
+  font-size: var(--text-sm);
+}
+
+/* ---- 应用 Top 5 条形 ---- */
+.report-apps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.report-app-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.report-app-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  color: var(--color-text);
+}
+
+.report-app-name > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-app-track {
+  height: 8px;
+  background: var(--color-surface-2);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.report-app-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: var(--radius-full);
+}
+
+.report-app-time {
+  color: var(--color-text-2);
+  font-size: var(--text-sm);
+}
+
+.report-app-pct {
+  color: var(--color-text-3);
+  font-size: var(--text-sm);
+  min-width: 3ch;
+  text-align: right;
+}
+
+/* ---- 分类占比 ---- */
+.report-cat-stack {
+  display: flex;
+  height: 10px;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.report-cat-seg {
+  height: 100%;
+}
+
+.report-cat-legend {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.report-cat-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.report-cat-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.report-cat-label {
+  color: var(--color-text);
+}
+
+.report-cat-time {
+  margin-left: auto;
+  color: var(--color-text-2);
+}
+
+.report-cat-pct {
+  color: var(--color-text-3);
+  min-width: 5ch;
+  text-align: right;
+}
+
+/* ---- 24 小时节奏 ---- */
+.report-rhythm {
+  display: flex;
+  gap: 2px;
+  height: 72px;
+  align-items: flex-end;
+}
+
+.report-rhythm-col {
+  flex: 1;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+
+.report-rhythm-bar {
+  width: 100%;
+  background: var(--color-accent);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+
+.report-rhythm-scale {
+  display: flex;
+  justify-content: space-between;
+  color: var(--color-text-3);
+  font-size: var(--text-xs);
+}
+
+/* ---- 近 7 天对比（中性箭头，不用红绿） ---- */
+.report-compare {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.report-compare-item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.report-compare-label {
+  color: var(--color-text-3);
+  font-size: var(--text-xs);
+}
+
+.report-compare-value {
+  color: var(--color-text);
+  font-weight: 600;
+  font-size: var(--text-lg);
+}
+
+/* ---- 重新生成 ---- */
+.report-regen {
+  appearance: none;
+  align-self: flex-start;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  cursor: pointer;
+  margin-top: auto;
+}
+
+.report-regen:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.report-regen:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

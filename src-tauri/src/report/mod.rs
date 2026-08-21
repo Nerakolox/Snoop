@@ -4,9 +4,7 @@
 //! [`daily`] 算好，AI 只把已经确定的事实组织成一段自然的话（见 [`narrative`]）。
 //! 图表完全不依赖 AI，T0 下也能正常显示。
 
-// 报告 API 由 Task 2（生成时机）/ Task 4（命令）分批接入消费方，落库前先放行未用告警。
-#![allow(dead_code)]
-
+pub mod commands;
 pub mod daily;
 pub mod narrative;
 pub mod store;
@@ -14,58 +12,43 @@ pub mod store;
 use std::path::Path;
 use std::sync::Mutex;
 
+use serde::Serialize;
+
 use crate::ai::config::AiConfigState;
 use crate::ai::envelope::AiCodeMap;
+use crate::report::daily::DailyReport;
 
 use store::MIN_ACTIVE_MS;
 
-/// 每天首次启动时后台生成「昨天」的日报（执行单 Task 2 / Task 3）。
+/// 给前端的报告视图（数据 + 叙事）。
+#[derive(Serialize)]
+pub struct ReportView {
+    pub data: DailyReport,
+    pub narrative: Option<String>,
+    pub narrative_source: Option<String>,
+}
+
+/// 计算某日期日报、生成叙事、落库。
 ///
-/// 流程：已生成则跳过 → 计算 → 三档分流：
-/// - 无记录（当天 0 桶）→ 不落行；
-/// - 记录太少（活跃 < 30 分钟）→ 落 `too_little` 行，不调 AI；
-/// - 正常 → 落 `ok` 行，叙事走 AI（`ai.daily-report`），失败回落模板。
-pub async fn maybe_generate_yesterday(
+/// - `Ok(None)`：无记录（当天 0 桶），不落行。
+/// - `Ok(Some)`：`status='ok'` 或 `status='too_little'`（记录太少，无叙事）。
+/// - `Err`：计算 / 落库失败。
+pub async fn generate_for_date(
     config: &AiConfigState,
     code_map: &Mutex<AiCodeMap>,
     db_path: &Path,
-) {
-    let conn = match rusqlite::Connection::open(db_path) {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("❌ [Report] 打开数据库失败，跳过昨日日报生成: {e}");
-            return;
-        }
-    };
+    date: &str,
+) -> Result<Option<ReportView>, String> {
+    let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
     let _ = conn.execute("PRAGMA journal_mode=WAL", []);
 
-    // 昨天的本地日。
-    let yday: String = match conn.query_row("SELECT date('now','localtime','-1 day')", [], |r| r.get(0)) {
-        Ok(s) => s,
-        Err(e) => {
-            eprintln!("❌ [Report] 取昨日日期失败: {e}");
-            return;
-        }
-    };
-
-    if store::exists(&conn, &yday, "day") {
-        return; // 同一天只生成一次。
-    }
-
-    let report = match daily::compute_daily_report(&conn, &yday) {
-        Ok(r) => r,
-        Err(e) => {
-            eprintln!("❌ [Report] 计算 {yday} 日报失败: {e}");
-            return;
-        }
-    };
+    let report = daily::compute_daily_report(&conn, date).map_err(|e| e.to_string())?;
 
     // 无记录（当天 0 桶）：不落任何行。
     if report.foreground_ms == 0 {
-        return;
+        return Ok(None);
     }
 
-    // 记录太少：落 too_little 行，不调 AI。
     let (status, narrative, narrative_source) = if report.active_ms < MIN_ACTIVE_MS {
         ("too_little", None, None)
     } else {
@@ -74,17 +57,55 @@ pub async fn maybe_generate_yesterday(
     };
 
     let row = store::ReportRow {
-        report_date: yday,
+        report_date: date.to_string(),
         report_type: "day".to_string(),
         status: status.to_string(),
         generated_at_ms: store::now_ms(),
         active_ms: report.active_ms,
         foreground_ms: report.foreground_ms,
         data_json: serde_json::to_string(&report).unwrap_or_default(),
+        narrative: narrative.clone(),
+        narrative_source: narrative_source.clone(),
+    };
+    store::upsert(&conn, &row).map_err(|e| e.to_string())?;
+
+    Ok(Some(ReportView {
+        data: report,
         narrative,
         narrative_source,
+    }))
+}
+
+/// 每天首次启动时后台生成「昨天」的日报。
+///
+/// 流程：已生成则跳过 → 计算 → 三档分流（无记录不落行 / 记录太少落 `too_little` /
+/// 正常落 `ok` 并配 AI 叙事，AI 失败回落模板）。
+pub async fn maybe_generate_yesterday(
+    config: &AiConfigState,
+    code_map: &Mutex<AiCodeMap>,
+    db_path: &Path,
+) {
+    let (yday, exists) = {
+        let Ok(conn) = rusqlite::Connection::open(db_path) else {
+            eprintln!("❌ [Report] 打开数据库失败，跳过昨日日报生成");
+            return;
+        };
+        let Ok(yday) =
+            conn.query_row("SELECT date('now','localtime','-1 day')", [], |r| r.get::<_, String>(0))
+        else {
+            eprintln!("❌ [Report] 取昨日日期失败");
+            return;
+        };
+        let exists = store::exists(&conn, &yday, "day");
+        (yday, exists)
     };
-    if let Err(e) = store::upsert(&conn, &row) {
-        eprintln!("❌ [Report] 落库 {status} 日报失败: {e}");
+
+    if exists {
+        return; // 同一天只生成一次。
+    }
+
+    match generate_for_date(config, code_map, db_path, &yday).await {
+        Ok(_) => {}
+        Err(e) => eprintln!("❌ [Report] 生成昨日日报失败: {e}"),
     }
 }
