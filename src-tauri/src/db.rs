@@ -89,6 +89,22 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_app_categories_source
             ON app_categories(source);
+
+            -- 日报存储（批次 4a）。同 (report_date, report_type) 唯一。
+            -- status: 'ok'（正常报告）| 'too_little'（记录太少，不调 AI、无叙事）。
+            CREATE TABLE IF NOT EXISTS daily_reports (
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                report_date      TEXT NOT NULL,
+                report_type      TEXT NOT NULL DEFAULT 'day',
+                status           TEXT NOT NULL DEFAULT 'ok',
+                generated_at_ms  INTEGER NOT NULL,
+                active_ms        INTEGER NOT NULL,
+                foreground_ms    INTEGER NOT NULL,
+                data_json        TEXT NOT NULL,
+                narrative        TEXT,
+                narrative_source TEXT,
+                UNIQUE(report_date, report_type)
+            );
             ",
         )?;
 

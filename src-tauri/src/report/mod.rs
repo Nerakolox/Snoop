@@ -8,3 +8,77 @@
 #![allow(dead_code)]
 
 pub mod daily;
+pub mod narrative;
+pub mod store;
+
+use std::path::Path;
+
+use store::MIN_ACTIVE_MS;
+
+/// 每天首次启动时后台生成「昨天」的日报（执行单 Task 2）。
+///
+/// 流程：已生成则跳过 → 计算 → 三档分流（无记录不落行 / 记录太少落 `too_little` /
+/// 正常落 `ok` 并配模板叙事）。Task 3 会把模板叙事升级为 AI 叙事。
+pub fn maybe_generate_yesterday(db_path: &Path) {
+    let conn = match rusqlite::Connection::open(db_path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("❌ [Report] 打开数据库失败，跳过昨日日报生成: {e}");
+            return;
+        }
+    };
+    let _ = conn.execute("PRAGMA journal_mode=WAL", []);
+
+    // 昨天的本地日。
+    let yday: String = match conn.query_row("SELECT date('now','localtime','-1 day')", [], |r| r.get(0)) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("❌ [Report] 取昨日日期失败: {e}");
+            return;
+        }
+    };
+
+    if store::exists(&conn, &yday, "day") {
+        return; // 同一天只生成一次。
+    }
+
+    let report = match daily::compute_daily_report(&conn, &yday) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("❌ [Report] 计算 {yday} 日报失败: {e}");
+            return;
+        }
+    };
+
+    // 无记录（当天 0 桶）：不落任何行。
+    if report.foreground_ms == 0 {
+        return;
+    }
+
+    // 记录太少：落 too_little 行，不调 AI。
+    let (status, narrative) = if report.active_ms < MIN_ACTIVE_MS {
+        ("too_little", None)
+    } else {
+        ("ok", Some(narrative::template_narrative(&report)))
+    };
+    let narrative_source = if status == "ok" {
+        Some("template".to_string())
+    } else {
+        None
+    };
+
+    let row = store::ReportRow {
+        report_date: yday,
+        report_type: "day".to_string(),
+        status: status.to_string(),
+        generated_at_ms: store::now_ms(),
+        active_ms: report.active_ms,
+        foreground_ms: report.foreground_ms,
+        data_json: serde_json::to_string(&report).unwrap_or_default(),
+        narrative,
+        narrative_source,
+    };
+    if let Err(e) = store::upsert(&conn, &row) {
+        eprintln!("❌ [Report] 落库 {status} 日报失败: {e}");
+    }
+}

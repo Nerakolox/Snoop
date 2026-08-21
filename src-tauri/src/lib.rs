@@ -240,6 +240,14 @@ pub fn run() {
                 });
             }
 
+            // 每天首次启动时后台生成「昨天」的日报（记录太少 / 无记录跳过，见 report::maybe_generate_yesterday）。
+            {
+                let report_db = classify_db_path.clone();
+                tauri::async_runtime::spawn(async move {
+                    report::maybe_generate_yesterday(&report_db);
+                });
+            }
+
             // Windows release 自启自愈:若注册表里已有自启项,用当前 exe 路径覆盖一次。
             // 用途是修 dev 期开过自启、后来装了正式版的老用户 —— 注册表里那条 Run 项
             // 可能还指向 target\debug\snoop.exe,开机时会拉起一个带控制台的旧 debug 进程
