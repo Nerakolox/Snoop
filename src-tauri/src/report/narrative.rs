@@ -53,12 +53,22 @@ facts 是已经算好的确定事实，数字全部正确。带 `_display` 后�
 标记只有两种：{{n:数字/时长}}、{{em:语气重点}}，不要第三种。\n\
 只输出 JSON 对象：{\"quips\":[\"...\",\"...\"]}，不要 JSON 以外的任何文字。";
 
-/// 月报 system prompt：**重点是「变化趋势」。**
-const MONTHLY_SYSTEM_PROMPT: &str = "你是 Snoop 里的猫，陪用户回顾这个月。facts 是已经算好的确定事实，数字全部正确。你的唯一任务是把它组织成 120–180 字的中文叙事。\n\
-这是月报，重点是「变化趋势」。优先讲走势：按周的起伏、上半月与下半月的占比变化。趋势就是趋势，不许对趋势做价值判断 —— 说「开发占比上升」，不许说「你越来越专注了」或「社交时间被挤压了」，好坏由用户自己判断。\n\
+/// 月报 system prompt：**毒舌猫，骂的是「这个月的变化趋势」，不是复述某一天。**
+const MONTHLY_SYSTEM_PROMPT: &str = "你是 Snoop 里的毒舌猫，负责给用户复盘这个月。你不是来夸人的，是来找茬的。\n\
+facts 是已经算好的确定事实，数字全部正确。带 `_display` 后缀的字段已经是「128 小时 30 分」「4 小时 12 分」这种人读格式，引用时长一律用它，不要自己把分钟换算成时分，更不要写「14730 分钟」这种原始数字。\n\
+你的任务：挑出这个月里最离谱、最经不起追问的趋势，写成 1–3 句中文吐槽，放进 JSON 的 quips 数组。\n\
+写法：\n\
+- 质问式，不是陈述式。发现荒谬的趋势就追问，明知道对方答不上来还非要问。\n\
+- 可以连用问号感叹号，可以急，可以阴阳怪气；可以说教、怼人、人身攻击（互联网语境，不是恶意）。\n\
+- 月报骂「这个月的趋势」，不是某一天：按周的起伏（weeks 里某几周暴涨/暴跌）；上半月 vs 下半月的占比变化（half_shift 里 delta_pp 绝对值最大的类别）；整月新冒出来的应用（new_apps）。\n\
+- 只说图表给不了的东西：趋势的转折、异常的组合；不要复述分类占比表或应用排行的百分比和排名。\n\
+- 说「新冒出来的应用」就要说清是几个、是什么，要么说清要么不说。\n\
+引用某个应用时用 apps 里对应的 code（如 App A），后台会自动换成真名。\n\
+禁止：编造 facts 里没有的事实；自己计算或改写数字；提到窗口标题；拿身体健康和生死开玩笑（不说「猝死」「不要命了」「要出事」这类）。\n\
 标了 partial 的周是被月初/月末截断的半截周，讲走势时要么跳过、要么说明它不完整，不许把它当成「这周活跃度暴跌」。\n\
-禁止：自己计算、推断或改写任何数字；编造 facts 里没有的事实；评判用户（不说「效率低」「浪费时间」「摸鱼」「发呆」「自律」「进步」）；把「前台无输入的时间」说成负面；提到窗口标题；对作息下价值判断。\n\
-输出一段纯文本，不要标题、列表、emoji。";
+样本不足的维度（如 weeks 里只有 1–2 天数据的半截周、half_shift 里某一半没有数据）不得用来做趋势断言——样本太少，那不算规律。\n\
+标记只有两种：{{n:数字/时长}}、{{em:语气重点}}，不要第三种。\n\
+只输出 JSON 对象：{\"quips\":[\"...\",\"...\"]}，不要 JSON 以外的任何文字。";
 
 /// 生成叙事：优先 AI，失败回落到本地模板。返回 `(文案, "ai" | "template")`。
 pub async fn generate_narrative(
@@ -520,12 +530,11 @@ pub async fn generate_monthly_narrative(
 ) -> (String, String) {
     let payload = build_monthly_payload(code_map, report);
     let result =
-        envelope::call_ai(config, code_map, db_path, "ai.monthly-report", payload, false).await;
+        envelope::call_ai(config, code_map, db_path, "ai.monthly-report", payload, true).await;
     if result.ok {
         if let Some(content) = result.content {
-            let trimmed = content.trim();
-            if !trimmed.is_empty() {
-                return (trimmed.to_string(), "ai".to_string());
+            if let Some(narrative) = parse_narrative(&content) {
+                return (narrative, "ai".to_string());
             }
         }
     }
@@ -560,13 +569,19 @@ fn build_monthly_payload(code_map: &Mutex<AiCodeMap>, report: &MonthlyReport) ->
 
     let facts = json!({
         "month_label": month_label(&report.month_start),
-        "active_minutes": report.active_ms / 60_000,
-        "avg_daily_minutes": report.avg_daily_active_ms / 60_000,
+        "active_display": fmt_duration(report.active_ms),
+        "avg_daily_display": fmt_duration(report.avg_daily_active_ms),
         "days_with_data": report.days_with_data,
-        "vs_prev_month": json!({ "daily_delta_pct": round1(report.prev_month.daily_delta_pct) }),
+        "vs_prev_month": json!({
+            "avg_daily_active_display": fmt_duration(report.prev_month.avg_daily_active_ms),
+            "daily_delta_display": delta_display(
+                report.prev_month.daily_delta_pct,
+                report.prev_month.avg_daily_active_ms > 0,
+            ),
+        }),
         "weeks": report.weeks.iter().map(|w| json!({
             "label": week_label(&w.clip_from, &w.clip_to),
-            "minutes": w.active_ms / 60_000,
+            "active_display": fmt_duration(w.active_ms),
             "partial": w.partial,
             "days_in_month": w.days_in_month,
         })).collect::<Vec<_>>(),
@@ -577,10 +592,12 @@ fn build_monthly_payload(code_map: &Mutex<AiCodeMap>, report: &MonthlyReport) ->
             "delta_pp": round1(c.delta_pp),
         })).collect::<Vec<_>>(),
         "max_day": report.max_day.as_ref().map(|d| json!({
-            "date": date_label(&d.date), "minutes": d.active_ms / 60_000,
+            "date": date_label(&d.date),
+            "active_display": fmt_duration(d.active_ms),
         })),
         "min_day": report.min_day.as_ref().map(|d| json!({
-            "date": date_label(&d.date), "minutes": d.active_ms / 60_000,
+            "date": date_label(&d.date),
+            "active_display": fmt_duration(d.active_ms),
         })),
         "categories": report.categories.iter().map(|c| json!({
             "category": category_label(&c.category),
@@ -588,7 +605,7 @@ fn build_monthly_payload(code_map: &Mutex<AiCodeMap>, report: &MonthlyReport) ->
         })).collect::<Vec<_>>(),
         "top_apps": report.top_apps.iter().map(|a| json!({
             "app": code_by_id.get(&a.bundle_id).cloned().unwrap_or_default(),
-            "minutes": a.active_ms / 60_000,
+            "active_display": fmt_duration(a.active_ms),
             "share_pct": round1(a.share_pct),
         })).collect::<Vec<_>>(),
         "new_apps": report.new_apps.iter()
@@ -603,73 +620,69 @@ fn build_monthly_payload(code_map: &Mutex<AiCodeMap>, report: &MonthlyReport) ->
     })
 }
 
-/// 本地模板：月报讲趋势。数字全部来自已算好的 `MonthlyReport`，这里只拼句。
+/// 本地模板：毒舌猫语气，专挑「这个月的趋势」——按周起伏、上下半月占比变化、整月新增。
+/// 数字全部来自已算好的 `MonthlyReport`，这里只拼句；时长一律用格式化好的 `fmt_duration` 结果。
 pub fn template_monthly_narrative(r: &MonthlyReport) -> String {
-    let mut parts: Vec<String> = Vec::new();
+    let mut quips: Vec<String> = Vec::new();
 
-    parts.push(format!(
-        "{}你活跃了 {}，日均 {}{}，有记录 {} 天。",
-        month_label(&r.month_start),
-        fmt_duration(r.active_ms),
-        fmt_duration(r.avg_daily_active_ms),
-        daily_delta_clause(r.prev_month.avg_daily_active_ms, r.avg_daily_active_ms),
-        r.days_with_data
-    ));
-
-    if let Some(shift) = r.half_shift.first() {
-        if shift.delta_pp.abs() >= 0.5 {
-            parts.push(format!(
-                "{}占比从上半月的 {:.0}% {}到下半月的 {:.0}%。",
-                category_label(&shift.category),
-                shift.first_half_share_pct,
-                if shift.delta_pp >= 0.0 { "涨" } else { "落" },
-                shift.second_half_share_pct
+    // 按周起伏最悬殊：只在「完整周」里比，避开月初/月末的半截周。
+    let full_weeks: Vec<_> = r.weeks.iter().filter(|w| !w.partial).collect();
+    if let (Some(max), Some(min)) = (
+        full_weeks.iter().max_by_key(|w| w.active_ms),
+        full_weeks.iter().min_by_key(|w| w.active_ms),
+    ) {
+        if max.active_ms >= min.active_ms * 2 {
+            quips.push(format!(
+                "{}那一周烧了 {{n:{}}}，{}才 {{n:{}}}。{{em:这个月是坐过山车吗?}}",
+                week_label(&max.clip_from, &max.clip_to),
+                fmt_duration(max.active_ms),
+                week_label(&min.clip_from, &min.clip_to),
+                fmt_duration(min.active_ms),
             ));
         }
     }
 
-    if let (Some(max), Some(min)) = (&r.max_day, &r.min_day) {
-        parts.push(format!(
-            "最活跃是 {}（{}），最安静是 {}（{}）。",
-            date_label(&max.date),
-            fmt_duration(max.active_ms),
-            date_label(&min.date),
-            fmt_duration(min.active_ms)
+    // 上下半月占比变化最大的类别。
+    if let Some(shift) = r.half_shift.first() {
+        if shift.delta_pp.abs() >= 0.5 {
+            quips.push(format!(
+                "{}占比从上半月的 {:.0}% {}到下半月的 {:.0}%。{{em:这心思变得挺快?}}",
+                category_label(&shift.category),
+                shift.first_half_share_pct,
+                if shift.delta_pp >= 0.0 { "涨" } else { "落" },
+                shift.second_half_share_pct,
+            ));
+        }
+    }
+
+    // 整月新冒出来的应用。
+    if !r.new_apps.is_empty() {
+        let names: Vec<String> = r.new_apps.iter().map(|a| a.name.clone()).collect();
+        quips.push(format!(
+            "这个月新冒出来 {} 个应用：{}。{{em:又下载了什么好东西?}}",
+            names.len(),
+            names.join("、"),
         ));
     }
 
-    if let Some(top) = r.top_apps.first() {
-        parts.push(format!("在 {} 待得最久。", top.name));
+    if quips.is_empty() {
+        quips.push("这个月居然挑不出毛病。{{em:你确定开机了?}}".to_string());
     }
 
-    if parts.is_empty() {
-        "这个月还没有足够的数据。".to_string()
-    } else {
-        parts.join("")
-    }
+    quips.truncate(3);
+    quips.join("\n")
 }
 
 // ── 文案小工具 ──────────────────────────────────────────────────────────────
 
-/// 日均对比句的尾巴：「，比前 4 周日均多 12%」/「，比上月日均少 8%」。基线为 0 时为空。
-fn daily_delta_clause(baseline_avg: i64, current_avg: i64) -> String {
-    if baseline_avg <= 0 {
-        return String::new();
+/// 零数据报告的专用叙事（手动生成且整个周期 0 桶时用，不调 AI）。三种报各一句毒舌。
+pub fn zero_data_narrative(report_type: &str) -> String {
+    match report_type {
+        "week" => "这一周你一次都没打开过电脑?{{em:人呢}}?",
+        "month" => "这一个月你一次都没打开过电脑?{{em:人呢}}?",
+        _ => "这一天你一次都没打开过电脑?{{em:人呢}}?",
     }
-    let d = delta_pct(current_avg, baseline_avg);
-    format!("，比平时{}", signed_pct_label(d))
-}
-
-fn delta_pct(current: i64, baseline: i64) -> f64 {
-    (current - baseline) as f64 / baseline as f64 * 100.0
-}
-
-fn signed_pct_label(d: f64) -> String {
-    if d >= 0.0 {
-        format!("多 {:.0}%", d)
-    } else {
-        format!("少 {:.0}%", -d)
-    }
+    .to_string()
 }
 
 /// 对比百分比的展示上限：超过视为「多得离谱」，不显示具体数字。

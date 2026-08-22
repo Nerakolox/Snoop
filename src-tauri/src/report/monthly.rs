@@ -64,6 +64,8 @@ pub struct MonthlyReport {
     pub max_day: Option<DayCell>,
     /// 有活跃记录的日子里活跃时长最短的一天。**只给日期和数字**。
     pub min_day: Option<DayCell>,
+    /// 整月逐日（含无记录日，`active_ms = 0` 补位），供「本月节奏」单行网格。
+    pub days: Vec<DayCell>,
     // ── 分布 ──
     pub categories: Vec<CategoryShare>,
     // ── 应用 ──
@@ -133,6 +135,7 @@ pub fn compute_monthly_report(
     let avg_daily_active_ms = div_or_zero(active_ms, days_with_data as i64);
 
     let (max_day, min_day) = pick_extreme_days(conn, &stats)?;
+    let days = build_days(conn, &month_start, &month_end, &by_date)?;
     let prev_month = build_prev_month(conn, &month_start, avg_daily_active_ms)?;
     let weeks = build_weeks(conn, &month_start, &month_end, &by_date, &pairs)?;
     let half_shift = build_half_shift(conn, &pairs)?;
@@ -154,6 +157,7 @@ pub fn compute_monthly_report(
         half_shift,
         max_day,
         min_day,
+        days,
         categories,
         top_apps: top,
         new_apps,
@@ -206,6 +210,34 @@ fn pick_extreme_days(
         }
     };
     Ok((to_cell(max)?, to_cell(min)?))
+}
+
+/// 整月逐日填满（含无记录日），供「本月节奏」单行网格。
+///
+/// 复用已算好的 `by_date`，无桶日补 `(0, 0)`；`dow` 由月首日 `dow_of` 累加推得，
+/// 不逐日查库。返回条数 = 当月自然日天数（28/29/30/31）。
+fn build_days(
+    conn: &Connection,
+    month_start: &str,
+    month_end: &str,
+    by_date: &HashMap<String, (i64, i64)>,
+) -> rusqlite::Result<Vec<DayCell>> {
+    let start_dow = dow_of(conn, month_start)?;
+    let mut out = Vec::new();
+    let mut d = month_start.to_string();
+    let mut offset = 0u8;
+    while d.as_str() <= month_end {
+        let (active_ms, foreground_ms) = by_date.get(&d).copied().unwrap_or((0, 0));
+        out.push(DayCell {
+            date: d.clone(),
+            dow: (start_dow + offset) % 7,
+            active_ms,
+            foreground_ms,
+        });
+        d = add_days(conn, &d, 1)?;
+        offset += 1;
+    }
+    Ok(out)
 }
 
 fn build_prev_month(
@@ -586,5 +618,26 @@ mod tests {
             compute_monthly_report(&conn, "2026-07-19").unwrap().month_start,
             "2026-07-01"
         );
+    }
+
+    // 6) 整月逐日网格：31 天全填、dow 从月首日正确推演（月首日不是周一对）。
+    #[test]
+    fn build_days_fills_whole_month() {
+        let conn = init_db();
+        put(&conn, ts(&conn, &day(3), "09:00:00"), 2 * HOUR, "VS Code");
+
+        let r = compute_monthly_report(&conn, JUL).unwrap();
+        assert_eq!(r.days.len(), 31, "7 月有 31 天");
+        assert_eq!(r.days[0].date, "2026-07-01");
+        assert_eq!(r.days[0].dow, 2, "2026-07-01 是周三 → dow=2");
+        assert_eq!(r.days[4].date, "2026-07-05");
+        assert_eq!(r.days[4].dow, 6, "7 月 5 日是周日");
+        assert_eq!(r.days[5].dow, 0, "周日过后回到周一");
+        assert_eq!(r.days[2].active_ms, 2 * HOUR, "7 月 3 日有记录");
+        assert_eq!(r.days[0].active_ms, 0, "无记录日补 0");
+
+        // 闰年 2 月 29 天。
+        let leap = compute_monthly_report(&conn, "2028-02-01").unwrap();
+        assert_eq!(leap.days.len(), 29);
     }
 }

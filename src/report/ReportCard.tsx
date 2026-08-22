@@ -380,6 +380,67 @@ function ReportMonthWeeks({ weeks }: { weeks: MonthWeek[] }) {
   );
 }
 
+/**
+ * 本月节奏：整月逐日单行网格（N 格 1fr 平分，随当月天数）。有记录 → 品牌紫细条
+ * （最长一天深紫），无记录 → 极淡虚线空框；底部 1/5/10/… 日号刻度。
+ * 下方图例「最活跃 / 最安静」只从有记录的天里选（`max_day`/`min_day` 已在后端筛过）。
+ * 旧库报告没有 `days` 字段，传空数组则整块显示「无数据」。
+ */
+function ReportMonthRhythm({
+  days,
+  maxDay,
+  minDay,
+}: {
+  days: DayCell[];
+  maxDay: DayCell | null;
+  minDay: DayCell | null;
+}) {
+  if (days.length === 0) return <p className="report-card__empty">无数据</p>;
+  const max = Math.max(...days.map((d) => d.active_ms), 1);
+  const maxDate = maxDay?.date ?? null;
+  return (
+    <div className="report-card__monthrhythm">
+      <div
+        className="report-card__monthrhythm-grid"
+        style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}
+      >
+        {days.map((d) => {
+          const hasData = d.active_ms > 0;
+          const dom = Number(d.date.slice(8, 10));
+          const isMax = d.date === maxDate;
+          return (
+            <div key={d.date} className="report-card__monthrhythm-col">
+              <div className="report-card__monthrhythm-track">
+                {hasData ? (
+                  <div
+                    className={`report-card__monthrhythm-fill${
+                      isMax ? " report-card__monthrhythm-fill--max" : ""
+                    }`}
+                    style={{ height: `${Math.max((d.active_ms / max) * 100, 6)}%` }}
+                  />
+                ) : (
+                  <div className="report-card__monthrhythm-empty" />
+                )}
+              </div>
+              {dom === 1 || dom % 5 === 0 ? (
+                <span className="report-card__monthrhythm-tick">{dom}</span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      {maxDay && minDay && (
+        <div className="report-card__bars-legend">
+          <p className="report-card__bars-legend-line">
+            最活跃 {dateLabel(maxDay.date)} · 最安静 {dateLabel(minDay.date)}
+          </p>
+          <p className="report-card__bars-legend-note">（仅在有记录的天里选）</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** 「次日 HH:MM」里的「次日」缩成 0.84em 小前缀，不与时刻同字号。 */
 function SleepTime({ text }: { text: string }) {
   const idx = text.indexOf("次日 ");
@@ -640,6 +701,7 @@ function WeekBody({ detail, icons }: BodyProps) {
 
 function MonthBody({ detail, icons }: BodyProps) {
   const d = (detail as Extract<ReportView, { report_type: "month" }>).data;
+  const days = d.days ?? [];
   const compare =
     d.prev_month.avg_daily_active_ms > 0 ? (
       <HeadDelta prefix="vs 上月日均" pct={d.prev_month.daily_delta_pct} />
@@ -658,43 +720,48 @@ function MonthBody({ detail, icons }: BodyProps) {
       <ReportNarrative text={detail.narrative} />
 
       <section className="report-card__section">
-        <h4 className="report-card__section-title">按周走势</h4>
-        <ReportMonthWeeks weeks={d.weeks} />
+        <h4 className="report-card__section-title">本月节奏</h4>
+        <ReportMonthRhythm days={days} maxDay={d.max_day} minDay={d.min_day} />
       </section>
 
-      {d.half_shift.length > 0 && (
+      <div className="report-card__cols">
+        <section className="report-card__section">
+          <h4 className="report-card__section-title">按周趋势</h4>
+          <ReportMonthWeeks weeks={d.weeks} />
+        </section>
+        <section className="report-card__section">
+          <h4 className="report-card__section-title">
+            分类占比<span className="report-card__section-note">按活跃时长统计</span>
+          </h4>
+          <ReportCategoryStack categories={d.categories} />
+        </section>
+      </div>
+
+      <section className="report-card__section">
+        <h4 className="report-card__section-title">应用 Top 10</h4>
+        <ReportAppBars apps={d.top_apps} icons={icons} />
+      </section>
+
+      <div className="report-card__cols">
+        <section className="report-card__section">
+          <h4 className="report-card__section-title">整月新增</h4>
+          {d.new_apps.length > 0 ? (
+            <div className="report-card__app-change">
+              <span>{d.new_apps.map((a) => a.name).join(" · ")}</span>
+            </div>
+          ) : (
+            <p className="report-card__empty">无数据</p>
+          )}
+        </section>
         <section className="report-card__section">
           <h4 className="report-card__section-title">上半月 vs 下半月</h4>
-          <ReportHalfShift shifts={d.half_shift} />
+          {d.half_shift.length > 0 ? (
+            <ReportHalfShift shifts={d.half_shift} />
+          ) : (
+            <p className="report-card__empty">无数据</p>
+          )}
         </section>
-      )}
-
-      {d.max_day && d.min_day && (
-        <section className="report-card__section">
-          <h4 className="report-card__section-title">峰值日</h4>
-          <div className="report-card__weekend">
-            <span className="report-card__weekend-item">
-              最活跃 {dateLabel(d.max_day.date)} · {formatDurationCompact(d.max_day.active_ms)}
-            </span>
-            <span className="report-card__weekend-item">
-              最安静 {dateLabel(d.min_day.date)} · {formatDurationCompact(d.min_day.active_ms)}
-            </span>
-          </div>
-        </section>
-      )}
-
-      <section className="report-card__section">
-        <h4 className="report-card__section-title">
-          分类占比<span className="report-card__section-note">按活跃时长统计</span>
-        </h4>
-        <ReportCategoryStack categories={d.categories} />
-      </section>
-
-      <section className="report-card__section">
-        <h4 className="report-card__section-title">应用 Top 5</h4>
-        <ReportAppBars apps={d.top_apps.slice(0, 5)} icons={icons} />
-        <ReportAppChange label="整月新增" names={d.new_apps.map((a) => a.name)} />
-      </section>
+      </div>
     </>
   );
 }

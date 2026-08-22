@@ -90,7 +90,7 @@ pub async fn regenerate_report(
     drop(db);
 
     let rtype = report_type.unwrap_or_else(|| "day".to_string());
-    match crate::report::generate_report(&ai.config, &ai.code_map, &db_path, &report_date, &rtype)
+    match crate::report::generate_report(&ai.config, &ai.code_map, &db_path, &report_date, &rtype, true)
         .await
     {
         Ok(Some(view)) => Ok(view),

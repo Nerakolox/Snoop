@@ -194,6 +194,7 @@ export interface MonthlyReport {
   half_shift: CategoryHalfShift[];
   max_day: DayCell | null;
   min_day: DayCell | null;
+  days: DayCell[];
   categories: CategoryShare[];
   top_apps: AppRank[];
   new_apps: AppRef[];

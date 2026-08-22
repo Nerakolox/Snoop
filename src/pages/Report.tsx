@@ -17,7 +17,7 @@ import { useReportIcons } from "../report/icons";
 import ReportSummary from "../report/ReportSummary";
 import Lightbox from "../report/Lightbox";
 import ExportDialog from "../report/ExportDialog";
-import type { ReportMeta, ReportView } from "../report/types";
+import type { ReportKind, ReportMeta, ReportView } from "../report/types";
 import { useContextState } from "../store/context";
 
 function reportKey(type: string, date: string): string {
@@ -127,27 +127,25 @@ export default function Report() {
     }
   }
 
-  // 生成当前 anchor 对应的那份报告（anchor 已按 kind 归一到周期起点）。
-  // 「记录太少」不是失败——后端已落库一行 too_little，这里明确告诉用户原因。
-  async function handleGenerate() {
-    const reportDate = anchor;
+  // 手动生成某个周期（anchor 已按 kind 归一到周期起点；或「记录太少」占位行指定的历史周期）。
+  // 手动生成恒成功：无论多少数据都生成，后端不再返回 too_little 行。
+  async function generateOne(type: ReportKind, date: string) {
     setGenerating(true);
     try {
-      const v = await regenerateReport(reportDate, kind);
+      await regenerateReport(date, type);
       setReports(await getReportList());
-      if (v.status === "too_little") {
-        toast.show({ message: TOO_LITTLE_MSG[kind] });
-        setSelected(null);
-      } else {
-        toast.show({ message: "已生成" });
-        setSelected({ type: kind, date: reportDate });
-      }
+      toast.show({ message: "已生成" });
+      setSelected({ type, date });
     } catch (e) {
       console.error(e);
       toast.show({ message: `生成失败：${String(e)}` });
     } finally {
       setGenerating(false);
     }
+  }
+
+  function handleGenerate() {
+    return generateOne(kind, anchor);
   }
 
   return (
@@ -176,9 +174,17 @@ export default function Report() {
           const key = reportKey(r.report_type, r.report_date);
           if (r.status === "too_little") {
             return (
-              <div key={key} className="report-skip-row" data-report-key={key}>
-                {rowTitle(r.report_type, r.report_date)} · 记录太少
-              </div>
+              <button
+                key={key}
+                type="button"
+                data-report-key={key}
+                className="report-skip-row"
+                onClick={() => generateOne(r.report_type as ReportKind, r.report_date)}
+                disabled={generating}
+                title="手动生成这份报告"
+              >
+                {rowTitle(r.report_type, r.report_date)} · 记录太少 · 点此生成
+              </button>
             );
           }
           if (selected && reportKey(selected.type, selected.date) === key) {
@@ -238,13 +244,6 @@ const KIND_LABEL: Record<ReportMeta["report_type"], string> = {
   day: "日",
   week: "周",
   month: "月",
-};
-
-/** 手动生成落到「记录太少」时的说明。阈值与后端 report 模块一致，这里只做提示文案。 */
-const TOO_LITTLE_MSG: Record<ReportMeta["report_type"], string> = {
-  day: "该日活跃时长不足 30 分钟，已记为「记录太少」",
-  week: "该周有活跃记录不足 3 天，已记为「记录太少」",
-  month: "该月有活跃记录不足 10 天，已记为「记录太少」",
 };
 
 function rowTitle(type: ReportMeta["report_type"], date: string): string {

@@ -128,8 +128,12 @@ fn compute(conn: &rusqlite::Connection, date: &str, rtype: &str) -> Result<Compu
 
 /// 计算某周期的报告、生成叙事、落库。三种报共用这一条路径。
 ///
-/// - `Ok(None)`：无记录（整个周期 0 桶），**不落任何行**，列表天然不显示。
-/// - `Ok(Some)`：`status='ok'` 或 `status='too_little'`（记录太少，无叙事、不调 AI）。
+/// `manual` 区分两种入口：后台自动生成（`false`）与用户手动点「生成这份报告」（`true`）。
+///
+/// - `Ok(None)`：**只发生在自动生成**——无记录（0 桶）或记录太少（`too_little`）都静默跳过，
+///   不落行、不调 AI，列表天然不显示。
+/// - `Ok(Some)`：一律 `status='ok'`。手动生成无论多少数据都生成：零数据出「0 分」+
+///   零数据模板叙事，记录太少也照常走 AI→模板。
 /// - `Err`：计算 / 落库失败。
 pub async fn generate_report(
     config: &AiConfigState,
@@ -137,39 +141,55 @@ pub async fn generate_report(
     db_path: &Path,
     report_date: &str,
     report_type: &str,
+    manual: bool,
 ) -> Result<Option<ReportView>, String> {
     let conn = rusqlite::Connection::open(db_path).map_err(|e| e.to_string())?;
     let _ = conn.execute("PRAGMA journal_mode=WAL", []);
 
     let report = compute(&conn, report_date, report_type)?;
 
-    // 无记录（整个周期 0 桶，等于没采集）：不落任何行。
+    // 无记录（整个周期 0 桶，等于没采集）。
     if report.foreground_ms() == 0 {
+        if !manual {
+            return Ok(None);
+        }
+        // 手动：落 status="ok" 行 + 零数据模板叙事。
+        return write_row(
+            &conn,
+            &report,
+            "ok",
+            Some(narrative::zero_data_narrative(report.report_type())),
+            Some("template".to_string()),
+        );
+    }
+
+    // 记录太少：自动生成跳过（不落行、不调 AI）；手动生成照常生成。
+    if report.too_little() && !manual {
         return Ok(None);
     }
 
-    let (status, narrative, narrative_source) = if report.too_little() {
-        ("too_little", None, None)
-    } else {
-        match &report {
-            Computed::Day(r) => {
-                let (text, source) =
-                    narrative::generate_narrative(config, code_map, db_path, r).await;
-                ("ok", Some(text), Some(source))
-            }
-            Computed::Week(r) => {
-                let (text, source) =
-                    narrative::generate_weekly_narrative(config, code_map, db_path, r).await;
-                ("ok", Some(text), Some(source))
-            }
-            Computed::Month(r) => {
-                let (text, source) =
-                    narrative::generate_monthly_narrative(config, code_map, db_path, r).await;
-                ("ok", Some(text), Some(source))
-            }
+    // 其余（手动 too_little / 有足够数据）一律 status="ok"，走正常叙事。
+    let (text, source) = match &report {
+        Computed::Day(r) => narrative::generate_narrative(config, code_map, db_path, r).await,
+        Computed::Week(r) => {
+            narrative::generate_weekly_narrative(config, code_map, db_path, r).await
+        }
+        Computed::Month(r) => {
+            narrative::generate_monthly_narrative(config, code_map, db_path, r).await
         }
     };
 
+    write_row(&conn, &report, "ok", Some(text), Some(source))
+}
+
+/// 落库 + 组装 `ReportView`。三种报、手动/自动共用这一条写路径。
+fn write_row(
+    conn: &rusqlite::Connection,
+    report: &Computed,
+    status: &str,
+    narrative: Option<String>,
+    narrative_source: Option<String>,
+) -> Result<Option<ReportView>, String> {
     let row = store::ReportRow {
         report_date: report.report_date(),
         report_type: report.report_type().to_string(),
@@ -181,7 +201,7 @@ pub async fn generate_report(
         narrative: narrative.clone(),
         narrative_source: narrative_source.clone(),
     };
-    store::upsert(&conn, &row).map_err(|e| e.to_string())?;
+    store::upsert(conn, &row).map_err(|e| e.to_string())?;
 
     Ok(Some(ReportView {
         report_type: row.report_type.clone(),
@@ -224,7 +244,7 @@ async fn maybe_generate(
     if already_generated(db_path, &date, rtype) {
         return; // 同一周期只生成一次。
     }
-    if let Err(e) = generate_report(config, code_map, db_path, &date, rtype).await {
+    if let Err(e) = generate_report(config, code_map, db_path, &date, rtype, false).await {
         eprintln!("❌ [Report] 生成{label}失败: {e}");
     }
 }

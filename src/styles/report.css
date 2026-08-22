@@ -135,13 +135,26 @@
   color: var(--color-on-accent);
 }
 
-/* 「记录太少」：极简灰色条目，不可点开 */
+/* 「记录太少」：极简灰色条目，可点击手动生成这份报告 */
 .report-skip-row {
+  display: block;
+  width: 100%;
   padding: var(--space-3) var(--space-6);
   color: var(--color-text-3);
   background: var(--color-surface-2);
+  border: none;
   border-radius: var(--radius-md);
   font-size: var(--text-sm);
+  text-align: left;
+  cursor: pointer;
+}
+
+.report-skip-row:hover:not(:disabled) {
+  color: var(--color-text-2);
+}
+
+.report-skip-row:disabled {
+  cursor: default;
 }
 
 /* getReport 返回中的占位：与摘要卡同宽同圆角 */

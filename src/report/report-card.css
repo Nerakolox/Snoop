@@ -574,6 +574,63 @@
   margin: 2px 0 0;
 }
 
+/* ── 本月节奏（31 格单行）───────────────────────────────────────────────── */
+
+.report-card__monthrhythm {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* 单行 N 格，1fr 平分；列模板由组件按当月天数内联写入。 */
+.report-card__monthrhythm-grid {
+  display: grid;
+  gap: 3px;
+}
+
+.report-card__monthrhythm-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.report-card__monthrhythm-track {
+  width: 100%;
+  height: 120px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* 有记录 → 品牌紫细条；最长一天深紫。 */
+.report-card__monthrhythm-fill {
+  width: 70%;
+  background: var(--rc-accent);
+  border-radius: 3px 3px 0 0;
+}
+
+.report-card__monthrhythm-fill--max {
+  background: var(--rc-accent-deep);
+}
+
+/* 无记录 → 整格高极淡虚线空框，不画「<1 秒」的小条。 */
+.report-card__monthrhythm-empty {
+  width: 70%;
+  height: 100%;
+  border: 1.5px dashed var(--rc-border-soft);
+  border-radius: 4px;
+}
+
+.report-card__monthrhythm-tick {
+  font-size: var(--rc-fs-aux);
+  line-height: 1;
+  color: var(--rc-text-3);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── 作息块 ──────────────────────────────────────────────────────────────── */
 
 .report-card__sleep {

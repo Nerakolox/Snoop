@@ -54,10 +54,11 @@ export function formatDuration(ms: number): string {
 
 /**
  * 紧凑时长 —— 海报专用：单位「分」而非「分钟」，整小时省「0 分」，不换算成天。
- * 边界：<1 分钟 →「45 秒」（<1 秒 →「<1 秒」）；<1 小时 →「38 分」；整小时 →「5 小时」；
- * >24 小时（月报）→「128 小时 30 分」。应用内其它页面仍用上面的 `formatDuration`。
+ * 边界：零值 →「0 分」；<1 分钟 →「45 秒」（<1 秒 →「<1 秒」）；<1 小时 →「38 分」；
+ * 整小时 →「5 小时」；>24 小时（月报）→「128 小时 30 分」。应用内其它页面仍用上面的 `formatDuration`。
  */
 export function formatDurationCompact(ms: number): string {
+  if (ms <= 0) return "0 分";
   if (ms < 60_000) {
     const s = Math.round(ms / 1000);
     return s < 1 ? "<1 秒" : `${s} 秒`;
