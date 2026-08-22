@@ -27,10 +27,12 @@ facts 是已经算好的确定事实，数字全部正确。带 `_display` 后�
 写法：\n\
 - 质问式，不是陈述式。发现荒谬处就追问，明知道对方答不上来还非要问。\n\
 - 可以连用问号感叹号，可以急，可以阴阳怪气；可以说教、怼人、人身攻击（互联网语境，不是恶意）。\n\
-- 拿最离谱的点开刀：挂机时长、切换频率、凌晨活跃、某个类别占比高得可疑。\n\
+- 拿最离谱的点开刀：挂机时长、切换频率、凌晨活跃、某个类别占比高得可疑、\n\
+  某个应用「只用了很短时间却开了很多次」（看 facts.open_hog 与 top_apps[].open_count）。\n\
 - 只说图表给不了的东西：这一天的形状、异常点、荒谬的组合；不要复述分类占比表或应用排行的百分比和排名。\n\
 - 说「几个新应用」就要说清是几个、是什么，要么说清要么不说。\n\
 引用某个应用时用 apps 里对应的 code（如 App A），后台会自动换成真名。\n\
+facts.open_hog 是「打开次数最多、但活跃时长可能很短」的应用：app 是代号，active_display 是它的活跃时长，open_count 是打开次数；top_apps[].open_count 是各 Top 应用被打开的次数。若某应用用时短却开得勤，这就是最荒谬的组合，拿它开刀。\n\
 禁止：编造 facts 里没有的事实；自己计算或改写数字；提到窗口标题；拿身体健康和生死开玩笑（不说「猝死」「不要命了」「要出事」这类）。\n\
 标记只有两种：{{n:数字/时长}}、{{em:语气重点}}，不要第三种。\n\
 只输出 JSON 对象：{\"quips\":[\"...\",\"...\"]}，不要 JSON 以外的任何文字。";
@@ -107,6 +109,27 @@ fn build_payload(code_map: &Mutex<AiCodeMap>, report: &DailyReport) -> Value {
         }
     }
 
+    // 每应用打开次数（连续前台段计数），供「只用了很短时间却开了很多次」这类吐槽。
+    let open_by_id: std::collections::HashMap<String, u32> = report
+        .open_counts
+        .iter()
+        .map(|a| (a.bundle_id.clone(), a.open_count))
+        .collect();
+
+    // 打开最频繁但活跃时长可能很短的应用：活跃 ≥ 1 分钟、打开 ≥ 10 次才值得拿来开刀。
+    let open_hog = report
+        .open_counts
+        .iter()
+        .filter(|a| a.active_ms >= 60_000 && a.open_count >= 10)
+        .max_by_key(|a| a.open_count);
+
+    // 它也要进 apps 拿到稳定代号，否则信封层回映不回真名。
+    if let Some(hog) = open_hog {
+        if seen.insert(hog.bundle_id.clone()) {
+            apps_list.push((hog.bundle_id.clone(), hog.name.clone()));
+        }
+    }
+
     let code_by_id: std::collections::HashMap<String, String> = {
         let mut map = code_map.lock().unwrap();
         apps_list
@@ -142,6 +165,7 @@ fn build_payload(code_map: &Mutex<AiCodeMap>, report: &DailyReport) -> Value {
             "app": code_by_id.get(&a.bundle_id).cloned().unwrap_or_default(),
             "minutes": a.active_ms / 60_000,
             "share_pct": round1(a.share_pct),
+            "open_count": open_by_id.get(&a.bundle_id).copied().unwrap_or(0),
         })).collect::<Vec<_>>(),
         "categories": report.categories.iter().map(|c| json!({
             "category": category_label(&c.category),
@@ -157,6 +181,13 @@ fn build_payload(code_map: &Mutex<AiCodeMap>, report: &DailyReport) -> Value {
     });
     if report.switch_count > 0 {
         facts["switch_interval_seconds"] = json!(avg_switch_seconds(report.active_ms, report.switch_count));
+    }
+    if let Some(hog) = open_hog {
+        facts["open_hog"] = json!({
+            "app": code_by_id.get(&hog.bundle_id).cloned().unwrap_or_default(),
+            "active_display": fmt_duration(hog.active_ms),
+            "open_count": hog.open_count,
+        });
     }
 
     json!({

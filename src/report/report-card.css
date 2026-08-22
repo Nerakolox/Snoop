@@ -119,7 +119,7 @@
   flex-direction: column;
   gap: 10px;
   font-size: var(--rc-fs-narrative);
-  line-height: 1.6;
+  line-height: 1.85;
   color: var(--rc-text);
 }
 

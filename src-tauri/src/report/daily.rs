@@ -76,6 +76,10 @@ pub struct DailyReport {
     pub vs_7d: Compare7d,
     /// 今天新出现（此前 30 天未见）的应用。
     pub new_apps: Vec<AppRef>,
+    /// 每应用「打开次数」（连续前台段计数），按打开次数降序。仅叙事 payload 用，
+    /// 不进 `data_json`（前端拿不到、也不需要）。
+    #[serde(skip_serializing, default)]
+    pub open_counts: Vec<AppOpenCount>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -90,6 +94,17 @@ pub struct Compare7d {
     pub avg_switch_count: f64,
     pub active_delta_pct: f64,
     pub switch_delta_pct: f64,
+}
+
+/// 某应用今天被「打开」的次数与活跃时长（供叙事吐槽「只用了 X 分钟却开了 N 次」）。
+#[derive(Serialize, Deserialize, Clone)]
+pub struct AppOpenCount {
+    pub bundle_id: String,
+    pub name: String,
+    /// 打开次数 = 按 bundle_id 的连续前台段数（相邻桶同 id 算同一段）。
+    pub open_count: u32,
+    /// 该应用全天有输入时长（与 top_apps 口径一致）。
+    pub active_ms: i64,
 }
 
 // ── 查询 ────────────────────────────────────────────────────────────────────
@@ -222,6 +237,40 @@ fn new_apps(conn: &Connection, date: &str, today: &[RawBucket]) -> rusqlite::Res
     Ok(out)
 }
 
+/// 每应用「打开次数」= 按 bundle_id 的连续前台段数（相邻桶同 id 算同一段，段数即打开次数）。
+/// `active_ms` 取该应用全天有输入时长（与 [`super::common::top_apps`] 口径一致）。
+/// 按打开次数降序返回（首元素即「打开最频繁」的应用）。
+///
+/// 覆盖**所有**前台桶（不含输入桶也算被打开过）——「打开」是前台事件，与是否产生输入无关。
+fn open_counts(buckets: &[RawBucket]) -> Vec<AppOpenCount> {
+    let mut opens: HashMap<String, u32> = HashMap::new();
+    let mut active: HashMap<String, i64> = HashMap::new();
+    let mut name: HashMap<String, String> = HashMap::new();
+    let mut prev: Option<&str> = None;
+    for b in buckets {
+        let id = b.app_bundle_id.as_str();
+        if prev != Some(id) {
+            *opens.entry(id.to_string()).or_insert(0) += 1;
+        }
+        prev = Some(id);
+        name.insert(id.to_string(), b.app_name.clone());
+        if b.is_active() {
+            *active.entry(id.to_string()).or_insert(0) += b.duration_ms;
+        }
+    }
+    let mut v: Vec<AppOpenCount> = opens
+        .into_iter()
+        .map(|(id, n)| AppOpenCount {
+            bundle_id: id.clone(),
+            name: name.get(&id).cloned().unwrap_or_default(),
+            open_count: n,
+            active_ms: active.get(&id).copied().unwrap_or(0),
+        })
+        .collect();
+    v.sort_by(|a, b| b.open_count.cmp(&a.open_count).then_with(|| a.bundle_id.cmp(&b.bundle_id)));
+    v
+}
+
 // ── 入口 ────────────────────────────────────────────────────────────────────
 
 /// 计算某本地日的日报。`date` 形如 'YYYY-MM-DD'。
@@ -244,6 +293,7 @@ pub fn compute_daily_report(conn: &Connection, date: &str) -> rusqlite::Result<D
     let longest_focus = longest_focus(&buckets);
     let vs_7d = compare_7d(conn, date, active_ms, switch_count)?;
     let new_apps = new_apps(conn, date, &buckets)?;
+    let open_counts = open_counts(&buckets);
 
     Ok(DailyReport {
         date: date.to_string(),
@@ -259,6 +309,7 @@ pub fn compute_daily_report(conn: &Connection, date: &str) -> rusqlite::Result<D
         longest_focus,
         vs_7d,
         new_apps,
+        open_counts,
     })
 }
 
@@ -469,5 +520,23 @@ mod tests {
 
         let r1 = compute_daily_report(&conn, &d1).unwrap();
         assert_eq!(r1.foreground_ms, 0, "次日不应重复计入该桶");
+    }
+
+    // 8) 打开次数只数连续前台段；纯挂机桶也算「被打开」但不计入活跃时长。
+    #[test]
+    fn open_counts_contiguous_runs() {
+        let buckets = vec![
+            bucket(0, 5_000, "A", 1),
+            bucket(5_000, 5_000, "A", 0), // 同段挂机桶：仍算 A 打开中，不增次数
+            bucket(10_000, 5_000, "B", 1),
+            bucket(15_000, 5_000, "A", 1), // A 再次前台 = 第二段
+        ];
+        let oc = open_counts(&buckets);
+        assert_eq!(oc.len(), 2);
+        let a = oc.iter().find(|x| x.bundle_id == "A").unwrap();
+        assert_eq!(a.open_count, 2, "A 两段连续前台 = 2 次打开");
+        assert_eq!(a.active_ms, 10_000, "挂机桶不计入活跃时长");
+        let b = oc.iter().find(|x| x.bundle_id == "B").unwrap();
+        assert_eq!(b.open_count, 1);
     }
 }
