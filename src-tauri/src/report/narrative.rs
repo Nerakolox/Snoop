@@ -177,8 +177,8 @@ fn build_payload(code_map: &Mutex<AiCodeMap>, report: &DailyReport) -> Value {
             "share_pct": round1(c.share_pct),
         })).collect::<Vec<_>>(),
         "vs_7d": json!({
-            "active_delta_pct": round1(report.vs_7d.active_delta_pct),
-            "switch_delta_pct": round1(report.vs_7d.switch_delta_pct),
+            "active_delta_display": delta_label(report.vs_7d.active_delta_pct),
+            "switch_delta_display": delta_label(report.vs_7d.switch_delta_pct),
         }),
         "new_apps": report.new_apps.iter()
             .map(|a| code_by_id.get(&a.bundle_id).cloned().unwrap_or_default())
@@ -621,6 +621,20 @@ fn signed_pct_label(d: f64) -> String {
         format!("多 {:.0}%", d)
     } else {
         format!("少 {:.0}%", -d)
+    }
+}
+
+/// 对比百分比的展示上限：超过视为「多得离谱」，不显示具体数字。
+const DELTA_CAP_PCT: f64 = 300.0;
+
+/// 涨幅/跌幅百分比 → 展示文案。正数超上限 → 「远超平时」；否则「↑ N%」/「↓ N%」。
+fn delta_label(pct: f64) -> String {
+    if pct > DELTA_CAP_PCT {
+        "远超平时".to_string()
+    } else if pct >= 0.0 {
+        format!("↑ {:.0}%", pct)
+    } else {
+        format!("↓ {:.0}%", -pct)
     }
 }
 

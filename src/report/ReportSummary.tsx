@@ -13,7 +13,7 @@
 import type { ReactNode } from "react";
 import type { ReportView } from "./types";
 import { formatDuration } from "../utils/format";
-import { dateLabel, monthLabel, weekRangeLabel } from "./format";
+import { BASELINE_MIN_DAILY_MS, dateLabel, deltaLabel, monthLabel, weekRangeLabel } from "./format";
 import { renderQuips } from "./markup";
 import type { ResolvedIconMap } from "./icons";
 import ReportCard from "./ReportCard";
@@ -115,12 +115,7 @@ function MiniBars({ cells }: { cells: { active_ms: number }[] }) {
 }
 
 function DeltaText({ pct }: { pct: number }) {
-  const up = pct >= 0;
-  return (
-    <>
-      {up ? "↑" : "↓"} {Math.abs(pct).toFixed(0)}%
-    </>
-  );
+  return <>{deltaLabel(pct)}</>;
 }
 
 /** AI 吐槽段（应用内正文字号，行高 1.75）。标记由 markup.tsx 统一渲染。 */
@@ -175,10 +170,14 @@ function DayMain({ detail, icons }: { detail: Extract<ReportView, { report_type:
         bars={d.hourly}
         compare={
           d.vs_7d.avg_active_ms > 0 ? (
-            <p className="report-summary__compare">
-              近 7 天：活跃 <DeltaText pct={d.vs_7d.active_delta_pct} /> · 切换{" "}
-              <DeltaText pct={d.vs_7d.switch_delta_pct} />
-            </p>
+            d.vs_7d.avg_active_ms >= BASELINE_MIN_DAILY_MS ? (
+              <p className="report-summary__compare">
+                近 7 天：活跃 <DeltaText pct={d.vs_7d.active_delta_pct} /> · 切换{" "}
+                <DeltaText pct={d.vs_7d.switch_delta_pct} />
+              </p>
+            ) : (
+              <p className="report-summary__compare">记录时间还不够，过几天再来对比</p>
+            )
           ) : null
         }
       />
@@ -202,11 +201,13 @@ function WeekMain({ detail, icons }: { detail: Extract<ReportView, { report_type
         icons={icons}
         bars={d.days}
         compare={
-          d.baseline.avg_daily_active_ms > 0 ? (
+          d.baseline.baseline_sufficient ? (
             <p className="report-summary__compare">
               vs 前 4 周：日均 <DeltaText pct={d.baseline.daily_delta_pct} />
             </p>
-          ) : null
+          ) : (
+            <p className="report-summary__compare">记录时间还不够，下周开始对比</p>
+          )
         }
       />
     </>

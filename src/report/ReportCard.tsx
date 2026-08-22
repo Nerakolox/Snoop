@@ -31,7 +31,7 @@ import type {
 } from "./types";
 import { formatDuration, formatSharePct } from "../utils/format";
 import { CATEGORY_LABEL, shareColorLight } from "../ai/categories";
-import { DOW_LABELS, dateLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
+import { BASELINE_MIN_DAILY_MS, DOW_LABELS, dateLabel, deltaLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
 import { EXPORT_WIDTH } from "./export";
 import { renderQuips } from "./markup";
 import type { ResolvedIconMap } from "./icons";
@@ -133,7 +133,13 @@ function ReportCategoryStack({ categories }: { categories: CategoryShare[] }) {
   );
 }
 
-function ReportCategoryDeltaBars({ categories }: { categories: CategoryDelta[] }) {
+function ReportCategoryDeltaBars({
+  categories,
+  showDelta,
+}: {
+  categories: CategoryDelta[];
+  showDelta: boolean;
+}) {
   const shown = categories.filter((c) => c.active_ms > 0);
   if (shown.length === 0) return <p className="report-card__empty">无数据</p>;
   return (
@@ -147,10 +153,12 @@ function ReportCategoryDeltaBars({ categories }: { categories: CategoryDelta[] }
           <span className="report-card__cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
           <span className="report-card__cat-time">{formatDuration(c.active_ms)}</span>
           <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
-          <span className="report-card__cat-delta">
-            {c.share_delta_pp >= 0 ? "↑" : "↓"}
-            {Math.abs(c.share_delta_pp).toFixed(1)}pp
-          </span>
+          {showDelta && (
+            <span className="report-card__cat-delta">
+              {c.share_delta_pp >= 0 ? "↑" : "↓"}
+              {Math.abs(c.share_delta_pp).toFixed(1)}pp
+            </span>
+          )}
         </div>
       ))}
     </div>
@@ -308,13 +316,10 @@ function ReportHalfShift({ shifts }: { shifts: CategoryHalfShift[] }) {
 }
 
 function ReportDelta({ label, pct }: { label: string; pct: number }) {
-  const up = pct >= 0;
   return (
     <div className="report-card__compare-item">
       <span className="report-card__compare-label">{label}</span>
-      <span className="report-card__compare-value">
-        {up ? "↑" : "↓"} {Math.abs(pct).toFixed(0)}%
-      </span>
+      <span className="report-card__compare-value">{deltaLabel(pct)}</span>
     </div>
   );
 }
@@ -398,10 +403,14 @@ function DayBody({ detail, icons }: BodyProps) {
       {d.vs_7d.avg_active_ms > 0 && (
         <section className="report-card__section">
           <h4 className="report-card__section-title">近 7 天对比</h4>
-          <div className="report-card__head-delta">
-            <ReportDelta label="活跃时长" pct={d.vs_7d.active_delta_pct} />
-            <ReportDelta label="切换次数" pct={d.vs_7d.switch_delta_pct} />
-          </div>
+          {d.vs_7d.avg_active_ms >= BASELINE_MIN_DAILY_MS ? (
+            <div className="report-card__head-delta">
+              <ReportDelta label="活跃时长" pct={d.vs_7d.active_delta_pct} />
+              <ReportDelta label="切换次数" pct={d.vs_7d.switch_delta_pct} />
+            </div>
+          ) : (
+            <p className="report-card__baseline-pending">记录时间还不够，过几天再来对比</p>
+          )}
         </section>
       )}
     </>
@@ -420,10 +429,12 @@ function WeekBody({ detail, icons }: BodyProps) {
           日均 {formatDuration(d.avg_daily_active_ms)} · 前台时长{" "}
           {formatDuration(d.foreground_ms)}
         </div>
-        {d.baseline.avg_daily_active_ms > 0 && (
+        {d.baseline.baseline_sufficient ? (
           <div className="report-card__head-delta">
             <ReportDelta label="vs 前 4 周日均" pct={d.baseline.daily_delta_pct} />
           </div>
+        ) : (
+          <p className="report-card__baseline-pending">记录时间还不够，下周开始对比</p>
         )}
       </div>
 
@@ -443,9 +454,15 @@ function WeekBody({ detail, icons }: BodyProps) {
 
       <section className="report-card__section">
         <h4 className="report-card__section-title">
-          分类占比<span className="report-card__section-note">vs 前 4 周 · 按活跃时长统计</span>
+          分类占比
+          <span className="report-card__section-note">
+            {d.baseline.baseline_sufficient ? "vs 前 4 周 · 按活跃时长统计" : "按活跃时长统计"}
+          </span>
         </h4>
-        <ReportCategoryDeltaBars categories={d.categories} />
+        <ReportCategoryDeltaBars
+          categories={d.categories}
+          showDelta={d.baseline.baseline_sufficient}
+        />
       </section>
 
       <section className="report-card__section">

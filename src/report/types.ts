@@ -79,6 +79,7 @@ export interface Baseline4w {
   avg_daily_active_ms: number;
   avg_weekly_active_ms: number;
   daily_delta_pct: number;
+  baseline_sufficient: boolean;
 }
 
 export interface DayCell {

@@ -39,6 +39,14 @@ use super::common::{
 const BASELINE_DAYS: i64 = 28;
 const BASELINE_WEEKS: usize = 4;
 
+/// 「vs 前 4 周」出百分比的基线门槛：前 4 周至少 8 天有活跃记录。
+///
+/// 少于 8 天时基线只覆盖了零星几天，`daily_delta_pct` 的分母趋近 0，
+/// 会得出「比平时多 33194%」这种假数字 —— 那段时间只是还没开始记录。
+const BASELINE_MIN_DAYS: u32 = 8;
+/// 「vs 前 4 周」出百分比的基线门槛：基线日均至少 30 分钟。
+const BASELINE_MIN_DAILY_MS: i64 = 30 * 60 * 1000;
+
 /// 「消失的应用」的常用门槛：前 4 周累计活跃 ≥ 60 分钟。
 ///
 /// 单设门槛是为了挡掉「装一次、试了半小时就再没打开」这种一次性应用 ——
@@ -105,6 +113,10 @@ pub struct Baseline4w {
     /// 用**日均**而不是周总量做头条对比：本周只有 3 天数据、基线周有 7 天时，
     /// 比总量会得出「暴跌 60%」这种假结论。
     pub daily_delta_pct: f64,
+    /// 基线是否够格出百分比（≥ 8 天且日均 ≥ 30 分钟，见 [`BASELINE_MIN_DAYS`] /
+    /// [`BASELINE_MIN_DAILY_MS`]）。不足时前端不出数字、换成「记录时间还不够」，
+    /// 叙事也不引用 `daily_delta_pct`。
+    pub baseline_sufficient: bool,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -345,6 +357,8 @@ fn build_baseline(
     }
 
     let avg_daily_active_ms = div_or_zero(total_active, days_with_data as i64);
+    let baseline_sufficient =
+        days_with_data >= BASELINE_MIN_DAYS && avg_daily_active_ms >= BASELINE_MIN_DAILY_MS;
     Ok(Baseline4w {
         from_date: from.to_string(),
         to_date: to.to_string(),
@@ -353,6 +367,7 @@ fn build_baseline(
         avg_daily_active_ms,
         avg_weekly_active_ms: div_or_zero(total_active, weeks_counted as i64),
         daily_delta_pct: delta_pct(this_week_avg_daily, avg_daily_active_ms),
+        baseline_sufficient,
     })
 }
 
@@ -922,6 +937,7 @@ mod tests {
         assert_eq!(r.baseline.avg_daily_active_ms, 0);
         assert_eq!(r.baseline.avg_weekly_active_ms, 0);
         assert_eq!(r.baseline.daily_delta_pct, 0.0);
+        assert!(!r.baseline.baseline_sufficient, "空基线不算充足");
         assert_eq!(r.rhythm_summary.baseline_avg_start_min, None);
     }
 
@@ -937,5 +953,33 @@ mod tests {
         assert_eq!(r.week_end, day_of(&conn, MON, 6));
         assert_eq!(r.days[2].date, wed);
         assert_eq!(r.days[2].dow, 2);
+    }
+
+    // 9) 基线充足性门槛：≥ 8 天且日均 ≥ 30 分钟才出百分比。
+    #[test]
+    fn baseline_sufficiency_thresholds() {
+        // 8 天、每天 1 小时 → 日均 1 小时 ≥ 30 分钟，充足。
+        let conn = init_db();
+        for i in 1..=8i64 {
+            workday(&conn, &day_of(&conn, MON, -i), "09:00:00", HOUR);
+        }
+        for i in 0..3i64 {
+            workday(&conn, &day_of(&conn, MON, i), "09:00:00", 2 * HOUR);
+        }
+        let r = compute_weekly_report(&conn, MON).unwrap();
+        assert_eq!(r.baseline.days_with_data, 8);
+        assert!(r.baseline.baseline_sufficient);
+
+        // 同样 8 天，但每天只有 5 分钟 → 日均 5 分钟 < 30 分钟，不足。
+        let conn = init_db();
+        for i in 1..=8i64 {
+            workday(&conn, &day_of(&conn, MON, -i), "09:00:00", 5 * MIN);
+        }
+        for i in 0..3i64 {
+            workday(&conn, &day_of(&conn, MON, i), "09:00:00", 2 * HOUR);
+        }
+        let r = compute_weekly_report(&conn, MON).unwrap();
+        assert_eq!(r.baseline.days_with_data, 8);
+        assert!(!r.baseline.baseline_sufficient, "日均不足 30 分钟不算充足");
     }
 }

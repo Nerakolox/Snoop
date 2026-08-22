@@ -38,3 +38,15 @@ export function formatSleepMin(min: number): string {
   const mm = String(rem % 60).padStart(2, "0");
   return day > 0 ? `次日 ${hh}:${mm}` : `${hh}:${mm}`;
 }
+
+/** 对比百分比的展示上限：超过视为「多得离谱」，只显示「远超平时」，不显示具体数字。 */
+export const DELTA_CAP_PCT = 300;
+
+/** 「vs 前 4 周」「近 7 天」出百分比的基线门槛：基线日均至少 30 分钟。 */
+export const BASELINE_MIN_DAILY_MS = 30 * 60 * 1000;
+
+/** 涨幅/跌幅百分比 → 展示文案。正数超上限 → 「远超平时」；否则「↑ N%」/「↓ N%」。 */
+export function deltaLabel(pct: number): string {
+  if (pct > DELTA_CAP_PCT) return "远超平时";
+  return `${pct >= 0 ? "↑" : "↓"} ${Math.abs(pct).toFixed(0)}%`;
+}

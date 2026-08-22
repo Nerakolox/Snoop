@@ -112,6 +112,13 @@
   gap: 48px;
 }
 
+/* 基线不足时的占位句：替掉「vs 前 4 周」/「近 7 天」的百分比。 */
+.report-card__baseline-pending {
+  margin: 20px 0 0;
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-3);
+}
+
 /* ── 叙事 ────────────────────────────────────────────────────────────────── */
 
 .report-card__narrative {
