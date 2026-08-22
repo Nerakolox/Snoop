@@ -52,6 +52,23 @@ export function formatDuration(ms: number): string {
   return m > 0 ? `${h} 小时 ${m} 分钟` : `${h} 小时`;
 }
 
+/**
+ * 紧凑时长 —— 海报专用：单位「分」而非「分钟」，整小时省「0 分」，不换算成天。
+ * 边界：<1 分钟 →「45 秒」（<1 秒 →「<1 秒」）；<1 小时 →「38 分」；整小时 →「5 小时」；
+ * >24 小时（月报）→「128 小时 30 分」。应用内其它页面仍用上面的 `formatDuration`。
+ */
+export function formatDurationCompact(ms: number): string {
+  if (ms < 60_000) {
+    const s = Math.round(ms / 1000);
+    return s < 1 ? "<1 秒" : `${s} 秒`;
+  }
+  const totalMin = Math.floor(ms / 60_000);
+  if (totalMin < 60) return `${totalMin} 分`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m > 0 ? `${h} 小时 ${m} 分` : `${h} 小时`;
+}
+
 /** 占比百分比：小于 0.1% 显示「<0.1%」，避免「0.0%」看起来像没有数据。 */
 export function formatSharePct(pct: number): string {
   return pct > 0 && pct < 0.1 ? "<0.1%" : `${pct.toFixed(1)}%`;

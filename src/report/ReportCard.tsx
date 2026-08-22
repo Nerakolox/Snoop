@@ -7,16 +7,19 @@
  *
  * 版式规范（见 report-card.css 的 `--rc-*` token）：
  *   - 固定 1000px 宽，高度按内容自适应（不锁比例、不裁切）
- *   - 左右边距 66px、模块间距 46px、模块内元素间距 16px
- *   - 字号 5 档：大数字 / 模块标题 / 正文 / 数值 / 辅助（数字一律 mono）
+ *   - 左右边距 70px、模块间距 52px、模块标题到内容 18px
+ *   - 字号 5 档：大数字 / 模块标题 / 吐槽正文 / 数据行 / 辅助（数字一律 mono）
+ *   - 顶部是 T4「数据条」：大数字 + 活跃/前台堆叠条 + 吐槽框
  *   - footer 整条品牌紫，与顶部紫色大数字首尾呼应
  *   - 固定浅色（发给别人看的图不该是深色），应用内也保持同一张浅色「报告纸」
  *
+ * 海报内时长一律用 `formatDurationCompact`（单位「分」），应用内其它页面保持「分钟」。
  * 所有图片资源（Snoop 图标 / 二维码 `?inline`、app 图标 data URI）都是 data URI，
  * 保证 foreignObject → canvas 不被污染。
  */
 
 import { memo } from "react";
+import type { ReactNode } from "react";
 import type {
   AppRank,
   CategoryDelta,
@@ -29,7 +32,7 @@ import type {
   RhythmDay,
   RhythmSummary,
 } from "./types";
-import { formatDuration, formatSharePct } from "../utils/format";
+import { formatDurationCompact, formatSharePct } from "../utils/format";
 import { CATEGORY_LABEL, shareColorLight } from "../ai/categories";
 import { BASELINE_MIN_DAILY_MS, DOW_LABELS, dateLabel, deltaLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
 import { EXPORT_WIDTH } from "./export";
@@ -75,6 +78,99 @@ function ReportIcon({
   );
 }
 
+// ── 顶部区（T4 数据条）──────────────────────────────────────────────────────
+
+const KIND_BADGE: Record<ReportView["report_type"], string> = {
+  day: "日报",
+  week: "周报",
+  month: "月报",
+};
+
+/** 标题行右端的对比槽：充足时中性色 ↑↓，不足时「记录时间还不够」。 */
+function HeadDelta({ prefix, pct }: { prefix: string; pct: number }) {
+  return (
+    <span className="report-card__head-compare">
+      {prefix} {deltaLabel(pct)}
+    </span>
+  );
+}
+
+function HeadPending({ text }: { text: string }) {
+  return (
+    <span className="report-card__head-compare report-card__head-compare--pending">{text}</span>
+  );
+}
+
+/**
+ * 三报共用的 T4 头部：标题行（日期 + 徽章 + 右端对比槽）→ 大数字 + 说明 →
+ * 活跃/前台堆叠条 → 图例。堆叠条深紫段 = 有输入，浅紫段 = 前台无输入。
+ */
+function ReportHead({
+  title,
+  badge,
+  compare,
+  activeMs,
+  foregroundMs,
+  sub,
+}: {
+  title: string;
+  badge: string;
+  compare: ReactNode;
+  activeMs: number;
+  foregroundMs: number;
+  sub: string;
+}) {
+  const idleMs = Math.max(0, foregroundMs - activeMs);
+  const total = Math.max(foregroundMs, 1);
+  const activePct = Math.min(100, (activeMs / total) * 100);
+  const idlePct = Math.min(100, (idleMs / total) * 100);
+  return (
+    <div className="report-card__head">
+      <div className="report-card__head-top">
+        <div className="report-card__head-identity">
+          <span className="report-card__head-title">{title}</span>
+          <span className="report-card__head-badge">{badge}</span>
+        </div>
+        {compare}
+      </div>
+
+      <div className="report-card__head-hero">
+        <div className="report-card__head-active">{formatDurationCompact(activeMs)}</div>
+        <div className="report-card__head-meta">
+          <span className="report-card__head-label">活跃时长（有键鼠输入）</span>
+          <span className="report-card__head-sub">{sub}</span>
+        </div>
+      </div>
+
+      <div className="report-card__head-bar">
+        <div className="report-card__head-stack">
+          {activeMs > 0 && (
+            <div className="report-card__head-stack-active" style={{ width: `${activePct}%` }} />
+          )}
+          {idleMs > 0 && (
+            <div className="report-card__head-stack-idle" style={{ width: `${idlePct}%` }} />
+          )}
+        </div>
+        <div className="report-card__head-legend">
+          <span className="report-card__head-legend-item">
+            <span className="report-card__head-dot report-card__head-dot--active" />
+            有输入 <span className="report-card__head-legend-num">{formatDurationCompact(activeMs)}</span>
+          </span>
+          <span className="report-card__head-legend-item">
+            <span className="report-card__head-dot report-card__head-dot--idle" />
+            前台无输入{" "}
+            <span className="report-card__head-legend-num">{formatDurationCompact(idleMs)}</span>
+          </span>
+          <span className="report-card__head-legend-total">
+            前台合计{" "}
+            <span className="report-card__head-legend-num">{formatDurationCompact(foregroundMs)}</span>
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ReportAppBars({ apps, icons }: { apps: AppRank[]; icons: ResolvedIconMap | null }) {
   if (apps.length === 0) return <p className="report-card__empty">无数据</p>;
   const max = Math.max(...apps.map((a) => a.active_ms), 1);
@@ -93,7 +189,7 @@ function ReportAppBars({ apps, icons }: { apps: AppRank[]; icons: ResolvedIconMa
             />
           </div>
           <div className="report-card__app-meta">
-            <span>{formatDuration(a.active_ms)}</span>
+            <span>{formatDurationCompact(a.active_ms)}</span>
             <span className="report-card__app-pct">{a.share_pct.toFixed(0)}%</span>
           </div>
         </div>
@@ -102,11 +198,23 @@ function ReportAppBars({ apps, icons }: { apps: AppRank[]; icons: ResolvedIconMa
   );
 }
 
+/** 极小类别（<1 分钟）合并成一行尾注：`文档、其他 2 类均不足 1 分钟，合计 <0.1%`。 */
+function categoryTinyNote(
+  categories: { category: string; active_ms: number; share_pct: number }[],
+): string | null {
+  const tiny = categories.filter((c) => c.active_ms > 0 && c.active_ms < 60_000);
+  if (tiny.length === 0) return null;
+  const names = tiny.map((c) => CATEGORY_LABEL[c.category] ?? c.category).join("、");
+  const share = tiny.reduce((s, c) => s + c.share_pct, 0);
+  return `${names} ${tiny.length} 类均不足 1 分钟，合计 ${formatSharePct(share)}`;
+}
+
 function ReportCategoryStack({ categories }: { categories: CategoryShare[] }) {
   const shown = categories.filter((c) => c.active_ms > 0);
   if (shown.length === 0) return <p className="report-card__empty">无数据</p>;
+  const tinyNote = categoryTinyNote(shown);
   return (
-    <>
+    <div className="report-card__cat">
       <div className="report-card__cat-stack">
         {shown.map((c, i) => (
           <div
@@ -117,19 +225,19 @@ function ReportCategoryStack({ categories }: { categories: CategoryShare[] }) {
         ))}
       </div>
       <div className="report-card__cat-legend">
-        {shown.map((c, i) => (
-          <div key={c.category} className="report-card__cat-row">
-            <span
-              className="report-card__cat-swatch"
-              style={{ background: shareColorLight(i) }}
-            />
-            <span className="report-card__cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
-            <span className="report-card__cat-time">{formatDuration(c.active_ms)}</span>
-            <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
-          </div>
-        ))}
+        {shown.map((c, i) =>
+          c.active_ms >= 60_000 ? (
+            <div key={c.category} className="report-card__cat-row">
+              <span className="report-card__cat-swatch" style={{ background: shareColorLight(i) }} />
+              <span className="report-card__cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
+              <span className="report-card__cat-time">{formatDurationCompact(c.active_ms)}</span>
+              <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
+            </div>
+          ) : null,
+        )}
+        {tinyNote && <p className="report-card__cat-note">{tinyNote}</p>}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -142,25 +250,26 @@ function ReportCategoryDeltaBars({
 }) {
   const shown = categories.filter((c) => c.active_ms > 0);
   if (shown.length === 0) return <p className="report-card__empty">无数据</p>;
+  const tinyNote = categoryTinyNote(shown);
   return (
     <div className="report-card__cat-legend">
-      {shown.map((c, i) => (
-        <div key={c.category} className="report-card__cat-row">
-          <span
-            className="report-card__cat-swatch"
-            style={{ background: shareColorLight(i) }}
-          />
-          <span className="report-card__cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
-          <span className="report-card__cat-time">{formatDuration(c.active_ms)}</span>
-          <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
-          {showDelta && (
-            <span className="report-card__cat-delta">
-              {c.share_delta_pp >= 0 ? "↑" : "↓"}
-              {Math.abs(c.share_delta_pp).toFixed(1)}pp
-            </span>
-          )}
-        </div>
-      ))}
+      {shown.map((c, i) =>
+        c.active_ms >= 60_000 ? (
+          <div key={c.category} className="report-card__cat-row">
+            <span className="report-card__cat-swatch" style={{ background: shareColorLight(i) }} />
+            <span className="report-card__cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
+            <span className="report-card__cat-time">{formatDurationCompact(c.active_ms)}</span>
+            <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
+            {showDelta && (
+              <span className="report-card__cat-delta">
+                {c.share_delta_pp >= 0 ? "↑" : "↓"}
+                {Math.abs(c.share_delta_pp).toFixed(1)}pp
+              </span>
+            )}
+          </div>
+        ) : null,
+      )}
+      {tinyNote && <p className="report-card__cat-note">{tinyNote}</p>}
     </div>
   );
 }
@@ -209,30 +318,40 @@ function ReportWeekBars({
           const hasData = d.active_ms > 0;
           return (
             <div key={d.date} className="report-card__bars-col">
-              <span
-                className={`report-card__bars-value${hasData ? "" : " report-card__bars-value--empty"}`}
-              >
-                {hasData ? formatDuration(d.active_ms) : "—"}
-              </span>
               <div className="report-card__bars-track report-card__bars-track--week">
                 {hasData ? (
-                  <div
-                    className={`report-card__bars-fill${d.date === maxDay ? " report-card__bars-fill--max" : ""}`}
-                    style={{ height: `${Math.max((d.active_ms / max) * 100, 2)}%` }}
-                  />
+                  <>
+                    <span className="report-card__bars-value">
+                      {formatDurationCompact(d.active_ms)}
+                    </span>
+                    <div
+                      className={`report-card__bars-fill${
+                        d.date === maxDay ? " report-card__bars-fill--max" : ""
+                      }`}
+                      style={{ height: `${Math.max((d.active_ms / max) * 100, 2)}%` }}
+                    />
+                  </>
                 ) : (
-                  <div className="report-card__bars-empty" />
+                  <>
+                    <span className="report-card__bars-value report-card__bars-value--empty">—</span>
+                    <div className="report-card__bars-empty" />
+                  </>
                 )}
               </div>
-              <span className="report-card__bars-day">{DOW_LABELS[d.dow]}</span>
+              <span className={`report-card__bars-day${hasData ? "" : " report-card__bars-day--empty"}`}>
+                {DOW_LABELS[d.dow]}
+              </span>
             </div>
           );
         })}
       </div>
       {maxDay && minDay && (
-        <p className="report-card__bars-legend">
-          最高 {dateLabel(maxDay)} · 最低 {dateLabel(minDay)}
-        </p>
+        <div className="report-card__bars-legend">
+          <p className="report-card__bars-legend-line">
+            最高 {dateLabel(maxDay)} · 最低 {dateLabel(minDay)}
+          </p>
+          <p className="report-card__bars-legend-note">（仅统计有记录的天）</p>
+        </div>
       )}
     </>
   );
@@ -258,6 +377,19 @@ function ReportMonthWeeks({ weeks }: { weeks: MonthWeek[] }) {
         </div>
       ))}
     </div>
+  );
+}
+
+/** 「次日 HH:MM」里的「次日」缩成 0.84em 小前缀，不与时刻同字号。 */
+function SleepTime({ text }: { text: string }) {
+  const idx = text.indexOf("次日 ");
+  if (idx === -1) return <>{text}</>;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <span className="report-card__sleep-nextday">次日</span>
+      {text.slice(idx + 2)}
+    </>
   );
 }
 
@@ -292,7 +424,7 @@ function ReportSleep({ days, summary }: { days: RhythmDay[]; summary: RhythmSumm
             <div key={d.date} className="report-card__sleep-row">
               <span className="report-card__sleep-day">{DOW_LABELS[i]}</span>
               <span className="report-card__sleep-times">
-                {start} → {end}
+                <SleepTime text={start} /> → <SleepTime text={end} />
               </span>
               {!d.counted && d.active_ms > 0 && (
                 <span className="report-card__sleep-note">未计入均值</span>
@@ -336,15 +468,6 @@ function ReportHalfShift({ shifts }: { shifts: CategoryHalfShift[] }) {
           </span>
         </div>
       ))}
-    </div>
-  );
-}
-
-function ReportDelta({ label, pct }: { label: string; pct: number }) {
-  return (
-    <div className="report-card__compare-item">
-      <span className="report-card__compare-label">{label}</span>
-      <span className="report-card__compare-value">{deltaLabel(pct)}</span>
     </div>
   );
 }
@@ -395,16 +518,24 @@ type BodyProps = {
 
 function DayBody({ detail, icons }: BodyProps) {
   const d = (detail as Extract<ReportView, { report_type: "day" }>).data;
+  const compare =
+    d.vs_7d.avg_active_ms > 0 ? (
+      d.vs_7d.avg_active_ms >= BASELINE_MIN_DAILY_MS ? (
+        <HeadDelta prefix="近 7 天" pct={d.vs_7d.active_delta_pct} />
+      ) : (
+        <HeadPending text="记录时间还不够，过几天再来对比" />
+      )
+    ) : null;
   return (
     <>
-      <div className="report-card__head">
-        <div className="report-card__head-title">{dateLabel(d.date)}</div>
-        <div className="report-card__head-label">活跃时长（有输入）</div>
-        <div className="report-card__head-active">{formatDuration(d.active_ms)}</div>
-        <div className="report-card__head-sub">
-          前台时长 {formatDuration(d.foreground_ms)} · 切换 {d.switch_count} 次
-        </div>
-      </div>
+      <ReportHead
+        title={dateLabel(d.date)}
+        badge={KIND_BADGE.day}
+        compare={compare}
+        activeMs={d.active_ms}
+        foregroundMs={d.foreground_ms}
+        sub={`切换 ${d.switch_count} 次`}
+      />
 
       <ReportNarrative text={detail.narrative} />
 
@@ -424,51 +555,33 @@ function DayBody({ detail, icons }: BodyProps) {
         <h4 className="report-card__section-title">24 小时节奏</h4>
         <ReportRhythm hourly={d.hourly} />
       </section>
-
-      {d.vs_7d.avg_active_ms > 0 && (
-        <section className="report-card__section">
-          <h4 className="report-card__section-title">近 7 天对比</h4>
-          {d.vs_7d.avg_active_ms >= BASELINE_MIN_DAILY_MS ? (
-            <div className="report-card__head-delta">
-              <ReportDelta label="活跃时长" pct={d.vs_7d.active_delta_pct} />
-              <ReportDelta label="切换次数" pct={d.vs_7d.switch_delta_pct} />
-            </div>
-          ) : (
-            <p className="report-card__baseline-pending">记录时间还不够，过几天再来对比</p>
-          )}
-        </section>
-      )}
     </>
   );
 }
 
-/** 工作日/周末日均文案：无记录 → 「无记录」；仅 1 天 → 标注「基于 1 天」。 */
+/** 工作日/周末日均文案：无记录 → 「无记录」；有记录一律标「基于 N 天」。 */
 function weekdayWeekendLabel(kind: string, days: number, avgMs: number): string {
   if (days === 0) return `${kind}无记录`;
-  const avg = `${kind}日均 ${formatDuration(avgMs)}`;
-  return days === 1 ? `${avg}（基于 1 天）` : avg;
+  return `${kind}日均 ${formatDurationCompact(avgMs)}（基于 ${days} 天）`;
 }
 
 function WeekBody({ detail, icons }: BodyProps) {
   const d = (detail as Extract<ReportView, { report_type: "week" }>).data;
+  const compare = d.baseline.baseline_sufficient ? (
+    <HeadDelta prefix="vs 前 4 周日均" pct={d.baseline.daily_delta_pct} />
+  ) : (
+    <HeadPending text="记录时间还不够，下周开始对比" />
+  );
   return (
     <>
-      <div className="report-card__head">
-        <div className="report-card__head-title">{weekRangeLabel(d.week_start)}</div>
-        <div className="report-card__head-label">活跃时长（有输入）</div>
-        <div className="report-card__head-active">{formatDuration(d.active_ms)}</div>
-        <div className="report-card__head-sub">
-          日均 {formatDuration(d.avg_daily_active_ms)} · 前台时长{" "}
-          {formatDuration(d.foreground_ms)}
-        </div>
-        {d.baseline.baseline_sufficient ? (
-          <div className="report-card__head-delta">
-            <ReportDelta label="vs 前 4 周日均" pct={d.baseline.daily_delta_pct} />
-          </div>
-        ) : (
-          <p className="report-card__baseline-pending">记录时间还不够，下周开始对比</p>
-        )}
-      </div>
+      <ReportHead
+        title={weekRangeLabel(d.week_start)}
+        badge={KIND_BADGE.week}
+        compare={compare}
+        activeMs={d.active_ms}
+        foregroundMs={d.foreground_ms}
+        sub={`日均 ${formatDurationCompact(d.avg_daily_active_ms)}`}
+      />
 
       <ReportNarrative text={detail.narrative} />
 
@@ -477,66 +590,70 @@ function WeekBody({ detail, icons }: BodyProps) {
         <ReportWeekBars days={d.days} maxDay={d.max_day} minDay={d.min_day} />
       </section>
 
-      {d.rhythm_summary.days_counted >= 3 && (
+      <div className="report-card__cols">
+        {d.rhythm_summary.days_counted >= 3 && (
+          <section className="report-card__section">
+            <h4 className="report-card__section-title">作息</h4>
+            <ReportSleep days={d.rhythm} summary={d.rhythm_summary} />
+          </section>
+        )}
         <section className="report-card__section">
-          <h4 className="report-card__section-title">作息</h4>
-          <ReportSleep days={d.rhythm} summary={d.rhythm_summary} />
+          <h4 className="report-card__section-title">
+            分类占比
+            <span className="report-card__section-note">
+              {d.baseline.baseline_sufficient ? "vs 前 4 周 · 按活跃时长统计" : "按活跃时长统计"}
+            </span>
+          </h4>
+          <ReportCategoryDeltaBars
+            categories={d.categories}
+            showDelta={d.baseline.baseline_sufficient}
+          />
         </section>
-      )}
-
-      <section className="report-card__section">
-        <h4 className="report-card__section-title">
-          分类占比
-          <span className="report-card__section-note">
-            {d.baseline.baseline_sufficient ? "vs 前 4 周 · 按活跃时长统计" : "按活跃时长统计"}
-          </span>
-        </h4>
-        <ReportCategoryDeltaBars
-          categories={d.categories}
-          showDelta={d.baseline.baseline_sufficient}
-        />
-      </section>
+      </div>
 
       <section className="report-card__section">
         <h4 className="report-card__section-title">应用 Top 5</h4>
         <ReportAppBars apps={d.top_apps.slice(0, 5)} icons={icons} />
-        <ReportAppChange label="本周新出现" names={d.new_apps.map((a) => a.name)} />
-        <ReportAppChange label="本周消失" names={d.gone_apps.map((a) => a.name)} />
       </section>
 
-      <section className="report-card__section">
-        <h4 className="report-card__section-title">工作日 vs 周末</h4>
-        <div className="report-card__weekend">
-          <span>
-            {weekdayWeekendLabel("工作日", d.weekday_weekend.weekday_days, d.weekday_weekend.weekday_avg_active_ms)}
-          </span>
-          <span>
-            {weekdayWeekendLabel("周末", d.weekday_weekend.weekend_days, d.weekday_weekend.weekend_avg_active_ms)}
-          </span>
-        </div>
-      </section>
+      <div className="report-card__cols">
+        <section className="report-card__section">
+          <h4 className="report-card__section-title">应用变动</h4>
+          <ReportAppChange label="本周新出现" names={d.new_apps.map((a) => a.name)} />
+          <ReportAppChange label="本周消失" names={d.gone_apps.map((a) => a.name)} />
+        </section>
+        <section className="report-card__section">
+          <h4 className="report-card__section-title">工作日 vs 周末</h4>
+          <div className="report-card__weekend">
+            <span className="report-card__weekend-item">
+              {weekdayWeekendLabel("工作日", d.weekday_weekend.weekday_days, d.weekday_weekend.weekday_avg_active_ms)}
+            </span>
+            <span className="report-card__weekend-item">
+              {weekdayWeekendLabel("周末", d.weekday_weekend.weekend_days, d.weekday_weekend.weekend_avg_active_ms)}
+            </span>
+          </div>
+        </section>
+      </div>
     </>
   );
 }
 
 function MonthBody({ detail, icons }: BodyProps) {
   const d = (detail as Extract<ReportView, { report_type: "month" }>).data;
+  const compare =
+    d.prev_month.avg_daily_active_ms > 0 ? (
+      <HeadDelta prefix="vs 上月日均" pct={d.prev_month.daily_delta_pct} />
+    ) : null;
   return (
     <>
-      <div className="report-card__head">
-        <div className="report-card__head-title">{monthLabel(d.month_start)}</div>
-        <div className="report-card__head-label">活跃时长（有输入）</div>
-        <div className="report-card__head-active">{formatDuration(d.active_ms)}</div>
-        <div className="report-card__head-sub">
-          日均 {formatDuration(d.avg_daily_active_ms)} · 前台时长{" "}
-          {formatDuration(d.foreground_ms)} · 有记录 {d.days_with_data} 天
-        </div>
-        {d.prev_month.avg_daily_active_ms > 0 && (
-          <div className="report-card__head-delta">
-            <ReportDelta label="vs 上月日均" pct={d.prev_month.daily_delta_pct} />
-          </div>
-        )}
-      </div>
+      <ReportHead
+        title={monthLabel(d.month_start)}
+        badge={KIND_BADGE.month}
+        compare={compare}
+        activeMs={d.active_ms}
+        foregroundMs={d.foreground_ms}
+        sub={`日均 ${formatDurationCompact(d.avg_daily_active_ms)} · 有记录 ${d.days_with_data} 天`}
+      />
 
       <ReportNarrative text={detail.narrative} />
 
@@ -556,11 +673,11 @@ function MonthBody({ detail, icons }: BodyProps) {
         <section className="report-card__section">
           <h4 className="report-card__section-title">峰值日</h4>
           <div className="report-card__weekend">
-            <span>
-              最活跃 {dateLabel(d.max_day.date)} · {formatDuration(d.max_day.active_ms)}
+            <span className="report-card__weekend-item">
+              最活跃 {dateLabel(d.max_day.date)} · {formatDurationCompact(d.max_day.active_ms)}
             </span>
-            <span>
-              最安静 {dateLabel(d.min_day.date)} · {formatDuration(d.min_day.active_ms)}
+            <span className="report-card__weekend-item">
+              最安静 {dateLabel(d.min_day.date)} · {formatDurationCompact(d.min_day.active_ms)}
             </span>
           </div>
         </section>
