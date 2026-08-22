@@ -96,6 +96,18 @@ export default function Report() {
     setSelected({ type, date });
   }
 
+  // 灯箱左右方向键：在「当前报型」的列表里切换相邻报告，加载其详情。到边界时静默不动。
+  function navigateLightbox(dir: -1 | 1) {
+    if (!selected) return;
+    const idx = filtered.findIndex(
+      (r) => reportKey(r.report_type, r.report_date) === reportKey(selected.type, selected.date),
+    );
+    if (idx === -1) return;
+    const next = filtered[idx + dir];
+    if (!next) return;
+    openReport(next.report_type, next.report_date);
+  }
+
   async function handleRegenerate() {
     if (!selected) return;
     setRegenerating(true);
@@ -207,7 +219,16 @@ export default function Report() {
       </PageShell>
       {exporting && <ExportDialog detail={exporting} onClose={() => setExporting(null)} />}
       {lightboxOpen && detail && (
-        <Lightbox detail={detail} icons={reportIcons} onClose={() => setLightboxOpen(false)} />
+        <Lightbox
+          detail={detail}
+          icons={reportIcons}
+          onClose={() => setLightboxOpen(false)}
+          onExport={() => {
+            setLightboxOpen(false);
+            setExporting(detail);
+          }}
+          onNavigate={navigateLightbox}
+        />
       )}
     </>
   );

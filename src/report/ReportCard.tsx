@@ -16,6 +16,7 @@
  * 保证 foreignObject → canvas 不被污染。
  */
 
+import { memo } from "react";
 import type {
   AppRank,
   CategoryDelta,
@@ -528,7 +529,7 @@ function MonthBody({ detail, icons }: BodyProps) {
   );
 }
 
-export default function ReportCard({
+function ReportCard({
   detail,
   icons,
   showFooter = false,
@@ -552,3 +553,6 @@ export default function ReportCard({
     </div>
   );
 }
+
+// memo：灯箱缩放/平移只改 .lightbox__scaled 的 transform，props 不变时跳过整棵海报 DOM 的重渲染。
+export default memo(ReportCard);
