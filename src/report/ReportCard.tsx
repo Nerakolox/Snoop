@@ -205,17 +205,29 @@ function ReportWeekBars({
   return (
     <>
       <div className="report-card__bars">
-        {days.map((d) => (
-          <div key={d.date} className="report-card__bars-col">
-            <div className="report-card__bars-track report-card__bars-track--week">
-              <div
-                className={`report-card__bars-fill${d.date === maxDay ? " report-card__bars-fill--max" : ""}`}
-                style={{ height: `${Math.max((d.active_ms / max) * 100, 2)}%` }}
-              />
+        {days.map((d) => {
+          const hasData = d.active_ms > 0;
+          return (
+            <div key={d.date} className="report-card__bars-col">
+              <span
+                className={`report-card__bars-value${hasData ? "" : " report-card__bars-value--empty"}`}
+              >
+                {hasData ? formatDuration(d.active_ms) : "—"}
+              </span>
+              <div className="report-card__bars-track report-card__bars-track--week">
+                {hasData ? (
+                  <div
+                    className={`report-card__bars-fill${d.date === maxDay ? " report-card__bars-fill--max" : ""}`}
+                    style={{ height: `${Math.max((d.active_ms / max) * 100, 2)}%` }}
+                  />
+                ) : (
+                  <div className="report-card__bars-empty" />
+                )}
+              </div>
+              <span className="report-card__bars-day">{DOW_LABELS[d.dow]}</span>
             </div>
-            <span className="report-card__bars-day">{DOW_LABELS[d.dow]}</span>
-          </div>
-        ))}
+          );
+        })}
       </div>
       {maxDay && minDay && (
         <p className="report-card__bars-legend">

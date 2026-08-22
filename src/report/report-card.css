@@ -392,6 +392,27 @@
   background: var(--rc-accent-deep);
 }
 
+/* 周报：每根条上方的人读时长；无记录的天用「—」弱化。 */
+.report-card__bars-value {
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-2);
+  font-family: var(--rc-font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.report-card__bars-value--empty {
+  color: var(--rc-text-3);
+}
+
+/* 无记录的天：虚线空框占位，不画「<1 秒」的小条。 */
+.report-card__bars-empty {
+  width: 62%;
+  height: 10px;
+  border: 1.5px dashed var(--rc-border);
+  border-radius: 5px;
+}
+
 .report-card__bars-day {
   font-size: var(--rc-fs-aux);
   color: var(--rc-text-2);
