@@ -18,8 +18,7 @@ import ReportSummary from "../report/ReportSummary";
 import Lightbox from "../report/Lightbox";
 import ExportDialog from "../report/ExportDialog";
 import type { ReportMeta, ReportView } from "../report/types";
-import { normalizeAnchor, useContextState } from "../store/context";
-import DatePicker from "../components/shared/DatePicker";
+import { useContextState } from "../store/context";
 
 function reportKey(type: string, date: string): string {
   return `${type}:${date}`;
@@ -37,8 +36,7 @@ export default function Report() {
   const [exporting, setExporting] = useState<ReportView | null>(null);
   // 海报灯箱：点缩略图打开，展示当前详情那份完整海报。
   const [lightboxOpen, setLightboxOpen] = useState(false);
-  // 手动生成：选一个日期，按当前 kind 归一到周期起点生成。默认当前浏览的 anchor。
-  const [genDate, setGenDate] = useState(anchor);
+  // 生成当前 anchor 对应的那份报告。
   const [generating, setGenerating] = useState(false);
   const toast = useToast();
   const listRef = useRef<HTMLDivElement>(null);
@@ -81,6 +79,8 @@ export default function Report() {
 
   // 当前全局 (kind, anchor) 对应的那份报告。anchor 恒已按 kind 归一化（当天/周一/月首）。
   const currentKey = reportKey(kind, anchor);
+  // 该周期报告是否已存在（含「记录太少」）：决定列表位显示空状态还是「生成这份报告」。
+  const hasCurrent = reports.some((r) => reportKey(r.report_type, r.report_date) === currentKey);
 
   // anchor 变化（或列表初次就绪）时，滚动定位到当前周期那份报告，只滚一次。
   const scrolledKeyRef = useRef<string | null>(null);
@@ -115,10 +115,10 @@ export default function Report() {
     }
   }
 
-  // 手动生成：指定日期按当前 kind 归一周期起点，覆盖已存在的那份。
+  // 生成当前 anchor 对应的那份报告（anchor 已按 kind 归一到周期起点）。
   // 「记录太少」不是失败——后端已落库一行 too_little，这里明确告诉用户原因。
   async function handleGenerate() {
-    const reportDate = normalizeAnchor(kind, genDate);
+    const reportDate = anchor;
     setGenerating(true);
     try {
       const v = await regenerateReport(reportDate, kind);
@@ -141,23 +141,24 @@ export default function Report() {
   return (
     <>
       <PageShell className="report-page" header={<ReportHeader />}>
-      <div className="report-toolbar">
-        <span className="report-toolbar-label">生成{KIND_LABEL[kind]}报</span>
-        <DatePicker value={genDate} onChange={setGenDate} />
-        <button
-          type="button"
-          className="report-gen-btn"
-          onClick={handleGenerate}
-          disabled={generating}
-        >
-          {generating ? "生成中…" : "生成"}
-        </button>
-        {generating && <span className="report-gen-hint">AI 生成中，稍等…</span>}
-      </div>
-
       <div className="report-list" ref={listRef}>
-        {filtered.length === 0 && (
-          <p className="report-empty">还没有报告，明天回来看看喵～</p>
+        {!hasCurrent && (
+          <div className="report-generate">
+            <p className="report-generate-text">
+              {filtered.length === 0
+                ? `还没有${KIND_LABEL[kind]}报`
+                : `${rowTitle(kind, anchor)} 还没有报告`}
+            </p>
+            <button
+              type="button"
+              className="report-generate-btn"
+              onClick={handleGenerate}
+              disabled={generating}
+            >
+              {generating ? "生成中…" : "生成这份报告"}
+            </button>
+            {generating && <span className="report-generate-hint">AI 生成中，稍等…</span>}
+          </div>
         )}
         {filtered.map((r) => {
           const key = reportKey(r.report_type, r.report_date);
