@@ -417,6 +417,13 @@ function DayBody({ detail, icons }: BodyProps) {
   );
 }
 
+/** 工作日/周末日均文案：无记录 → 「无记录」；仅 1 天 → 标注「基于 1 天」。 */
+function weekdayWeekendLabel(kind: string, days: number, avgMs: number): string {
+  if (days === 0) return `${kind}无记录`;
+  const avg = `${kind}日均 ${formatDuration(avgMs)}`;
+  return days === 1 ? `${avg}（基于 1 天）` : avg;
+}
+
 function WeekBody({ detail, icons }: BodyProps) {
   const d = (detail as Extract<ReportView, { report_type: "week" }>).data;
   return (
@@ -475,8 +482,12 @@ function WeekBody({ detail, icons }: BodyProps) {
       <section className="report-card__section">
         <h4 className="report-card__section-title">工作日 vs 周末</h4>
         <div className="report-card__weekend">
-          <span>工作日日均 {formatDuration(d.weekday_weekend.weekday_avg_active_ms)}</span>
-          <span>周末日均 {formatDuration(d.weekday_weekend.weekend_avg_active_ms)}</span>
+          <span>
+            {weekdayWeekendLabel("工作日", d.weekday_weekend.weekday_days, d.weekday_weekend.weekday_avg_active_ms)}
+          </span>
+          <span>
+            {weekdayWeekendLabel("周末", d.weekday_weekend.weekend_days, d.weekday_weekend.weekend_avg_active_ms)}
+          </span>
         </div>
       </section>
     </>
