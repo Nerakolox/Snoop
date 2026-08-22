@@ -7,8 +7,9 @@
  *
  * 版式规范（见 report-card.css 的 `--rc-*` token）：
  *   - 固定 1000px 宽，高度按内容自适应（不锁比例、不裁切）
- *   - 左右边距 64px、模块间距 40px、模块内元素间距 16px
- *   - 字号 5 档：大数字 / 模块标题 / 正文 / 辅助 / 数值（数字一律 mono）
+ *   - 左右边距 66px、模块间距 46px、模块内元素间距 16px
+ *   - 字号 5 档：大数字 / 模块标题 / 正文 / 数值 / 辅助（数字一律 mono）
+ *   - footer 整条品牌紫，与顶部紫色大数字首尾呼应
  *   - 固定浅色（发给别人看的图不该是深色），应用内也保持同一张浅色「报告纸」
  *
  * 所有图片资源（Snoop 图标 / 二维码 `?inline`、app 图标 data URI）都是 data URI，
@@ -336,12 +337,19 @@ function ReportFooter() {
   return (
     <div className="report-card__footer">
       <div className="report-card__footer-brand">
-        <img className="report-card__footer-icon" src={snoopIconInline} alt="Snoop" />
-        <span className="report-card__footer-name">Snoop</span>
+        <span className="report-card__footer-icon">
+          <img src={snoopIconInline} alt="" />
+        </span>
+        <span className="report-card__footer-brand-text">
+          <span className="report-card__footer-name">Snoop</span>
+          <span className="report-card__footer-tagline">安静地记录你的一天</span>
+        </span>
       </div>
       <div className="report-card__footer-link">
         <span className="report-card__footer-url">snoop.feedra.org</span>
-        <img className="report-card__footer-qr" src={qrInline} alt="snoop.feedra.org" />
+        <span className="report-card__footer-qr">
+          <img src={qrInline} alt="snoop.feedra.org" />
+        </span>
       </div>
     </div>
   );

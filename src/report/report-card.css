@@ -5,9 +5,9 @@
  * 必须连 box-sizing / 字体栈 / 全部 token 一起内嵌）。
  *
  * 版式规范收敛为 `--rc-*` token，散落各处的硬编码全部删除：
- *   --rc-margin-x  左右边距 64px（所有模块左右对齐到同一条线）
- *   --rc-gap-section 模块间距 40px；--rc-gap-item 模块内元素间距 16px
- *   --rc-fs-* 字号 5 档：hero 大数字 / title 模块标题 / body 正文 / aux 辅助 / value 数值
+ *   --rc-margin-x  左右边距 66px（所有模块左右对齐到同一条线，footer 也是）
+ *   --rc-gap-section 模块间距 46px；--rc-gap-item 模块内元素间距 16px
+ *   --rc-fs-* 字号 5 档：hero 大数字 / title 模块标题 / body 正文 / value 数值 / aux 辅助
  *   --rc-font-mono 数字一律等宽
  *
  * 固定浅色：这是发给别人看的「报告纸」，应用内即便深色模式也保持浅色，与导出图一致。
@@ -17,18 +17,17 @@
 
 .report-card {
   /* —— 版式 —— */
-  --rc-margin-x: 64px;
-  --rc-gap-section: 40px;
+  --rc-margin-x: 66px;
+  --rc-gap-section: 46px;
   --rc-gap-item: 16px;
   --rc-pad-y: 64px;
 
   /* —— 字号层级（5 档）—— */
-  --rc-fs-hero: 84px; /* 大数字 */
-  --rc-fs-title: 32px; /* 模块标题 / 报头日期 */
-  --rc-fs-body: 26px; /* 正文 */
-  --rc-fs-aux: 22px; /* 辅助文字 */
-  --rc-fs-value: 26px; /* 数值 */
-  --rc-fs-narrative: 20px; /* 叙事段（毒舌吐槽，比正文小） */
+  --rc-fs-hero: 78px; /* 大数字 */
+  --rc-fs-title: 14px; /* 模块标题 */
+  --rc-fs-body: 20px; /* 正文 / 叙事 */
+  --rc-fs-value: 18px; /* 数值 */
+  --rc-fs-aux: 13.5px; /* 辅助文字 */
 
   /* —— 数字等宽 —— */
   --rc-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
@@ -92,7 +91,7 @@
   font-size: var(--rc-fs-hero);
   line-height: 1.05;
   font-weight: 800;
-  letter-spacing: -1px;
+  letter-spacing: -0.04em;
   color: var(--rc-accent);
   font-family: var(--rc-font-mono);
   font-variant-numeric: tabular-nums;
@@ -101,6 +100,7 @@
 .report-card__head-sub {
   margin-top: 8px;
   font-size: var(--rc-fs-aux);
+  letter-spacing: -0.04em;
   color: var(--rc-text-2);
   font-family: var(--rc-font-mono);
   font-variant-numeric: tabular-nums;
@@ -118,7 +118,7 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
-  font-size: var(--rc-fs-narrative);
+  font-size: var(--rc-fs-body);
   line-height: 1.85;
   color: var(--rc-text);
 }
@@ -151,7 +151,7 @@
 .report-card__section-title {
   font-size: var(--rc-fs-title);
   font-weight: 600;
-  letter-spacing: 0.5px;
+  letter-spacing: 0;
   color: var(--rc-text-3);
   margin: 0;
 }
@@ -511,49 +511,83 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* ── footer ──────────────────────────────────────────────────────────────── */
+/* ── footer（整条品牌紫，与顶部紫色大数字首尾呼应）─────────────────────────── */
 
 .report-card__footer {
   flex-shrink: 0;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  /* 左右与内容区同一条线（64px）；上留白 32px、下留白略小，分隔线用最淡一档 */
-  padding: 32px var(--rc-margin-x) 24px;
-  border-top: 1px solid var(--rc-border);
+  /* 左右与内容区同一条线（--rc-margin-x）；上下一整条品牌紫实色 */
+  padding: 38px var(--rc-margin-x);
+  background: var(--rc-accent);
 }
 
 .report-card__footer-brand {
   display: flex;
   align-items: center;
-  gap: var(--rc-gap-item);
+  gap: 12px;
 }
 
 .report-card__footer-icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.report-card__footer-icon img {
+  width: 100%;
+  height: 100%;
   object-fit: contain;
 }
 
-.report-card__footer-name {
-  font-size: var(--rc-fs-title);
-  font-weight: 700;
-  color: var(--rc-text-2);
+.report-card__footer-brand-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
 }
 
+.report-card__footer-name {
+  font-size: 23px;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.report-card__footer-tagline {
+  font-size: 13.5px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* 品牌与二维码之间用 margin-left:auto 推开，不手写间距 */
 .report-card__footer-link {
+  margin-left: auto;
   display: flex;
   align-items: center;
   gap: var(--rc-gap-item);
 }
 
 .report-card__footer-url {
-  font-size: var(--rc-fs-aux);
-  color: var(--rc-text-3);
+  font-family: var(--rc-font-mono);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
 }
 
+/* 白色底板 + 内边距，深色底上仍能扫 */
 .report-card__footer-qr {
-  width: 80px;
-  height: 80px;
+  flex-shrink: 0;
+  width: 82px;
+  height: 82px;
+  padding: 6px;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.report-card__footer-qr img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
 }
