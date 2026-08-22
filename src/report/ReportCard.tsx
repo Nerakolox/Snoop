@@ -1,9 +1,9 @@
 /**
- * 报告卡片 —— 应用内详情卡与「导出成图」共用的**同一份**版式。
+ * 报告卡片（海报）—— 应用内缩略图、灯箱、「导出成图」三处共用的**同一份**版式。
  *
- * 应用内与导出图不再是两套独立实现：本组件就是唯一真源。应用内渲染时 `showFooter=false`
- * （底部操作按钮由页面在卡片外单独放置，不进导出图）；导出时 `showFooter=true`，多一条
- * footer（Snoop 品牌 + 域名 + 二维码）。
+ * 版式只有这一份真源：固定 1000px 宽、高度按内容自适应。`showFooter` 控制是否渲染
+ * footer（Snoop 品牌 + 域名 + 二维码），三处都渲染完整海报。收起交互不再在卡片内
+ * （见 ReportSummary 的头部），本组件只负责「海报」本身。
  *
  * 版式规范（见 report-card.css 的 `--rc-*` token）：
  *   - 固定 1000px 宽，高度按内容自适应（不锁比例、不裁切）
@@ -532,21 +532,13 @@ export default function ReportCard({
   detail,
   icons,
   showFooter = false,
-  onCollapse,
 }: {
   detail: ReportView;
   icons: ResolvedIconMap | null;
   showFooter?: boolean;
-  /** 应用内详情卡右上角的「收起 ↑」；导出图（showFooter）不传，绝不进成品图。 */
-  onCollapse?: () => void;
 }) {
   return (
     <div className="report-card" style={{ width: EXPORT_WIDTH }}>
-      {onCollapse && (
-        <button type="button" className="report-card__collapse" onClick={onCollapse}>
-          收起 ↑
-        </button>
-      )}
       <div className="report-card__body">
         {detail.report_type === "week" ? (
           <WeekBody detail={detail} icons={icons} />
