@@ -42,6 +42,8 @@
   --rc-accent: #6d5ae6;
   --rc-accent-deep: #4f3dce;
 
+  /* 「收起」按钮（应用内详情卡才渲染，见 ReportCard 的 onCollapse）绝对定位锚点 */
+  position: relative;
   box-sizing: border-box;
   background: var(--rc-surface);
   color: var(--rc-text);
@@ -65,6 +67,29 @@
   flex-direction: column;
   gap: var(--rc-gap-section);
   padding: var(--rc-pad-y) var(--rc-margin-x) 48px;
+}
+
+/* 「收起 ↑」—— 应用内详情卡右上角，落在卡片顶部 padding 区、与报头日期同一条线；
+   导出图不渲染（onCollapse 不传），本规则只服务于应用内那张卡。 */
+.report-card__collapse {
+  position: absolute;
+  top: var(--rc-pad-y);
+  right: var(--rc-margin-x);
+  appearance: none;
+  border: 1px solid var(--rc-border);
+  background: var(--rc-surface);
+  color: var(--rc-text-2);
+  font-family: inherit;
+  font-size: 20px;
+  line-height: 1;
+  padding: 8px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.report-card__collapse:hover {
+  color: var(--rc-accent);
+  border-color: var(--rc-accent);
 }
 
 /* ── 头部 ────────────────────────────────────────────────────────────────── */

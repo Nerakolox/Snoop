@@ -68,6 +68,11 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  /* 与展开后的详情卡同宽对齐：列表和卡片都封顶 1000px(=EXPORT_WIDTH) 并居中，
+     收起/展开切换时左右边缘不跳。 */
+  width: 100%;
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
 .report-empty {
@@ -150,37 +155,41 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  align-items: flex-start;
 }
 
-.report-collapse {
-  appearance: none;
-  border: none;
-  background: none;
-  color: var(--color-text-2);
-  font: inherit;
-  cursor: pointer;
-  padding: 0;
-}
-
-.report-collapse:hover {
-  color: var(--color-accent);
-}
-
-/* ---- 展开详情：卡片 + 底部操作按钮，1000px 容器内居中 ---- */
+/* ---- 展开详情：等比缩放的卡片 + 底部操作按钮 ---- */
 .report-detail {
-  width: 1000px;
-  max-width: 100%;
+  width: 100%;
+  max-width: 1000px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
+/* 缩放舞台 —— 定位上下文 + 裁剪。卡片 absolute 脱离文档流，transform:scale 不改布局尺寸，
+   舞台高度由 JS 按「卡片实测高 × scale」显式给定，避免下方按钮悬空在内容被裁掉的高度上。 */
+.report-detail__stage {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+/* 缩放层 —— 定宽 1000px(=EXPORT_WIDTH，与卡片内联宽一致)，左缘锚在舞台中线，
+   translateX(-50%) 用自身半宽左移实现居中；与 scale 组合后：容器<1000 时恰好铺满容器，
+   容器≥1000(scale 封顶 1)时居中一张 1000px 卡。 */
+.report-detail__scaled {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1000px;
+  transform-origin: top center;
+}
+
 /* getReport 返回中的等宽占位，与卡片同宽同圆角 */
 .report-card-loading {
-  width: 1000px;
-  max-width: 100%;
+  width: 100%;
+  max-width: 1000px;
   margin: 0 auto;
   min-height: 360px;
   display: flex;

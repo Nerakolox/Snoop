@@ -532,13 +532,21 @@ export default function ReportCard({
   detail,
   icons,
   showFooter = false,
+  onCollapse,
 }: {
   detail: ReportView;
   icons: ResolvedIconMap | null;
   showFooter?: boolean;
+  /** 应用内详情卡右上角的「收起 ↑」；导出图（showFooter）不传，绝不进成品图。 */
+  onCollapse?: () => void;
 }) {
   return (
     <div className="report-card" style={{ width: EXPORT_WIDTH }}>
+      {onCollapse && (
+        <button type="button" className="report-card__collapse" onClick={onCollapse}>
+          收起 ↑
+        </button>
+      )}
       <div className="report-card__body">
         {detail.report_type === "week" ? (
           <WeekBody detail={detail} icons={icons} />

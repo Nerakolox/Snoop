@@ -7,7 +7,7 @@
  * 应用内只是少一条 footer、多一行底部操作按钮（导出成图 / 重新生成）。
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import PageShell from "../components/PageShell";
 import { useToast } from "../components/shared/Toast";
 import { formatDuration } from "../utils/format";
@@ -15,6 +15,7 @@ import { getReport, getReportList, regenerateReport } from "../report/client";
 import { dateLabel, monthLabel, weekRangeLabel } from "../report/format";
 import { useReportIcons } from "../report/icons";
 import ReportCard from "../report/ReportCard";
+import { EXPORT_WIDTH } from "../report/export";
 import ExportDialog from "../report/ExportDialog";
 import type { ReportMeta, ReportView } from "../report/types";
 import { normalizeAnchor, useContextState } from "../store/context";
@@ -168,19 +169,13 @@ export default function Report() {
           if (selected && reportKey(selected.type, selected.date) === key) {
             return (
               <div key={key} className="report-expanded">
-                <button
-                  type="button"
-                  className="report-collapse"
-                  onClick={() => setSelected(null)}
-                >
-                  收起 ↑
-                </button>
                 <ReportDetail
                   detail={detail}
                   icons={reportIcons}
                   onRegenerate={handleRegenerate}
                   regenerating={regenerating}
                   onExport={() => setExporting(detail)}
+                  onCollapse={() => setSelected(null)}
                 />
               </div>
             );
@@ -239,6 +234,9 @@ function ReportHeader() {
 
 /**
  * 展开的详情：统一的 ReportCard + 卡片外的操作按钮（不进导出图）。
+ * 卡片始终以 EXPORT_WIDTH(1000px) 宽渲染，再用 transform:scale 等比缩放到容器宽度：
+ * `.report-detail__stage` 是 width:100% 的定位上下文，`.report-detail__scaled` absolute
+ * 脱离文档流；transform 不改布局尺寸，stage 高度按「卡片实测高 × scale」补偿。
  * `detail` 可能为 null（getReport 返回中），先给一个等宽占位。
  */
 function ReportDetail({
@@ -247,19 +245,57 @@ function ReportDetail({
   onRegenerate,
   regenerating,
   onExport,
+  onCollapse,
 }: {
   detail: ReportView | null;
   icons: ReturnType<typeof useReportIcons>;
   onRegenerate: () => void;
   regenerating: boolean;
   onExport: () => void;
+  onCollapse: () => void;
 }) {
+  const stageRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const [stageH, setStageH] = useState(0);
+
+  // 容器宽 → 缩放比（封顶 1）；卡片实测高度 × scale → stage 高度。两者随窗口/侧栏宽度、
+  // 卡片内容（icons 就绪）变化重算。ResizeObserver 挂在非滚动的 stage 上，不参与页面滚动。
+  useLayoutEffect(() => {
+    if (!detail) return;
+    const stage = stageRef.current;
+    if (!stage) return;
+
+    const apply = () => {
+      const w = stage.clientWidth;
+      const s = Math.min(1, w / EXPORT_WIDTH);
+      setScale(s);
+      const card = stage.querySelector<HTMLElement>(".report-card");
+      if (card) setStageH(card.offsetHeight * s);
+    };
+    apply();
+
+    const ro = new ResizeObserver(apply);
+    ro.observe(stage);
+    return () => ro.disconnect();
+  }, [detail, icons]);
+
   if (!detail) {
     return <div className="report-card-loading">加载中…</div>;
   }
   return (
     <div className="report-detail">
-      <ReportCard detail={detail} icons={icons} />
+      <div
+        ref={stageRef}
+        className="report-detail__stage"
+        style={{ height: stageH || undefined }}
+      >
+        <div
+          className="report-detail__scaled"
+          style={{ transform: `translateX(-50%) scale(${scale})` }}
+        >
+          <ReportCard detail={detail} icons={icons} onCollapse={onCollapse} />
+        </div>
+      </div>
       <div className="report-card-actions">
         {detail.status === "ok" && (
           <button type="button" className="report-export-btn" onClick={onExport}>
