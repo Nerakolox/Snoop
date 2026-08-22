@@ -1,0 +1,101 @@
+/* 报告海报灯箱 —— 全屏遮罩 + 居中可滚动海报 + 顶栏缩放/关闭。
+   经 portal 挂 document.body，position:fixed 相对真实视口（不受 .page-layer 的
+   transform containing block 影响）。深浅无关：遮罩与海报都是固定色。 */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 顶栏：标题 + 缩放 + 关闭，固定在遮罩顶部，不随海报滚动 */
+.lightbox__bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  height: 52px;
+  padding: 0 var(--space-6);
+  color: #fff;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.lightbox__title {
+  font-size: var(--text-base);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lightbox__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.lightbox__controls button {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: transparent;
+  color: #fff;
+  border-radius: var(--radius-sm);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.lightbox__controls button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.lightbox__controls button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.lightbox__zoom {
+  min-width: 44px;
+  text-align: center;
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 滚动区：海报比视口高时纵向滚动；点海报以外的空白冒泡到遮罩关闭 */
+.lightbox__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-6);
+}
+
+/* 舞台 —— 定位上下文 + 裁剪。海报 absolute 脱离文档流，transform:scale 不改布局尺寸，
+   舞台宽高由 JS 按「1000px / 实测高 × scale」显式给定，居中（margin auto）呈现。 */
+.lightbox__stage {
+  position: relative;
+  margin: 0 auto;
+  background: #ffffff;
+  border-radius: 4px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+}
+
+/* 缩放层：定宽 1000px(=EXPORT_WIDTH，与海报内联宽一致)，top-left 原点缩放 */
+.lightbox__scaled {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 1000px;
+  transform-origin: top left;
+}

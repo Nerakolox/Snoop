@@ -15,6 +15,7 @@ import { getReport, getReportList, regenerateReport } from "../report/client";
 import { dateLabel, monthLabel, weekRangeLabel } from "../report/format";
 import { useReportIcons } from "../report/icons";
 import ReportSummary from "../report/ReportSummary";
+import Lightbox from "../report/Lightbox";
 import ExportDialog from "../report/ExportDialog";
 import type { ReportMeta, ReportView } from "../report/types";
 import { normalizeAnchor, useContextState } from "../store/context";
@@ -34,6 +35,8 @@ export default function Report() {
   const [regenerating, setRegenerating] = useState(false);
   // 导出成图对话框：挂当前详情那份报告，null 表示关闭。
   const [exporting, setExporting] = useState<ReportView | null>(null);
+  // 海报灯箱：点缩略图打开，展示当前详情那份完整海报。
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   // 手动生成：选一个日期，按当前 kind 归一到周期起点生成。默认当前浏览的 anchor。
   const [genDate, setGenDate] = useState(anchor);
   const [generating, setGenerating] = useState(false);
@@ -177,7 +180,7 @@ export default function Report() {
                 onRegenerate={handleRegenerate}
                 regenerating={regenerating}
                 onExport={() => setExporting(detail)}
-                onOpenLightbox={() => undefined}
+                onOpenLightbox={() => setLightboxOpen(true)}
                 onCollapse={() => setSelected(null)}
               />
             );
@@ -202,6 +205,9 @@ export default function Report() {
       </div>
       </PageShell>
       {exporting && <ExportDialog detail={exporting} onClose={() => setExporting(null)} />}
+      {lightboxOpen && detail && (
+        <Lightbox detail={detail} icons={reportIcons} onClose={() => setLightboxOpen(false)} />
+      )}
     </>
   );
 }
