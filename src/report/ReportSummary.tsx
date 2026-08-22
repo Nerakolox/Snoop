@@ -288,10 +288,17 @@ export default function ReportSummary({
         </div>
 
         <aside className="report-summary__side">
-          <button
-            type="button"
+          <div
             className="report-summary__thumb"
+            role="button"
+            tabIndex={0}
             onClick={onOpenLightbox}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onOpenLightbox();
+              }
+            }}
             aria-label="打开海报"
           >
             <div
@@ -301,7 +308,7 @@ export default function ReportSummary({
               <ReportCard detail={detail} icons={icons} showFooter />
             </div>
             <span className="report-summary__thumb-fade" aria-hidden />
-          </button>
+          </div>
 
           <div className="report-summary__actions">
             {detail.status === "ok" && (
