@@ -28,12 +28,14 @@
   --rc-fs-body: 26px; /* 正文 */
   --rc-fs-aux: 22px; /* 辅助文字 */
   --rc-fs-value: 26px; /* 数值 */
+  --rc-fs-narrative: 20px; /* 叙事段（毒舌吐槽，比正文小） */
 
   /* —— 数字等宽 —— */
   --rc-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
 
   /* —— 颜色（固定浅色）—— */
   --rc-text: #2a2730;
+  --rc-text-strong: #17141f;
   --rc-text-2: #6b6670;
   --rc-text-3: #9b96a0;
   --rc-border: #e8e3d9;
@@ -113,22 +115,29 @@
 /* ── 叙事 ────────────────────────────────────────────────────────────────── */
 
 .report-card__narrative {
-  font-size: var(--rc-fs-body);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: var(--rc-fs-narrative);
   line-height: 1.6;
   color: var(--rc-text);
+}
+
+.report-card__narrative-line {
   margin: 0;
 }
 
-.report-card__narrative-source {
-  display: inline-block;
-  margin-left: var(--rc-gap-item);
-  font-size: var(--rc-fs-aux);
-  font-weight: 400;
-  color: var(--rc-text-3);
-  border: 1px solid var(--rc-border);
-  border-radius: 999px;
-  padding: 2px 16px;
-  vertical-align: middle;
+.report-card__narrative-n {
+  font-family: var(--rc-font-mono);
+  font-weight: 650;
+  font-size: 1.06em;
+  color: var(--rc-text-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-card__narrative-em {
+  color: var(--rc-accent);
+  font-weight: 600;
 }
 
 /* ── 通用区块 ────────────────────────────────────────────────────────────── */

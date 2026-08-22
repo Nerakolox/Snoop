@@ -31,6 +31,7 @@ import { formatDuration, formatSharePct } from "../utils/format";
 import { CATEGORY_LABEL, shareColorLight } from "../ai/categories";
 import { DOW_LABELS, dateLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
 import { EXPORT_WIDTH } from "./export";
+import { renderQuips } from "./markup";
 import type { ResolvedIconMap } from "./icons";
 import snoopIconInline from "../assets/snoop-icon-64.png?inline";
 import qrInline from "../assets/qr-official.png?inline";
@@ -316,18 +317,9 @@ function ReportDelta({ label, pct }: { label: string; pct: number }) {
   );
 }
 
-function ReportNarrative({ text, source }: { text: string | null; source: string | null }) {
+function ReportNarrative({ text }: { text: string | null }) {
   if (!text) return null;
-  return (
-    <p className="report-card__narrative">
-      {text}
-      {source && (
-        <span className="report-card__narrative-source">
-          {source === "ai" ? "由 AI 生成" : "本地模板"}
-        </span>
-      )}
-    </p>
-  );
+  return <div className="report-card__narrative">{renderQuips(text, "card")}</div>;
 }
 
 function ReportAppChange({ label, names }: { label: string; names: string[] }) {
@@ -375,7 +367,7 @@ function DayBody({ detail, icons }: BodyProps) {
         </div>
       </div>
 
-      <ReportNarrative text={detail.narrative} source={detail.narrative_source} />
+      <ReportNarrative text={detail.narrative} />
 
       <section className="report-card__section">
         <h4 className="report-card__section-title">
@@ -426,7 +418,7 @@ function WeekBody({ detail, icons }: BodyProps) {
         )}
       </div>
 
-      <ReportNarrative text={detail.narrative} source={detail.narrative_source} />
+      <ReportNarrative text={detail.narrative} />
 
       <section className="report-card__section">
         <h4 className="report-card__section-title">这一周</h4>
@@ -484,7 +476,7 @@ function MonthBody({ detail, icons }: BodyProps) {
         )}
       </div>
 
-      <ReportNarrative text={detail.narrative} source={detail.narrative_source} />
+      <ReportNarrative text={detail.narrative} />
 
       <section className="report-card__section">
         <h4 className="report-card__section-title">按周走势</h4>

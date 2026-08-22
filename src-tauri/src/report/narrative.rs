@@ -16,14 +16,24 @@ use serde_json::{json, Value};
 
 use crate::ai::config::AiConfigState;
 use crate::ai::envelope::{self, AiCodeMap};
-use crate::report::daily::DailyReport;
+use crate::report::daily::{DailyReport, HourCell};
 use crate::report::monthly::MonthlyReport;
 use crate::report::weekly::WeeklyReport;
 
-/// 叙事 system prompt。数字全部由 facts 提供，模型只措辞、不许算、不许评。
-const SYSTEM_PROMPT: &str = "你是 Snoop 里的猫，陪用户回顾一天。facts 是已经算好的确定事实，数字全部正确。你的唯一任务是把它组织成 100–150 字的中文叙事，语气是陪伴、观察，不是监工、不是绩效报告。\n\
-禁止：自己计算、推断或改写任何数字；编造 facts 里没有的事实；评判用户（不说「效率低」「浪费时间」「摸鱼」「发呆」「浪费」）；把「前台无输入的时间」说成负面（它可能是开会、阅读、看视频、思考）；提到窗口标题。\n\
-输出一段纯文本，不要标题、列表、emoji。";
+/// 日报 system prompt：毒舌猫。数字全部由 facts 提供，模型只挑刺、不许算、不许评。
+const SYSTEM_PROMPT: &str = "你是 Snoop 里的毒舌猫，负责给用户复盘这一天。你不是来夸人的，是来找茬的。\n\
+facts 是已经算好的确定事实，数字全部正确。带 `_display` 后缀的字段已经是「4 小时 12 分」这种人读格式，引用时长一律用它，不要自己把分钟换算成时分，更不要写「252 分钟」这种原始数字。\n\
+你的任务：挑出这一天里最离谱、最经不起追问的地方，写成 1–3 句中文吐槽，放进 JSON 的 quips 数组。\n\
+写法：\n\
+- 质问式，不是陈述式。发现荒谬处就追问，明知道对方答不上来还非要问。\n\
+- 可以连用问号感叹号，可以急，可以阴阳怪气；可以说教、怼人、人身攻击（互联网语境，不是恶意）。\n\
+- 拿最离谱的点开刀：挂机时长、切换频率、凌晨活跃、某个类别占比高得可疑。\n\
+- 只说图表给不了的东西：这一天的形状、异常点、荒谬的组合；不要复述分类占比表或应用排行的百分比和排名。\n\
+- 说「几个新应用」就要说清是几个、是什么，要么说清要么不说。\n\
+引用某个应用时用 apps 里对应的 code（如 App A），后台会自动换成真名。\n\
+禁止：编造 facts 里没有的事实；自己计算或改写数字；提到窗口标题；拿身体健康和生死开玩笑（不说「猝死」「不要命了」「要出事」这类）。\n\
+标记只有两种：{{n:数字/时长}}、{{em:语气重点}}，不要第三种。\n\
+只输出 JSON 对象：{\"quips\":[\"...\",\"...\"]}，不要 JSON 以外的任何文字。";
 
 /// 周报 system prompt：**重点是「这周和平时比如何」，不是复述这周发生了什么。**
 const WEEKLY_SYSTEM_PROMPT: &str = "你是 Snoop 里的猫，陪用户回顾这一周。facts 是已经算好的确定事实，数字全部正确。你的唯一任务是把它组织成 120–180 字的中文叙事。\n\
@@ -46,16 +56,38 @@ pub async fn generate_narrative(
     report: &DailyReport,
 ) -> (String, String) {
     let payload = build_payload(code_map, report);
-    let result = envelope::call_ai(config, code_map, db_path, "ai.daily-report", payload, false).await;
+    let result = envelope::call_ai(config, code_map, db_path, "ai.daily-report", payload, true).await;
     if result.ok {
         if let Some(content) = result.content {
-            let trimmed = content.trim();
-            if !trimmed.is_empty() {
-                return (trimmed.to_string(), "ai".to_string());
+            if let Some(narrative) = parse_narrative(&content) {
+                return (narrative, "ai".to_string());
             }
         }
     }
     (template_narrative(report), "template".to_string())
+}
+
+/// 解析 AI 返回的 JSON 外壳 `{"quips": [...]}`，校验后拼成换行分隔的叙事串。
+/// quips 取 1–3 条（超出截断），空句 / 超 80 字丢弃，0 条返回 None（触发模板兜底）。
+fn parse_narrative(content: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(content.trim()).ok()?;
+    let quips = v.get("quips")?.as_array()?;
+    let mut out: Vec<String> = Vec::new();
+    for q in quips {
+        let s = q.as_str()?.trim().to_string();
+        if s.is_empty() || s.chars().count() > 80 {
+            continue;
+        }
+        out.push(s);
+        if out.len() == 3 {
+            break;
+        }
+    }
+    if out.is_empty() {
+        None
+    } else {
+        Some(out.join("\n"))
+    }
 }
 
 /// 构造 T3 形状 payload。应用引用用**稳定代号**（信封层回映成真名），
@@ -88,10 +120,24 @@ fn build_payload(code_map: &Mutex<AiCodeMap>, report: &DailyReport) -> Value {
         .map(|(id, name)| json!({ "id": id, "name": name, "windows": [] }))
         .collect();
 
-    let facts = json!({
+    let idle_ms = (report.foreground_ms - report.active_ms).max(0);
+
+    let mut facts = json!({
         "date": date_label(&report.date),
         "active_minutes": report.active_ms / 60_000,
+        "active_display": fmt_duration(report.active_ms),
+        "foreground_display": fmt_duration(report.foreground_ms),
+        "idle_minutes": idle_ms / 60_000,
+        "idle_display": fmt_duration(idle_ms),
         "switch_count": report.switch_count,
+        "peak_hour": report.peak_hour,
+        "longest_focus_display": fmt_duration(report.longest_focus.duration_ms),
+        "shape": json!({
+            "late_night_display": fmt_duration(hourly_sum(&report.hourly, 0, 6)),
+            "morning_display": fmt_duration(hourly_sum(&report.hourly, 6, 12)),
+            "afternoon_display": fmt_duration(hourly_sum(&report.hourly, 12, 18)),
+            "evening_display": fmt_duration(hourly_sum(&report.hourly, 18, 24)),
+        }),
         "top_apps": report.top_apps.iter().map(|a| json!({
             "app": code_by_id.get(&a.bundle_id).cloned().unwrap_or_default(),
             "minutes": a.active_ms / 60_000,
@@ -101,8 +147,6 @@ fn build_payload(code_map: &Mutex<AiCodeMap>, report: &DailyReport) -> Value {
             "category": category_label(&c.category),
             "share_pct": round1(c.share_pct),
         })).collect::<Vec<_>>(),
-        "peak_hour": report.peak_hour,
-        "longest_focus_minutes": report.longest_focus.duration_ms / 60_000,
         "vs_7d": json!({
             "active_delta_pct": round1(report.vs_7d.active_delta_pct),
             "switch_delta_pct": round1(report.vs_7d.switch_delta_pct),
@@ -111,6 +155,9 @@ fn build_payload(code_map: &Mutex<AiCodeMap>, report: &DailyReport) -> Value {
             .map(|a| code_by_id.get(&a.bundle_id).cloned().unwrap_or_default())
             .collect::<Vec<_>>(),
     });
+    if report.switch_count > 0 {
+        facts["switch_interval_seconds"] = json!(avg_switch_seconds(report.active_ms, report.switch_count));
+    }
 
     json!({
         "system_prompt": SYSTEM_PROMPT,
@@ -154,52 +201,60 @@ fn date_label(date: &str) -> String {
     date.to_string()
 }
 
-/// 本地模板兜底叙事。数字全部来自已算好的 `DailyReport`，这里只拼句。
+/// 小时区间 `[from, to)` 的活跃时长合计。用于把一天切成「凌晨/上午/下午/晚上」四段。
+fn hourly_sum(hourly: &[HourCell], from: u8, to: u8) -> i64 {
+    hourly
+        .iter()
+        .filter(|c| c.hour >= from && c.hour < to)
+        .map(|c| c.active_ms)
+        .sum()
+}
+
+/// 平均每次切换间隔（秒）。switch_count 为 0 时返回 0（调用方不写入 facts）。
+fn avg_switch_seconds(active_ms: i64, switch_count: u32) -> i64 {
+    if switch_count == 0 {
+        0
+    } else {
+        (active_ms / 1000) / switch_count as i64
+    }
+}
+
+/// 本地模板兜底叙事：毒舌猫语气，按数据特征选句（挂机 gap / 切换异常 / 深夜活跃 / 一切正常）。
+/// 每条都带标记，与 AI 输出同一套渲染。
 pub fn template_narrative(r: &DailyReport) -> String {
-    let mut parts: Vec<String> = Vec::new();
+    let idle_ms = (r.foreground_ms - r.active_ms).max(0);
+    let late_night = hourly_sum(&r.hourly, 0, 6);
+    let mut quips: Vec<String> = Vec::new();
 
-    parts.push(format!(
-        "{}你活跃了 {}，切换了 {} 次应用。",
-        date_label(&r.date),
-        fmt_duration(r.active_ms),
-        r.switch_count
-    ));
-
-    if let Some(top) = r.top_apps.first() {
-        let mut s = format!("在 {} 待得最久（占 {:.0}%）", top.name, top.share_pct);
-        if let Some(second) = r.top_apps.get(1) {
-            s.push_str(&format!("，之后是 {}", second.name));
-        }
-        s.push('。');
-        parts.push(s);
-    }
-
-    if r.active_ms > 0 {
-        parts.push(format!("{}:00 前后最有干劲。", r.peak_hour));
-    }
-
-    if r.longest_focus.duration_ms > 0 {
-        parts.push(format!(
-            "最长一口气专注了 {}。",
-            fmt_duration(r.longest_focus.duration_ms)
+    if idle_ms >= 30 * 60_000 {
+        quips.push(format!(
+            "前台挂了 {{n:{}}}，真正动手 {{n:{}}}。另外 {{n:{}}} 你在干嘛???{{em:回答本喵}}!!!",
+            fmt_duration(r.foreground_ms),
+            fmt_duration(r.active_ms),
+            fmt_duration(idle_ms),
         ));
     }
 
-    if r.vs_7d.avg_active_ms > 0 {
-        let d = r.vs_7d.active_delta_pct;
-        let cmp = if d >= 0.0 {
-            format!("多 {:.0}%", d)
-        } else {
-            format!("少 {:.0}%", -d)
-        };
-        parts.push(format!("比最近一周平均{cmp}。"));
+    if r.switch_count >= 150 {
+        quips.push(format!(
+            "切换了 {{n:{}}} 次应用。你是在找钥匙吗?",
+            r.switch_count
+        ));
     }
 
-    if parts.is_empty() {
-        "这一天还没有足够的数据。".to_string()
-    } else {
-        parts.join("")
+    if late_night >= 45 * 60_000 {
+        quips.push(format!(
+            "凌晨还烧了 {{n:{}}}。这个点不睡觉，是有什么大事吗?",
+            fmt_duration(late_night)
+        ));
     }
+
+    if quips.is_empty() {
+        quips.push("今天居然没什么好说的，反常。{{em:你确定开机了?}}".to_string());
+    }
+
+    quips.truncate(3);
+    quips.join("\n")
 }
 
 // ── 周报 ────────────────────────────────────────────────────────────────────

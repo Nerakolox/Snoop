@@ -14,6 +14,7 @@ import type { ReactNode } from "react";
 import type { ReportView } from "./types";
 import { formatDuration } from "../utils/format";
 import { dateLabel, monthLabel, weekRangeLabel } from "./format";
+import { renderQuips } from "./markup";
 import type { ResolvedIconMap } from "./icons";
 import ReportCard from "./ReportCard";
 import snoopIconInline from "../assets/snoop-icon-64.png?inline";
@@ -122,19 +123,10 @@ function DeltaText({ pct }: { pct: number }) {
   );
 }
 
-/** AI 吐槽段 + 来源徽章（应用内正文字号，行高 1.75）。 */
+/** AI 吐槽段（应用内正文字号，行高 1.75）。标记由 markup.tsx 统一渲染。 */
 function Narrative({ detail }: { detail: ReportView }) {
   if (!detail.narrative) return null;
-  return (
-    <p className="report-summary__narrative">
-      {detail.narrative}
-      {detail.narrative_source && (
-        <span className="report-summary__narrative-source">
-          {detail.narrative_source === "ai" ? "由 AI 生成" : "本地模板"}
-        </span>
-      )}
-    </p>
-  );
+  return <div className="report-summary__narrative">{renderQuips(detail.narrative, "summary")}</div>;
 }
 
 /** 底部双栏：左应用 Top 5、右「一天的形状 + 和平时比」。 */

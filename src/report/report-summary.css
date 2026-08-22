@@ -107,21 +107,29 @@
 }
 
 .report-summary__narrative {
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   font-size: 13.5px;
   line-height: 1.75;
   color: var(--color-text);
 }
 
-.report-summary__narrative-source {
-  display: inline-block;
-  margin-left: var(--space-2);
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-full);
-  padding: 0 8px;
-  vertical-align: middle;
+.report-summary__narrative-line {
+  margin: 0;
+}
+
+.report-summary__narrative-n {
+  font-family: var(--summary-mono);
+  font-weight: 650;
+  font-size: 1.06em;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-summary__narrative-em {
+  color: var(--color-accent);
+  font-weight: 600;
 }
 
 /* 底部双栏：应用 Top 5 + 形状/对比 */
