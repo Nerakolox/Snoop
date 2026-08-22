@@ -37,11 +37,20 @@ facts.open_hog 是「打开最频繁、但用时最短」的应用（每活跃�
 标记只有两种：{{n:数字/时长}}、{{em:语气重点}}，不要第三种。\n\
 只输出 JSON 对象：{\"quips\":[\"...\",\"...\"]}，不要 JSON 以外的任何文字。";
 
-/// 周报 system prompt：**重点是「这周和平时比如何」，不是复述这周发生了什么。**
-const WEEKLY_SYSTEM_PROMPT: &str = "你是 Snoop 里的猫，陪用户回顾这一周。facts 是已经算好的确定事实，数字全部正确。你的唯一任务是把它组织成 120–180 字的中文叙事。\n\
-这是周报，重点是「这周和平时比如何」，不是复述这周发生了什么。优先讲差异：和前几周的偏差、一周内部的起伏、作息的变化；没有差异可讲时才讲绝对值。\n\
-禁止：自己计算、推断或改写任何数字；编造 facts 里没有的事实；评判用户（不说「效率低」「浪费时间」「摸鱼」「发呆」「自律」「进步」）；把「前台无输入的时间」说成负面（它可能是开会、阅读、看视频、思考）；提到窗口标题；对作息下价值判断（「通宵」只能作为中性事实陈述，不许写成「熬夜」「作息紊乱」「要注意身体」）。\n\
-输出一段纯文本，不要标题、列表、emoji。";
+/// 周报 system prompt：**毒舌猫，骂的是「这一周的规律」，不是复述这周发生了什么。**
+const WEEKLY_SYSTEM_PROMPT: &str = "你是 Snoop 里的毒舌猫，负责给用户复盘这一周。你不是来夸人的，是来找茬的。\n\
+facts 是已经算好的确定事实，数字全部正确。带 `_display` 后缀的字段已经是「4 小时 12 分」「20:42」这种人读格式，引用时长/时刻一律用它，不要自己把分钟换算成时分，更不要写「252 分钟」这种原始数字。\n\
+你的任务：挑出这一周里最离谱、最经不起追问的规律，写成 1–3 句中文吐槽，放进 JSON 的 quips 数组。\n\
+写法：\n\
+- 质问式，不是陈述式。发现荒谬的规律就追问，明知道对方答不上来还非要问。\n\
+- 可以连用问号感叹号，可以急，可以阴阳怪气；可以说教、怼人、人身攻击（互联网语境，不是恶意）。\n\
+- 周报骂「这一周的规律」，不是某一天：作息漂移（平均几点开工、收工）；分布极端（某几天烧了几个小时、另几天一秒没有）；消失的应用（前 4 周常用、这周一次没开，看 facts.gone_apps）；工作日/周末反差。\n\
+- 只说图表给不了的东西：这一周的规律、异常点、荒谬的组合；不要复述分类占比表或应用排行的百分比和排名。\n\
+- 说「消失的应用」就要说清是哪个、前 4 周用了多久，要么说清要么不说。\n\
+引用某个应用时用 apps 里对应的 code（如 App A），后台会自动换成真名。\n\
+禁止：编造 facts 里没有的事实；自己计算或改写数字；提到窗口标题；拿身体健康和生死开玩笑（不说「猝死」「不要命了」「要出事」这类）。\n\
+标记只有两种：{{n:数字/时长}}、{{em:语气重点}}，不要第三种。\n\
+只输出 JSON 对象：{\"quips\":[\"...\",\"...\"]}，不要 JSON 以外的任何文字。";
 
 /// 月报 system prompt：**重点是「变化趋势」。**
 const MONTHLY_SYSTEM_PROMPT: &str = "你是 Snoop 里的猫，陪用户回顾这个月。facts 是已经算好的确定事实，数字全部正确。你的唯一任务是把它组织成 120–180 字的中文叙事。\n\
@@ -304,12 +313,11 @@ pub async fn generate_weekly_narrative(
 ) -> (String, String) {
     let payload = build_weekly_payload(code_map, report);
     let result =
-        envelope::call_ai(config, code_map, db_path, "ai.weekly-report", payload, false).await;
+        envelope::call_ai(config, code_map, db_path, "ai.weekly-report", payload, true).await;
     if result.ok {
         if let Some(content) = result.content {
-            let trimmed = content.trim();
-            if !trimmed.is_empty() {
-                return (trimmed.to_string(), "ai".to_string());
+            if let Some(narrative) = parse_narrative(&content) {
+                return (narrative, "ai".to_string());
             }
         }
     }
@@ -317,15 +325,18 @@ pub async fn generate_weekly_narrative(
 }
 
 fn build_weekly_payload(code_map: &Mutex<AiCodeMap>, report: &WeeklyReport) -> Value {
+    // 叙事里要引用的应用 = 新出现 + 消失（Top 5 排行与分类占比表不复述，不进 payload）。
     let mut pairs: Vec<(String, String)> = Vec::new();
-    for a in &report.top_apps {
-        pairs.push((a.bundle_id.clone(), a.name.clone()));
+    let mut seen = std::collections::HashSet::new();
+    for a in report.new_apps.iter() {
+        if seen.insert(a.bundle_id.clone()) {
+            pairs.push((a.bundle_id.clone(), a.name.clone()));
+        }
     }
-    for a in &report.new_apps {
-        pairs.push((a.bundle_id.clone(), a.name.clone()));
-    }
-    for a in &report.gone_apps {
-        pairs.push((a.bundle_id.clone(), a.name.clone()));
+    for a in report.gone_apps.iter() {
+        if seen.insert(a.bundle_id.clone()) {
+            pairs.push((a.bundle_id.clone(), a.name.clone()));
+        }
     }
 
     let code_by_id: std::collections::HashMap<String, String> = {
@@ -340,41 +351,63 @@ fn build_weekly_payload(code_map: &Mutex<AiCodeMap>, report: &WeeklyReport) -> V
         .map(|(id, name)| json!({ "id": id, "name": name, "windows": [] }))
         .collect();
 
+    // 某天的活跃时长（`max_day`/`min_day` 只存日期，时长从这里补）。
+    let day_ms = |date: &str| -> i64 {
+        report
+            .days
+            .iter()
+            .find(|d| d.date.as_str() == date)
+            .map(|d| d.active_ms)
+            .unwrap_or(0)
+    };
+
+    let no_data_days: Vec<String> = report
+        .days
+        .iter()
+        .filter(|d| d.active_ms == 0)
+        .map(|d| weekday_label(d.dow))
+        .collect();
+
     let mut facts = json!({
         "week_label": week_label(&report.week_start, &report.week_end),
-        "active_minutes": report.active_ms / 60_000,
-        "avg_daily_minutes": report.avg_daily_active_ms / 60_000,
+        "active_display": fmt_duration(report.active_ms),
+        "avg_daily_display": fmt_duration(report.avg_daily_active_ms),
         "days_with_data": report.days_with_data,
+        "no_data_days": no_data_days,
+        "days": report.days.iter().filter(|d| d.active_ms > 0).map(|d| json!({
+            "dow": weekday_label(d.dow),
+            "active_display": fmt_duration(d.active_ms),
+        })).collect::<Vec<_>>(),
+        "max_day": report.max_day.as_ref().map(|s| json!({
+            "date": date_label(s),
+            "active_display": fmt_duration(day_ms(s)),
+        })),
+        "min_day": report.min_day.as_ref().map(|s| json!({
+            "date": date_label(s),
+            "active_display": fmt_duration(day_ms(s)),
+        })),
+        "weekday_vs_weekend": json!({
+            "weekday_avg_display": fmt_duration(report.weekday_weekend.weekday_avg_active_ms),
+            "weekend_avg_display": fmt_duration(report.weekday_weekend.weekend_avg_active_ms),
+            "weekday_days": report.weekday_weekend.weekday_days,
+            "weekend_days": report.weekday_weekend.weekend_days,
+        }),
         "vs_baseline": json!({
-            "daily_delta_pct": round1(report.baseline.daily_delta_pct),
+            "baseline_sufficient": report.baseline.baseline_sufficient,
+            "daily_delta_display": delta_display(
+                report.baseline.daily_delta_pct,
+                report.baseline.baseline_sufficient,
+            ),
             "weeks_counted": report.baseline.weeks_counted,
         }),
-        "days": report.days.iter().map(|d| json!({
-            "dow": weekday_label(d.dow),
-            "minutes": d.active_ms / 60_000,
-        })).collect::<Vec<_>>(),
-        "max_day": report.max_day.as_ref().map(|s| date_label(s)),
-        "min_day": report.min_day.as_ref().map(|s| date_label(s)),
-        "categories": report.categories.iter().map(|c| json!({
-            "category": category_label(&c.category),
-            "share_pct": round1(c.share_pct),
-            "delta_pp": round1(c.share_delta_pp),
-        })).collect::<Vec<_>>(),
-        "weekday_vs_weekend": json!({
-            "weekday_avg_minutes": report.weekday_weekend.weekday_avg_active_ms / 60_000,
-            "weekend_avg_minutes": report.weekday_weekend.weekend_avg_active_ms / 60_000,
-        }),
-        "top_apps": report.top_apps.iter().map(|a| json!({
-            "app": code_by_id.get(&a.bundle_id).cloned().unwrap_or_default(),
-            "minutes": a.active_ms / 60_000,
-            "share_pct": round1(a.share_pct),
-        })).collect::<Vec<_>>(),
         "new_apps": report.new_apps.iter()
             .map(|a| code_by_id.get(&a.bundle_id).cloned().unwrap_or_default())
             .collect::<Vec<_>>(),
-        "gone_apps": report.gone_apps.iter()
-            .map(|a| code_by_id.get(&a.bundle_id).cloned().unwrap_or_default())
-            .collect::<Vec<_>>(),
+        "gone_apps": report.gone_apps.iter().map(|a| json!({
+            "app": code_by_id.get(&a.bundle_id).cloned().unwrap_or_default(),
+            "baseline_active_display": fmt_duration(a.baseline_active_ms),
+            "baseline_weeks": a.baseline_weeks,
+        })).collect::<Vec<_>>(),
     });
 
     // 作息天数够（≥ 3）才把作息块放进 facts —— 不给模型没有的数据，它就不会编。
@@ -396,69 +429,83 @@ fn build_weekly_payload(code_map: &Mutex<AiCodeMap>, report: &WeeklyReport) -> V
     })
 }
 
-/// 本地模板：周报讲对比。数字全部来自已算好的 `WeeklyReport`，这里只拼句。
+/// 本地模板：毒舌猫语气，专挑「这一周的规律」——作息漂移、分布极端、消失的应用、工作日/周末反差。
+/// 数字全部来自已算好的 `WeeklyReport`，这里只拼句；时长一律用格式化好的 `fmt_duration` 结果。
 pub fn template_weekly_narrative(r: &WeeklyReport) -> String {
-    let mut parts: Vec<String> = Vec::new();
+    let mut quips: Vec<String> = Vec::new();
 
-    parts.push(format!(
-        "这周你活跃了 {}，日均 {}{}。",
-        fmt_duration(r.active_ms),
-        fmt_duration(r.avg_daily_active_ms),
-        daily_delta_clause(r.baseline.avg_daily_active_ms, r.avg_daily_active_ms)
-    ));
-
-    if let Some(d) = &r.max_day {
-        parts.push(format!("{}待得最久。", date_label(d)));
+    // 作息漂移：平均开工/收工。
+    if let (Some(s), Some(e)) = (r.rhythm_summary.avg_start_min, r.rhythm_summary.avg_end_min) {
+        quips.push(format!(
+            "平均 {{n:{}}} 开工、{{n:{}}} 停下，这作息是飘到哪个时区去了?",
+            fmt_min_of_day(s),
+            fmt_min_of_day(e),
+        ));
     }
 
-    if let Some(dev) = r
-        .categories
+    // 分布极端：忙的天 vs 完全空的天 / 最闲的天。
+    let data_days: Vec<_> = r.days.iter().filter(|d| d.active_ms > 0).collect();
+    let no_data: Vec<String> = r
+        .days
         .iter()
-        .max_by(|a, b| a.share_delta_pp.abs().partial_cmp(&b.share_delta_pp.abs()).unwrap_or(std::cmp::Ordering::Equal))
-    {
-        if dev.share_delta_pp.abs() >= 0.5 {
-            let dir = if dev.share_delta_pp >= 0.0 { "高" } else { "低" };
-            parts.push(format!(
-                "{}占比 {:.0}%，比前 4 周{dir} {:.0}pp。",
-                category_label(&dev.category),
-                dev.share_pct,
-                dev.share_delta_pp.abs()
+        .filter(|d| d.active_ms == 0)
+        .map(|d| weekday_label(d.dow))
+        .collect();
+    if let (Some(max), Some(min)) = (
+        data_days.iter().max_by_key(|d| d.active_ms),
+        data_days.iter().min_by_key(|d| d.active_ms),
+    ) {
+        if !no_data.is_empty() && max.active_ms >= min.active_ms * 2 {
+            quips.push(format!(
+                "{}烧了 {{n:{}}}，{}却一秒都没有。{{em:人呢?}}",
+                weekday_label(max.dow),
+                fmt_duration(max.active_ms),
+                no_data.join("、"),
+            ));
+        } else if max.active_ms >= min.active_ms * 3 {
+            quips.push(format!(
+                "{}烧了 {{n:{}}}，{}才 {{n:{}}}。这落差你自己信吗?",
+                weekday_label(max.dow),
+                fmt_duration(max.active_ms),
+                weekday_label(min.dow),
+                fmt_duration(min.active_ms),
             ));
         }
     }
 
-    if r.rhythm_summary.days_counted >= crate::report::common::MIN_RHYTHM_DAYS {
-        if let (Some(s), Some(e)) = (r.rhythm_summary.avg_start_min, r.rhythm_summary.avg_end_min)
-        {
-            let mut s = format!(
-                "平均 {} 开工、{} 停下（基于 {} 天）",
-                fmt_min_of_day(s),
-                fmt_min_of_day(e),
-                r.rhythm_summary.days_counted
-            );
-            if let Some(d) = r.rhythm_summary.end_delta_min {
-                s.push_str(&format!("，比平时{}", signed_min_label(d)));
-            }
-            s.push('。');
-            parts.push(s);
-        }
-        if r.rhythm_summary.overnight_days > 0 {
-            parts.push(format!(
-                "另有 {} 天通宵，未计入均值。",
-                r.rhythm_summary.overnight_days
+    // 消失的应用：前 4 周常用、这周一次没开。
+    if let Some(g) = r.gone_apps.first() {
+        quips.push(format!(
+            "前 4 周你在 {} 上耗了 {{n:{}}}，这周一次没开。{{em:绝交了?}}",
+            g.name,
+            fmt_duration(g.baseline_active_ms),
+        ));
+    }
+
+    // 工作日 / 周末反差：两侧都有记录且差一倍以上才说。
+    let ww = &r.weekday_weekend;
+    if ww.weekday_days > 0 && ww.weekend_days > 0 {
+        let (busy_label, busy_ms, idle_label, idle_ms) =
+            if ww.weekday_avg_active_ms >= ww.weekend_avg_active_ms {
+                ("工作日", ww.weekday_avg_active_ms, "周末", ww.weekend_avg_active_ms)
+            } else {
+                ("周末", ww.weekend_avg_active_ms, "工作日", ww.weekday_avg_active_ms)
+            };
+        if busy_ms >= idle_ms * 2 {
+            quips.push(format!(
+                "{busy_label}日均 {{n:{}}}，{idle_label}日均 {{n:{}}}。{{em:这周是怎么安排的?}}",
+                fmt_duration(busy_ms),
+                fmt_duration(idle_ms),
             ));
         }
     }
 
-    if let Some(top) = r.top_apps.first() {
-        parts.push(format!("在 {} 待得最久。", top.name));
+    if quips.is_empty() {
+        quips.push("这一周居然挑不出毛病。{{em:你确定开机了?}}".to_string());
     }
 
-    if parts.is_empty() {
-        "这一周还没有足够的数据。".to_string()
-    } else {
-        parts.join("")
-    }
+    quips.truncate(3);
+    quips.join("\n")
 }
 
 // ── 月报 ────────────────────────────────────────────────────────────────────
@@ -638,13 +685,12 @@ fn delta_label(pct: f64) -> String {
     }
 }
 
-/// 带方向的分钟差：正 = 晚，负 = 早。作息语境下的「晚/早」，不用「多/少」。
-fn signed_min_label(delta: i32) -> String {
-    if delta >= 0 {
-        format!("晚 {} 分", delta)
-    } else {
-        format!("早 {} 分", -delta)
+/// 对比百分比 → 可直接引用的文案。基线不足时返回 `None`，模型不该引用这个数。
+fn delta_display(pct: f64, sufficient: bool) -> Option<String> {
+    if !sufficient {
+        return None;
     }
+    Some(delta_label(pct))
 }
 
 /// 距自然日 00:00 的分钟数 → 可读时刻。≥ 1440 显示「次日 HH:MM」，不显示 24:41。
