@@ -250,10 +250,20 @@ function ReportMonthWeeks({ weeks }: { weeks: MonthWeek[] }) {
 }
 
 function ReportSleep({ days, summary }: { days: RhythmDay[]; summary: RhythmSummary }) {
+  // 只列有记录的天（active_ms > 0），「– → –」这类空行不再占位；
+  // 无记录的天收拢成一句「周X、周Y无记录」。
+  const withData = days
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.active_ms > 0);
+  const noDataLabels = days
+    .map((d, i) => ({ d, i }))
+    .filter(({ d }) => d.active_ms === 0)
+    .map(({ i }) => DOW_LABELS[i]);
+
   return (
     <>
       <div className="report-card__sleep">
-        {days.map((d, i) => {
+        {withData.map(({ d, i }) => {
           const start =
             d.start_min != null
               ? formatSleepMin(d.start_min)
@@ -279,6 +289,9 @@ function ReportSleep({ days, summary }: { days: RhythmDay[]; summary: RhythmSumm
           );
         })}
       </div>
+      {noDataLabels.length > 0 && (
+        <p className="report-card__sleep-empty">{noDataLabels.join("、")}无记录</p>
+      )}
       <p className="report-card__sleep-avg">
         平均 {formatSleepMin(summary.avg_start_min ?? 0)} 开工、
         {formatSleepMin(summary.avg_end_min ?? 0)} 停下（基于 {summary.days_counted} 天）

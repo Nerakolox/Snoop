@@ -433,6 +433,12 @@
   color: var(--rc-text-3);
 }
 
+.report-card__sleep-empty {
+  font-size: var(--rc-fs-aux);
+  color: var(--rc-text-3);
+  margin: 0;
+}
+
 .report-card__sleep-avg {
   font-size: var(--rc-fs-aux);
   color: var(--rc-text-2);
