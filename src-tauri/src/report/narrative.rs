@@ -32,7 +32,7 @@ facts 是已经算好的确定事实，数字全部正确。带 `_display` 后�
 - 只说图表给不了的东西：这一天的形状、异常点、荒谬的组合；不要复述分类占比表或应用排行的百分比和排名。\n\
 - 说「几个新应用」就要说清是几个、是什么，要么说清要么不说。\n\
 引用某个应用时用 apps 里对应的 code（如 App A），后台会自动换成真名。\n\
-facts.open_hog 是「打开次数最多、但活跃时长可能很短」的应用：app 是代号，active_display 是它的活跃时长，open_count 是打开次数；top_apps[].open_count 是各 Top 应用被打开的次数。若某应用用时短却开得勤，这就是最荒谬的组合，拿它开刀。\n\
+facts.open_hog 是「打开最频繁、但用时最短」的应用（每活跃分钟打开次数最多）：app 是代号，active_display 是它的活跃时长，open_count 是打开次数；top_apps[].open_count 是各 Top 应用被打开的次数。若某应用用时短却开得勤，这就是最荒谬的组合，拿它开刀。\n\
 禁止：编造 facts 里没有的事实；自己计算或改写数字；提到窗口标题；拿身体健康和生死开玩笑（不说「猝死」「不要命了」「要出事」这类）。\n\
 标记只有两种：{{n:数字/时长}}、{{em:语气重点}}，不要第三种。\n\
 只输出 JSON 对象：{\"quips\":[\"...\",\"...\"]}，不要 JSON 以外的任何文字。";
@@ -116,12 +116,17 @@ fn build_payload(code_map: &Mutex<AiCodeMap>, report: &DailyReport) -> Value {
         .map(|a| (a.bundle_id.clone(), a.open_count))
         .collect();
 
-    // 打开最频繁但活跃时长可能很短的应用：活跃 ≥ 1 分钟、打开 ≥ 10 次才值得拿来开刀。
+    // 打开最频繁但用时最短的应用：每活跃分钟打开次数最多（open_count / active_ms）。
+    // 下限（打开 ≥ 10 次、活跃 ≥ 1 分钟）排除「只开一两次」的噪声。
     let open_hog = report
         .open_counts
         .iter()
         .filter(|a| a.active_ms >= 60_000 && a.open_count >= 10)
-        .max_by_key(|a| a.open_count);
+        .max_by(|a, b| {
+            let ra = a.open_count as f64 / a.active_ms as f64;
+            let rb = b.open_count as f64 / b.active_ms as f64;
+            ra.partial_cmp(&rb).unwrap_or(std::cmp::Ordering::Equal)
+        });
 
     // 它也要进 apps 拿到稳定代号，否则信封层回映不回真名。
     if let Some(hog) = open_hog {
