@@ -513,28 +513,24 @@ export default function Insights() {
           <h3 className="panel-title">
             {isCurrentAnchor ? (viewKind === "week" ? "本周" : "本月") : "该范围"}前台时长趋势
           </h3>
-          <div
-            className={`ins-trend${viewKind === "month" ? " ins-trend--month" : ""}`}
-            style={{ gridTemplateColumns: `repeat(${trendDays.length}, 1fr)` }}
-          >
-            {trendDays.map((d, i) => {
-              const pct = d.hasData ? (d.foregroundMs / maxDayForegroundMs) * 100 : 0;
-              const showLabel = viewKind === "week" || i % 5 === 0 || i === trendDays.length - 1;
-              const label =
-                viewKind === "week"
-                  ? DAY_LABELS[mondayIndex(d.dayMs)]
-                  : String(new Date(d.dayMs).getDate());
-              const tip = d.hasData
-                ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.foregroundMs / (60 * 60 * 1000))}h`
-                : d.future
-                  ? `${dateLabelOf(d.dayMs)} · 未到来`
-                  : d.idle
-                    ? `${dateLabelOf(d.dayMs)} · 无输入`
-                    : `${dateLabelOf(d.dayMs)} · 无采集数据`;
-              return (
-                <Tooltip key={d.dayMs} content={tip}>
-                  <button type="button" className="ins-trend-col" onClick={() => goToDay(d.dayMs)}>
-                    <div className="ins-trend-bar-wrap">
+          <div className="ins-trend">
+            {/* 绘图区：固定高度，柱子 1fr 平分容器宽度、柱间固定 3px gap */}
+            <div
+              className="ins-trend-bars"
+              style={{ gridTemplateColumns: `repeat(${trendDays.length}, 1fr)` }}
+            >
+              {trendDays.map((d) => {
+                const pct = d.hasData ? (d.foregroundMs / maxDayForegroundMs) * 100 : 0;
+                const tip = d.hasData
+                  ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.foregroundMs / (60 * 60 * 1000))}h`
+                  : d.future
+                    ? `${dateLabelOf(d.dayMs)} · 未到来`
+                    : d.idle
+                      ? `${dateLabelOf(d.dayMs)} · 无输入`
+                      : `${dateLabelOf(d.dayMs)} · 无采集数据`;
+                return (
+                  <Tooltip key={d.dayMs} content={tip}>
+                    <button type="button" className="ins-trend-col" onClick={() => goToDay(d.dayMs)}>
                       {d.hasData ? (
                         <div
                           className={`ins-trend-bar${d.isToday ? " ins-trend-bar--today" : ""}`}
@@ -551,15 +547,29 @@ export default function Insights() {
                           }`}
                         />
                       )}
-                    </div>
-                    {viewKind === "week" && d.hasData && (
-                      <div className="ins-trend-value">{fmtHours(d.foregroundMs / (60 * 60 * 1000))}h</div>
-                    )}
-                    <div className="ins-trend-label">{showLabel ? label : ""}</div>
-                  </button>
-                </Tooltip>
-              );
-            })}
+                    </button>
+                  </Tooltip>
+                );
+              })}
+            </div>
+            {/* 标签行：绘图区下方独立占位（sibling），与绘图区共用同一份列模板，不挤占柱高 */}
+            <div
+              className="ins-trend-labels"
+              style={{ gridTemplateColumns: `repeat(${trendDays.length}, 1fr)` }}
+            >
+              {trendDays.map((d, i) => {
+                const showLabel = viewKind === "week" || i % 5 === 0 || i === trendDays.length - 1;
+                const label =
+                  viewKind === "week"
+                    ? DAY_LABELS[mondayIndex(d.dayMs)]
+                    : String(new Date(d.dayMs).getDate());
+                return (
+                  <span key={d.dayMs} className="ins-trend-label">
+                    {showLabel ? label : ""}
+                  </span>
+                );
+              })}
+            </div>
           </div>
         </section>
 

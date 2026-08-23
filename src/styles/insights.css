@@ -113,32 +113,25 @@
 }
 
 .ins-trend {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: var(--space-3);
+  display: flex;
+  flex-direction: column;
   flex: 1;
-  min-height: 200px;
 }
 
-/* 月视图 31 列：收窄 gap，否则 12px×30 的缝隙会把每列挤到 1px 上下，柱子不可见、标签叠成一团 */
-.ins-trend--month {
-  gap: var(--space-1);
+/* 绘图区：固定高度 180px，柱子 1fr 平分容器宽度、柱间固定 3px gap。
+   容器变宽柱子跟着变宽，不再写死像素宽；标签行在下方的兄弟容器里，不挤占柱高。 */
+.ins-trend-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  height: 180px;
 }
 
 .ins-trend-col {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.ins-trend-bar-wrap {
-  flex: 1;
-  display: flex;
   align-items: flex-end;
   justify-content: center;
-  position: relative;
+  min-width: 0;
 }
 
 .ins-trend-bar {
@@ -154,26 +147,31 @@
   box-shadow: 0 0 0 2px var(--color-accent);
 }
 
-/* 无活跃数据的天画一条基线而非留白，三态各自可辨：零活跃 / 无数据 / 未到来 */
+/* 无活跃数据的天：底部留 6px 短柱，三态各自可辨，不再画成「贴地的一条横线」混成一团 */
 .ins-trend-bar--empty {
   width: 100%;
-  height: 3px;
+  height: 6px;
   border-radius: var(--radius-sm);
+  box-sizing: border-box;
 }
 
+/* 零活跃（有采集但无输入）：最浅一档实色短柱，能看出「有记录但很少」 */
 .ins-trend-bar--idle {
   background: var(--duration-1);
 }
 
+/* 无数据（未采集）：极淡虚线框，不画成贴地实线 */
 .ins-trend-bar--no-data {
   background: transparent;
-  border: 1px solid var(--color-border);
+  border: 1px dashed var(--color-border);
+  opacity: 0.55;
 }
 
+/* 未到来（今天之后）：比无数据更弱 */
 .ins-trend-bar--future {
   background: transparent;
   border: 1px dashed var(--color-border);
-  opacity: 0.45;
+  opacity: 0.3;
 }
 
 .ins-trend-col:hover .ins-trend-bar,
@@ -181,13 +179,12 @@
   filter: brightness(1.07);
 }
 
-.ins-trend-value {
-  text-align: center;
-  font-size: var(--text-xs);
-  color: var(--color-text-2);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-  margin-top: var(--space-1);
+/* 标签行：绘图区下方独立占位，与绘图区共用同一份列模板（inline 传入），刻度与柱子对齐 */
+.ins-trend-labels {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  margin-top: var(--space-2);
 }
 
 .ins-trend-label {
