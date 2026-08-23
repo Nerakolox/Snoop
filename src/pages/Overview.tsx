@@ -47,6 +47,7 @@ type Kpi = {
   target: NavKey;
   targetLabel: string;
   sub?: string;
+  title?: string;
 };
 
 type AppRow = {
@@ -56,17 +57,23 @@ type AppRow = {
   intensity: Intensity;
 };
 
-/** 格式化时长：毫秒 → "X时Y分" 或 "X分" */
+/** 格式化时长：毫秒 → "X小时Y分"（整点省 "0分" → "X小时"，不足 1 小时 → "X分"） */
 function formatDuration(ms: number): KpiPart[] {
   const totalMin = Math.floor(ms / 60_000);
   const hours = Math.floor(totalMin / 60);
   const mins = totalMin % 60;
+  if (hours > 0 && mins > 0) {
+    return [
+      { kind: "num", text: String(hours) },
+      { kind: "unit", text: "小时" },
+      { kind: "num", text: String(mins) },
+      { kind: "unit", text: "分" },
+    ];
+  }
   if (hours > 0) {
     return [
       { kind: "num", text: String(hours) },
-      { kind: "unit", text: "时" },
-      { kind: "num", text: String(mins) },
-      { kind: "unit", text: "分" },
+      { kind: "unit", text: "小时" },
     ];
   }
   return [
@@ -77,7 +84,7 @@ function formatDuration(ms: number): KpiPart[] {
 
 /** formatDuration 的纯字符串版，用于副文案/tooltip 里不需要分段样式的场合 */
 function formatDurationPlain(ms: number): string {
-  return formatDuration(ms).map((p) => p.text).join("");
+  return formatDuration(ms).map((p) => p.text).join(" ");
 }
 
 /** 紧凑时长：周视图格内文字。小于 1 分钟显示秒、小于 1 小时显示分、否则显示「N.Nh」。
@@ -102,6 +109,14 @@ function formatHour(hour: number): string {
 /** 格式化数字：加千分位 */
 function formatNumber(n: number): string {
   return n.toLocaleString("zh-CN");
+}
+
+/** KPI 大整数缩写：≥1 亿→「X.X亿」、≥1 万→「X.X万」，否则千分位原文。
+ *  完整值经 KPI 卡片的 title 悬浮展示，不丢精度。 */
+function formatCount(n: number): string {
+  if (n >= 100_000_000) return `${(n / 100_000_000).toFixed(1).replace(/\.0$/, "")}亿`;
+  if (n >= 10_000) return `${(n / 10_000).toFixed(1).replace(/\.0$/, "")}万`;
+  return formatNumber(n);
 }
 
 /** 格式化鼠标里程：像素 → 米/公里 */
@@ -298,25 +313,27 @@ export default function Overview() {
       parts: formatDuration(foregroundDuration),
       target: "timeline",
       targetLabel: "时间线",
-      sub: viewKind !== "day" ? `日均 ${avgLabel} · 分母 ${daysWithData} 天` : undefined,
+      sub: viewKind !== "day" ? `日均 ${avgLabel}\n分母 ${daysWithData} 天` : undefined,
     },
     {
       label: "总按键",
       parts: [
-        { kind: "num", text: formatNumber(totalKeys) },
+        { kind: "num", text: formatCount(totalKeys) },
         { kind: "unit", text: "次" },
       ],
       target: "input",
       targetLabel: "输入",
+      title: `${formatNumber(totalKeys)} 次`,
     },
     {
       label: "总点击",
       parts: [
-        { kind: "num", text: formatNumber(totalClicks) },
+        { kind: "num", text: formatCount(totalClicks) },
         { kind: "unit", text: "次" },
       ],
       target: "input",
       targetLabel: "输入",
+      title: `${formatNumber(totalClicks)} 次`,
     },
     {
       label: "鼠标里程",
@@ -563,6 +580,7 @@ export default function Overview() {
             type="button"
             className="kpi-card"
             data-target-label={k.targetLabel}
+            title={k.title}
             onClick={() => goTo(k.target, k.targetLabel)}
           >
             <div className="kpi-label">{k.label}</div>
@@ -620,7 +638,7 @@ export default function Overview() {
                     }}
                   />
                 </div>
-                <div className="app-row-time">{app.minutes} 分</div>
+                <div className="app-row-time">{formatDurationPlain(app.minutes * 60_000)}</div>
                 <DeltaBadge
                   current={app.minutes}
                   previous={prevMinutesByApp.get(app.bundleId) ?? 0}

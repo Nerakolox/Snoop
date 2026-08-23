@@ -136,6 +136,8 @@
 .kpi-sub {
   font-size: var(--text-xs);
   color: var(--color-text-3);
+  /* 副文案按 \n 显式两行（「日均 X」/「分母 Y 天」），不再被「·」随行宽随机挤断 */
+  white-space: pre-line;
 }
 
 .kpi-label {
@@ -155,6 +157,8 @@
   line-height: 1.1;
   min-width: 0;
   color: var(--color-text);
+  /* 数字与单位不折行：CJK 会在「公/里」这类两个字之间断行，把单位竖排成两行 */
+  white-space: nowrap;
 }
 
 .kpi-num {
@@ -244,7 +248,7 @@
   display: grid;
   /* 图标+名称 · 横条 · 时长 · 环比胶囊；时长/环比列固定宽度，避免各行内容长短不一时
      横条（1fr）在每一行各自计算出不同的实际像素宽度，导致占比视觉失真 */
-  grid-template-columns: 100px minmax(0, 1fr) 60px 72px;
+  grid-template-columns: 100px minmax(0, 1fr) 92px 72px;
   align-items: center;
   gap: var(--space-4);
   transition:
