@@ -8,6 +8,8 @@ import {
   aggregateByApp,
   daysWithDataOf,
   durationByHourFromBuckets,
+  durationColorVar,
+  durationLevel,
   intensityVar,
   statsByDayFromBuckets,
   type Intensity,
@@ -85,17 +87,6 @@ function formatCompactDuration(ms: number): string {
   const totalMin = Math.round(ms / 60_000);
   if (totalMin < 60) return `${totalMin}m`;
   return `${(totalMin / 60).toFixed(1)}h`;
-}
-
-/** 时长 → 0..5 六档（品牌紫深浅阶索引）。sqrt 感知分档，把小值多拉开几档。 */
-function durationLevel(ms: number, maxMs: number): number {
-  if (ms <= 0 || maxMs <= 0) return 0;
-  return Math.min(5, Math.round(Math.sqrt(ms / maxMs) * 5));
-}
-
-/** 档位 → 主题感知的品牌紫 CSS 变量引用。 */
-function durationColorVar(level: number): string {
-  return `var(--duration-${level + 1})`;
 }
 
 /** 周视图 tooltip 的星期标签：「周三」。 */

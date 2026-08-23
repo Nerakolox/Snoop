@@ -5,7 +5,6 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
 import DeltaBadge from "../components/DeltaBadge";
 import Tooltip from "../components/shared/Tooltip";
 import {
@@ -16,8 +15,9 @@ import {
 import {
   aggregateByApp,
   aggregateDowHourGrid,
-  bucketSimple,
   daysWithDataOf,
+  durationColorVar,
+  durationLevel,
   intensityVar,
   moodLabelOf,
   ratioToSliderPos,
@@ -276,6 +276,27 @@ export default function Insights() {
   );
   const maxDayForegroundMs = Math.max(...dailyStats.map((d) => d.foregroundMs), 1);
 
+  // 逐日三态 + 未来/今天，与概览页节奏图同源（品牌紫深浅编码时长，三态区分）。
+  const trendDays = useMemo(
+    () =>
+      dailyStats.map((d) => {
+        const hasBucket = d.foregroundMs > 0; // 有前台桶
+        const active = d.intensity > 0; // 有活跃输入
+        const hasData = active;
+        return {
+          dayMs: d.dayMs,
+          foregroundMs: d.foregroundMs,
+          hasData,
+          idle: hasBucket && !active,
+          noData: !hasBucket,
+          future: d.dayMs > todayMs,
+          isToday: d.dayMs === todayMs,
+          level: hasData ? durationLevel(d.foregroundMs, maxDayForegroundMs) : 0,
+        };
+      }),
+    [dailyStats, maxDayForegroundMs, todayMs]
+  );
+
   // ---- App 排行 --------------------------------------------------------------
 
   const apps = useMemo<WeekApp[]>(() => {
@@ -492,35 +513,46 @@ export default function Insights() {
           <h3 className="panel-title">
             {isCurrentAnchor ? (viewKind === "week" ? "本周" : "本月") : "该范围"}前台时长趋势
           </h3>
-          <div className="ins-trend" style={{ gridTemplateColumns: `repeat(${dailyStats.length}, 1fr)` }}>
-            {dailyStats.map((d, i) => {
-              const hasData = d.foregroundMs > 0;
-              const pct = hasData ? (d.foregroundMs / maxDayForegroundMs) * 100 : 0;
-              const level = bucketSimple(d.foregroundMs, maxDayForegroundMs);
-              const isToday = d.dayMs === todayMs;
-              const barStyle: CSSProperties = {
-                height: `${pct}%`,
-                background: isToday ? "var(--color-accent)" : intensityVar(level),
-              };
-              const showLabel = viewKind === "week" || i % 5 === 0 || i === dailyStats.length - 1;
+          <div
+            className={`ins-trend${viewKind === "month" ? " ins-trend--month" : ""}`}
+            style={{ gridTemplateColumns: `repeat(${trendDays.length}, 1fr)` }}
+          >
+            {trendDays.map((d, i) => {
+              const pct = d.hasData ? (d.foregroundMs / maxDayForegroundMs) * 100 : 0;
+              const showLabel = viewKind === "week" || i % 5 === 0 || i === trendDays.length - 1;
               const label =
                 viewKind === "week"
                   ? DAY_LABELS[mondayIndex(d.dayMs)]
                   : String(new Date(d.dayMs).getDate());
+              const tip = d.hasData
+                ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.foregroundMs / (60 * 60 * 1000))}h`
+                : d.future
+                  ? `${dateLabelOf(d.dayMs)} · 未到来`
+                  : d.idle
+                    ? `${dateLabelOf(d.dayMs)} · 无输入`
+                    : `${dateLabelOf(d.dayMs)} · 无采集数据`;
               return (
-                <Tooltip
-                  key={d.dayMs}
-                  content={
-                    hasData
-                      ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.foregroundMs / (60 * 60 * 1000))}h`
-                      : `${dateLabelOf(d.dayMs)} · 无采集数据`
-                  }
-                >
+                <Tooltip key={d.dayMs} content={tip}>
                   <button type="button" className="ins-trend-col" onClick={() => goToDay(d.dayMs)}>
                     <div className="ins-trend-bar-wrap">
-                      {hasData && <div className="ins-trend-bar" style={barStyle} />}
+                      {d.hasData ? (
+                        <div
+                          className={`ins-trend-bar${d.isToday ? " ins-trend-bar--today" : ""}`}
+                          style={{ height: `${pct}%`, background: durationColorVar(d.level) }}
+                        />
+                      ) : (
+                        <div
+                          className={`ins-trend-bar--empty${
+                            d.future
+                              ? " ins-trend-bar--future"
+                              : d.idle
+                                ? " ins-trend-bar--idle"
+                                : " ins-trend-bar--no-data"
+                          }`}
+                        />
+                      )}
                     </div>
-                    {hasData && (
+                    {viewKind === "week" && d.hasData && (
                       <div className="ins-trend-value">{fmtHours(d.foregroundMs / (60 * 60 * 1000))}h</div>
                     )}
                     <div className="ins-trend-label">{showLabel ? label : ""}</div>

@@ -120,6 +120,11 @@
   min-height: 200px;
 }
 
+/* 月视图 31 列：收窄 gap，否则 12px×30 的缝隙会把每列挤到 1px 上下，柱子不可见、标签叠成一团 */
+.ins-trend--month {
+  gap: var(--space-1);
+}
+
 .ins-trend-col {
   display: flex;
   flex-direction: column;
@@ -142,6 +147,33 @@
   transition:
     height var(--dur-base) var(--ease-smooth),
     filter var(--dur-fast) var(--ease-smooth);
+}
+
+/* 今天：外圈品牌色环，不用填充色（颜色已让给时长深浅） */
+.ins-trend-bar--today {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+/* 无活跃数据的天画一条基线而非留白，三态各自可辨：零活跃 / 无数据 / 未到来 */
+.ins-trend-bar--empty {
+  width: 100%;
+  height: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.ins-trend-bar--idle {
+  background: var(--duration-1);
+}
+
+.ins-trend-bar--no-data {
+  background: transparent;
+  border: 1px solid var(--color-border);
+}
+
+.ins-trend-bar--future {
+  background: transparent;
+  border: 1px dashed var(--color-border);
+  opacity: 0.45;
 }
 
 .ins-trend-col:hover .ins-trend-bar,
