@@ -23,8 +23,12 @@ export const MAX_SCALE = 1.35;
 export const HEIGHT_BUDGET_RATIO = 0.46;
 
 /** .kle-scaler 左右各留的水平内边距（px），用于容纳键 hover 时向外扩散的
- *  box-shadow，避免被 .kle-viewport 裁掉右侧一圈。可用宽计算需扣除左右共 2 倍。 */
+ *  box-shadow，避免被 .kle-viewport 裁掉左右一圈。可用宽计算需扣除左右共 2 倍。 */
 export const SCALER_PAD_X = 8;
+
+/** .kle-scaler 上下各留的垂直内边距（px），与 SCALER_PAD_X 同理：容纳键 hover 时
+ *  向外扩散的 box-shadow，避免最上（功能键行）/最下（Ctrl/Win/Alt 行）被裁切。 */
+export const SCALER_PAD_Y = 8;
 
 /** 键帽内文字两侧的安全内边距（px，未缩放坐标系）。标签适配算法用它算可用宽：
  *  可用宽 = key.w * KEY_UNIT - KEY_GAP - 2 * KEY_PADDING。 */

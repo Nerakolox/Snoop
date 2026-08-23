@@ -14,7 +14,7 @@ import * as solidIcons from "@fortawesome/free-solid-svg-icons";
 import type { KLEKey } from "../kleParser";
 import { parseLabelParts, extractFAIcon, FA_CLASS_TO_ICON_NAME } from "../kleParser";
 import { bucketByPercentile, intensityVar } from "../analytics";
-import { KEY_UNIT, KEY_GAP, SCALER_PAD_X } from "../layouts/metrics";
+import { KEY_UNIT, KEY_GAP, SCALER_PAD_X, SCALER_PAD_Y } from "../layouts/metrics";
 import {
   lookupTiers,
   fitLabel,
@@ -73,13 +73,15 @@ export default function KLEKeyboard({
         className="kle-scaler"
         style={{
           // 用 Math.round 写入整数尺寸，避免非整数宽高引入亚像素抖动。
-          // box-sizing 全局为 border-box：显式 width 含 padding，故 +2*SCALER_PAD_X，
-          // 使内容区（承载缩放后键盘）仍恰为 Math.round(layoutWidth * scale)。
+          // box-sizing 全局为 border-box：显式 width/height 含 padding，故各 +2*SCALER_PAD，
+          // 使内容区（承载缩放后键盘）仍恰为 Math.round(layout 尺寸 * scale)。
           width: Math.round(layoutWidth * scale) + SCALER_PAD_X * 2,
-          height: Math.round(layoutHeight * scale),
-          // 左右留白容纳 hover box-shadow 外扩，避免被 viewport 裁切
+          height: Math.round(layoutHeight * scale) + SCALER_PAD_Y * 2,
+          // 四周留白容纳键 hover 时向外扩散的 box-shadow，避免被 .kle-viewport 裁切
           paddingLeft: SCALER_PAD_X,
           paddingRight: SCALER_PAD_X,
+          paddingTop: SCALER_PAD_Y,
+          paddingBottom: SCALER_PAD_Y,
           margin: "0 auto",
         }}
       >
