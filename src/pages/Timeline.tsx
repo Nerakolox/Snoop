@@ -27,6 +27,7 @@ import {
 } from "../analytics";
 import PageShell from "../components/PageShell";
 import TimelineTooltip, { type HoverTarget } from "../components/timeline/TimelineTooltip";
+import SpikePopover, { type SpikePopoverAnchor } from "../components/timeline/SpikePopover";
 import SwimLane from "../components/timeline/SwimLane";
 import AggregateLane from "../components/timeline/AggregateLane";
 import { useTimeScale } from "../hooks/useTimeScale";
@@ -564,11 +565,22 @@ export default function Timeline() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aggCellLevels, viewportCellCount, scale]);
 
-  const [spikePopover, setSpikePopover] = useState<{ cellIndex: number; x: number; text: string } | null>(null);
+  const [spikePopover, setSpikePopover] = useState<
+    (SpikePopoverAnchor & { cellIndex: number }) | null
+  >(null);
 
-  function handleSpikeClick(cellIndex: number, x: number, hour: number, level: number) {
+  function handleSpikeClick(e: React.MouseEvent, cellIndex: number, hour: number, level: number) {
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     setSpikePopover((cur) =>
-      cur?.cellIndex === cellIndex ? null : { cellIndex, x, text: pickSpikeQuip(hour, level as 0 | 1 | 2 | 3 | 4) }
+      cur?.cellIndex === cellIndex
+        ? null
+        : {
+            cellIndex,
+            hour,
+            text: pickSpikeQuip(hour, level as 0 | 1 | 2 | 3 | 4),
+            anchorX: rect.left + rect.width / 2,
+            anchorY: rect.top,
+          }
     );
   }
 
@@ -683,20 +695,14 @@ export default function Timeline() {
               <div className="swimlane-axis-label" aria-hidden />
               <div className="swimlane-spike-track">
                 {spikes.map((sp) => (
-                  <Tooltip key={sp.cellIndex} content={`${sp.hour}:00 突变`}>
-                    <button
-                      type="button"
-                      className="swimlane-spike-marker"
-                      style={{ left: `${sp.x}%` }}
-                      onClick={() => handleSpikeClick(sp.cellIndex, sp.x, sp.hour, sp.level)}
-                    />
-                  </Tooltip>
+                  <button
+                    key={sp.cellIndex}
+                    type="button"
+                    className="swimlane-spike-marker"
+                    style={{ left: `${sp.x}%` }}
+                    onClick={(e) => handleSpikeClick(e, sp.cellIndex, sp.hour, sp.level)}
+                  />
                 ))}
-                {spikePopover && (
-                  <div className="swimlane-spike-popover" style={{ left: `${spikePopover.x}%` }}>
-                    {spikePopover.text}
-                  </div>
-                )}
               </div>
             </div>
             <AggregateLane segments={aggSegments} />
@@ -804,6 +810,10 @@ export default function Timeline() {
 
       {hovered && (
         <TimelineTooltip hovered={hovered} onClose={() => setHovered(null)} />
+      )}
+
+      {spikePopover && (
+        <SpikePopover anchor={spikePopover} onClose={() => setSpikePopover(null)} />
       )}
     </PageShell>
   );

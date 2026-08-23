@@ -469,19 +469,30 @@
 }
 
 .swimlane-spike-popover {
-  position: absolute;
-  top: 14px;
-  transform: translateX(-50%);
-  max-width: 220px;
-  padding: var(--space-2) var(--space-3);
+  position: fixed;
+  z-index: 1000;
+  min-width: 200px;
+  max-width: 280px;
+  padding: var(--space-3);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-md);
   font-size: var(--text-xs);
   color: var(--color-text);
-  white-space: normal;
-  z-index: 20;
+}
+
+/* 标题 —— 小字、静音色，作为气泡头部 */
+.swimlane-spike-popover-title {
+  font-size: var(--text-xs);
+  font-weight: 500;
+  color: var(--color-text-3);
+  margin-bottom: var(--space-1);
+}
+
+.swimlane-spike-popover-body {
+  color: var(--color-text);
+  line-height: 1.5;
 }
 
 /* 底部图例 —— 静态三项，无交互 */
