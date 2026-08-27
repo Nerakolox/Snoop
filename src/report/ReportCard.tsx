@@ -33,7 +33,9 @@ import type {
   RhythmSummary,
 } from "./types";
 import { formatDurationCompact, formatSharePct } from "../utils/format";
-import { CATEGORY_LABEL, shareColorLight } from "../ai/categories";
+import { shareColorLight } from "../ai/categories";
+// 报告里存的是分类 id，显示名从分类表实时读（历史冻结另有工单，此处不涉及）。
+import { labelOf as categoryLabel } from "../categories/store";
 import { BASELINE_MIN_DAILY_MS, DOW_LABELS, dateLabel, deltaLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
 import { EXPORT_WIDTH } from "./export";
 import { renderQuips } from "./markup";
@@ -204,7 +206,7 @@ function categoryTinyNote(
 ): string | null {
   const tiny = categories.filter((c) => c.active_ms > 0 && c.active_ms < 60_000);
   if (tiny.length === 0) return null;
-  const names = tiny.map((c) => CATEGORY_LABEL[c.category] ?? c.category).join("、");
+  const names = tiny.map((c) => categoryLabel(c.category)).join("、");
   const share = tiny.reduce((s, c) => s + c.share_pct, 0);
   return `${names} ${tiny.length} 类均不足 1 分钟，合计 ${formatSharePct(share)}`;
 }
@@ -229,7 +231,7 @@ function ReportCategoryStack({ categories }: { categories: CategoryShare[] }) {
           c.active_ms >= 60_000 ? (
             <div key={c.category} className="report-card__cat-row">
               <span className="report-card__cat-swatch" style={{ background: shareColorLight(i) }} />
-              <span className="report-card__cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
+              <span className="report-card__cat-label">{categoryLabel(c.category)}</span>
               <span className="report-card__cat-time">{formatDurationCompact(c.active_ms)}</span>
               <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
             </div>
@@ -257,7 +259,7 @@ function ReportCategoryDeltaBars({
         c.active_ms >= 60_000 ? (
           <div key={c.category} className="report-card__cat-row">
             <span className="report-card__cat-swatch" style={{ background: shareColorLight(i) }} />
-            <span className="report-card__cat-label">{CATEGORY_LABEL[c.category] ?? c.category}</span>
+            <span className="report-card__cat-label">{categoryLabel(c.category)}</span>
             <span className="report-card__cat-time">{formatDurationCompact(c.active_ms)}</span>
             <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
             {showDelta && (
@@ -519,7 +521,7 @@ function ReportHalfShift({ shifts }: { shifts: CategoryHalfShift[] }) {
     <div className="report-card__halfshift">
       {shifts.slice(0, 5).map((h) => (
         <div key={h.category} className="report-card__halfshift-row">
-          <span className="report-card__halfshift-name">{CATEGORY_LABEL[h.category] ?? h.category}</span>
+          <span className="report-card__halfshift-name">{categoryLabel(h.category)}</span>
           <span className="report-card__halfshift-values">
             {h.first_half_share_pct.toFixed(0)}% → {h.second_half_share_pct.toFixed(0)}%
           </span>

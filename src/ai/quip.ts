@@ -67,6 +67,20 @@ export function useQuipVersion(): number {
   return useSyncExternalStore(subscribe, getVersion);
 }
 
+/**
+ * 丢弃已生成的吐槽池，下次读取时重新生成。
+ *
+ * 分类表一变（增删改名改色 / 归档 / 恢复 / App 归类变化），任何按分类聚合出来的
+ * 结论都可能过期——吐槽是拿当天聚合喂出来的，同样在此列。TTL 到期前不主动重算，
+ * 所以必须显式作废，否则最长会留着半小时前那套说法。
+ */
+export function invalidateQuipCache(): void {
+  pools = {};
+  lastAttemptAtMs = 0;
+  for (const k of INTENSITIES) delete cursors[k];
+  bump();
+}
+
 // ── 纯计算：批次输入（全部聚合数字，无应用名）────────────────────────────
 
 /** 有输入桶判定 —— 与报告口径一致：纯鼠标位移不算活跃。 */

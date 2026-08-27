@@ -14,6 +14,7 @@ import type {
   FeatureDecl,
   TestResult,
 } from "./types";
+import type { ClassifyScope } from "../categories/types";
 
 export function getAiConfig(): Promise<AiConfigView> {
   return invoke<AiConfigView>("get_ai_config");
@@ -56,9 +57,18 @@ export function callAi(
   return invoke<AiCallResult>("call_ai", { featureId, payload, jsonMode });
 }
 
-/** 触发应用分类。force=true 对应「立即分类」，跳过攒批阈值。 */
-export function classifyApps(force = false): Promise<ClassifyOutcome> {
-  return invoke<ClassifyOutcome>("classify_apps", { force });
+/** 触发应用分类。force=true 对应「立即分类」，跳过攒批阈值。
+ *  scope 见 ClassifyScope，缺省「仅未分类」。 */
+export function classifyApps(
+  force = false,
+  scope: ClassifyScope = "unclassified",
+): Promise<ClassifyOutcome> {
+  return invoke<ClassifyOutcome>("classify_apps", { force, scope });
+}
+
+/** 撤销最近一次批量分类，完整还原到执行前（含被覆盖掉的手动覆盖）。返回还原的应用数。 */
+export function undoClassifyBatch(): Promise<number> {
+  return invoke<number>("undo_classify_batch");
 }
 
 /** 应用分类队列状态。 */

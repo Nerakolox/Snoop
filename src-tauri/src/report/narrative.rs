@@ -226,10 +226,10 @@ fn round1(x: f64) -> f64 {
     (x * 10.0).round() / 10.0
 }
 
+/// 分类 id → 中文显示名。走 `catalog` 的全局名称快照（本函数所在的格式化路径
+/// 拿不到数据库连接）；快照未命中时退回 id 本身，不会给出错误的名字。
 fn category_label(cat: &str) -> String {
-    crate::app_classify::Category::from_str(cat)
-        .map(|c| c.label().to_string())
-        .unwrap_or_else(|| cat.to_string())
+    crate::app_classify::catalog::name_of(cat)
 }
 
 /// 时长 → 「X 小时 Y 分」/「Y 分钟」。

@@ -1,36 +1,41 @@
-//! AI 分类引擎（Task 2）—— 队列攒批 + 单一出口调用 + 严格校验。
+//! AI 分类引擎 —— 队列攒批 + 单一出口调用 + 严格校验 + 批次可撤销。
 //!
 //! 触发时机（三者满足其一，且队列非空）：
 //!   - 队列 ≥ 8 个待分类应用；
 //!   - 距上次分类 > 24h（或从未分过）；
 //!   - 手动「立即分类」（`force`）。
 //!
-//! 每次只发一批（≤ 30 个），绝不逐应用发请求。请求走
-//! [`crate::ai::envelope::call_ai`] 单一出口（`featureId = ai.app-classify`），
-//! 自动裁剪到 T2（只发应用名，不发窗口标题）并记审计。
+//! 每次只发一批（≤ 30 个），绝不逐应用发请求；手动触发时按 30 个一组连发多批。
+//! 请求走 [`crate::ai::envelope::call_ai`] 单一出口（`featureId = ai.app-classify`），
+//! 自动裁剪到 T2（只发应用名，不发窗口标题）并记审计。这条约束不因分类数据化而改变。
+//!
+//! 分类清单**运行时从 `categories` 表拼装**，没有任何硬编码类别：新建的自定义分类
+//! 会立刻出现在 prompt 里，归档的立刻消失。
 //!
 //! 响应契约：模型返回 `{"classifications":[{category,confidence}]}`，数组长度
 //! 必须与 apps 一致、顺序一一对应。结构不符（非 JSON / 缺字段 / 长度不一致）
-//! 整批丢弃；单条 category 不在固定枚举内则跳过该条、留队下次再分。
+//! 整批丢弃；单条 category 不是合法分类 id 则跳过该条、留队下次再分。
 
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicI64, AtomicUsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::ai::config::AiConfigState;
 use crate::ai::envelope::{self, AiCodeMap};
 
 use super::store::{self, Source};
-use super::Category;
+use super::{catalog, ID_UNCATEGORIZED};
 
 /// 队列达到该数量即触发（即使未过 24h）。
 const QUEUE_TRIGGER: usize = 8;
 /// 单批最多分类的应用数。
 const BATCH_MAX: usize = 30;
+/// 手动触发时最多连发几批（防止一次点击打出无上限的调用量）。
+const MAX_CHUNKS: usize = 10;
 /// 距上次分类超过该毫秒数且队列非空时触发。
 const STALE_MS: i64 = 24 * 60 * 60 * 1000;
 
@@ -55,14 +60,39 @@ fn acquire() -> Option<RunningGuard> {
     }
 }
 
+/// 批量分类的范围。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Scope {
+    /// 仅未分类的应用（默认，也是后台轮询唯一使用的范围）。
+    Unclassified,
+    /// 全部应用，但跳过存在手动覆盖的。
+    AllSkipManual,
+    /// 全部应用，包含覆盖手动记录。破坏性，前端须二次确认。
+    AllOverride,
+}
+
+impl Scope {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Scope::Unclassified => "unclassified",
+            Scope::AllSkipManual => "all_skip_manual",
+            Scope::AllOverride => "all_override",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Scope> {
+        Some(match s {
+            "unclassified" => Scope::Unclassified,
+            "all_skip_manual" => Scope::AllSkipManual,
+            "all_override" => Scope::AllOverride,
+            _ => return None,
+        })
+    }
+}
+
 // ── 待分类队列的轻量内存缓存 ──
 // 后台每 10 分钟轮询，不能每次都跑 collect_pending（全表 GROUP BY + 逐 app resolve）。
 // 改为：队列变化时更新这里的计数，轮询只读计数，达标（或 24h 过期）才真正查库分类。
-//
-// 队列变化的两类来源：
-//   - 写桶线程见到「新 app」→ note_apps_seen 把缓存标脏；
-//   - 分类 / 手改 / 重置 → 调用方（poll_once / 命令）里 refresh_pending 重算。
-// 轮询路径 poll_once 先消费脏标记（重算一次），再只读原子判断是否触发。
 
 /// 待分类应用数量（refresh_pending 后有效；启动时填一次初值）。
 static PENDING_QUEUE: AtomicUsize = AtomicUsize::new(0);
@@ -103,17 +133,27 @@ fn collect_all_apps(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AppInfo
     Ok(raw)
 }
 
-/// 收集**全部**待分类应用，按使用时长降序（优先分类用得最多的）。
-fn collect_pending(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AppInfo>> {
+/// 按范围收集本次要分类的应用，按使用时长降序（优先分类用得最多的）。
+fn collect_targets(conn: &rusqlite::Connection, scope: Scope) -> rusqlite::Result<Vec<AppInfo>> {
     let raw = collect_all_apps(conn)?;
-    // 已分类（manual/builtin/ai）的不再进队列。
-    let mut pending = Vec::new();
+    let mut out = Vec::new();
     for info in raw {
-        if store::resolve(conn, &info.app_id, &info.name, &info.app_id)?.is_none() {
-            pending.push(info);
+        let resolved = store::resolve(conn, &info.app_id, &info.name, &info.app_id)?;
+        let keep = match scope {
+            Scope::Unclassified => resolved.is_none(),
+            Scope::AllSkipManual => resolved.as_ref().map_or(true, |c| c.source != "manual"),
+            Scope::AllOverride => true,
+        };
+        if keep {
+            out.push(info);
         }
     }
-    Ok(pending)
+    Ok(out)
+}
+
+/// 收集**全部**待分类应用（范围 = 仅未分类）。队列计数与后台轮询用。
+fn collect_pending(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<AppInfo>> {
+    collect_targets(conn, Scope::Unclassified)
 }
 
 /// 最近一次 AI 分类时间（`app_categories` 里 source='ai' 的最大 classified_at_ms）。
@@ -125,30 +165,39 @@ fn last_classified_at(conn: &rusqlite::Connection) -> rusqlite::Result<Option<i6
     )
 }
 
-/// 分类系统提示：固定 11 类 + 输出契约。模型不得自创新类别。
-const SYSTEM_PROMPT: &str = "你是 Snoop 的应用分类器。根据应用名，把每个应用归入以下固定 11 个类别之一：\n\
-development（开发：IDE、终端、版本控制、数据库）\n\
-communication（沟通：微信、QQ、邮件、Slack、会议）\n\
-browsing（浏览：浏览器）\n\
-entertainment（娱乐：游戏、视频播放器、音乐）\n\
-design（设计：Figma、Photoshop、剪辑、录屏）\n\
-document（文档：Office、笔记、PDF）\n\
-ai_assistant（AI 助手：ChatGPT、Claude、Gemini、Copilot 等独立桌面客户端；编辑器/IDE 里的 Copilot 插件不算，那是宿主开发工具）\n\
-system（系统：资源管理器、任务管理器、系统工具、代理）\n\
-remote（远程控制：ToDesk、向日葵、RDP、TeamViewer）\n\
-download（下载工具：IDM、迅雷、BT）\n\
-other（其他：无法归入以上任何一类）\n\
-\n\
-只使用上述类别，禁止自创新类别。输出一个 JSON 对象，格式为：\n\
-{\"classifications\":[{\"category\":\"<类别>\",\"confidence\":0.0}]}\n\
-classifications 数组长度必须与 apps 数组完全一致，顺序一一对应（第 i 个分类对应第 i 个应用）。\n\
-confidence 是对分类的把握（0 到 1）。拿不准的用 other 并给低 confidence。";
+/// 运行时拼装分类系统提示：逐条列出各**未归档**分类的 id / 名称 / 说明。
+///
+/// 「未分类」不进 prompt——它是「AI 还没判断过」的状态，不是一个可供选择的归属。
+/// 模型只能从列出的 id 里选，不得自创。
+fn build_system_prompt(cats: &[catalog::Category]) -> String {
+    let mut s = String::from(
+        "你是 Snoop 的应用分类器。根据应用名，把每个应用归入以下固定类别之一：\n",
+    );
+    for c in cats {
+        s.push_str(&format!("{}（{}：{}）\n", c.id, c.name, c.description));
+    }
+    s.push_str(
+        "\n只使用上述类别 id，禁止自创新类别。输出一个 JSON 对象，格式为：\n\
+         {\"classifications\":[{\"category\":\"<类别 id>\",\"confidence\":0.0}]}\n\
+         classifications 数组长度必须与 apps 数组完全一致，顺序一一对应（第 i 个分类对应第 i 个应用）。\n\
+         confidence 是对分类的把握（0 到 1）。",
+    );
+    s
+}
+
+/// 可供 AI 分配的分类：未归档，且排除「未分类」。
+fn assignable(conn: &rusqlite::Connection) -> rusqlite::Result<Vec<catalog::Category>> {
+    Ok(catalog::list(conn)?
+        .into_iter()
+        .filter(|c| !c.is_archived && c.id != ID_UNCATEGORIZED)
+        .collect())
+}
 
 /// 构造完整 T3 形状的 payload；信封层会按 tier 裁到 T2（只发应用名）。
-fn build_payload(batch: &[AppInfo]) -> Value {
+fn build_payload(batch: &[AppInfo], cats: &[catalog::Category]) -> Value {
     json!({
-        "system_prompt": SYSTEM_PROMPT,
-        "categories": Category::ALL.iter().map(|c| c.as_str()).collect::<Vec<_>>(),
+        "system_prompt": build_system_prompt(cats),
+        "categories": cats.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(),
         "apps": batch
             .iter()
             .map(|a| json!({ "id": a.app_id, "name": a.name, "windows": [] }))
@@ -156,11 +205,14 @@ fn build_payload(batch: &[AppInfo]) -> Value {
     })
 }
 
-/// 严格校验模型响应，返回与 `apps` 等长的 `Option<(类别, 置信度)>` 数组。
+/// 严格校验模型响应，返回与 `apps` 等长的 `Option<(分类 id, 置信度)>` 数组。
 /// 单条 category 非法 → 该位置为 None（跳过、留队）；结构非法 → 整批报错。
-fn validate(content: &str, n: usize) -> Result<Vec<Option<(Category, Option<f64>)>>, String> {
-    let v: Value =
-        serde_json::from_str(content).map_err(|e| format!("响应不是合法 JSON：{e}"))?;
+fn validate(
+    content: &str,
+    n: usize,
+    valid: &HashSet<String>,
+) -> Result<Vec<Option<(String, Option<f64>)>>, String> {
+    let v: Value = serde_json::from_str(content).map_err(|e| format!("响应不是合法 JSON：{e}"))?;
     let arr = v
         .get("classifications")
         .and_then(|x| x.as_array())
@@ -174,7 +226,8 @@ fn validate(content: &str, n: usize) -> Result<Vec<Option<(Category, Option<f64>
         let cat = item
             .get("category")
             .and_then(|c| c.as_str())
-            .and_then(Category::from_str);
+            .filter(|c| valid.contains(*c))
+            .map(|c| c.to_string());
         let conf = item
             .get("confidence")
             .and_then(|x| x.as_f64())
@@ -184,17 +237,158 @@ fn validate(content: &str, n: usize) -> Result<Vec<Option<(Category, Option<f64>
     Ok(out)
 }
 
+// ── 批次快照与撤销 ──────────────────────────────────────────────────────────
+
+/// 一个应用在批次执行**前**的原始状态。`category = None` 表示当时表里没有行
+/// （即未分类，或分类由 builtin 计算得出）。
+#[derive(Serialize, Deserialize, Clone)]
+struct SnapshotEntry {
+    app_id: String,
+    category: Option<String>,
+    source: Option<String>,
+    confidence: Option<f64>,
+    classified_at_ms: Option<i64>,
+}
+
+fn snapshot_of(conn: &rusqlite::Connection, app_ids: &[String]) -> Vec<SnapshotEntry> {
+    app_ids
+        .iter()
+        .map(|id| {
+            let row = conn
+                .query_row(
+                    "SELECT category, source, confidence, classified_at_ms
+                     FROM app_categories WHERE app_id = ?1",
+                    [id],
+                    |r| {
+                        Ok((
+                            r.get::<_, String>(0)?,
+                            r.get::<_, String>(1)?,
+                            r.get::<_, Option<f64>>(2)?,
+                            r.get::<_, i64>(3)?,
+                        ))
+                    },
+                )
+                .ok();
+            match row {
+                Some((c, s, conf, at)) => SnapshotEntry {
+                    app_id: id.clone(),
+                    category: Some(c),
+                    source: Some(s),
+                    confidence: conf,
+                    classified_at_ms: Some(at),
+                },
+                None => SnapshotEntry {
+                    app_id: id.clone(),
+                    category: None,
+                    source: None,
+                    confidence: None,
+                    classified_at_ms: None,
+                },
+            }
+        })
+        .collect()
+}
+
+/// 落一个批次记录，并清掉更早的批次（只保留最近一个可撤销）。
+fn save_batch(
+    conn: &rusqlite::Connection,
+    scope: Scope,
+    affected: usize,
+    snap: &[SnapshotEntry],
+) -> rusqlite::Result<()> {
+    let json = serde_json::to_string(snap).unwrap_or_else(|_| "[]".into());
+    conn.execute("DELETE FROM classify_batches", [])?;
+    conn.execute(
+        "INSERT INTO classify_batches (created_at_ms, scope, affected, snapshot_json)
+         VALUES (?1, ?2, ?3, ?4)",
+        rusqlite::params![store::now_ms(), scope.as_str(), affected as i64, json],
+    )?;
+    Ok(())
+}
+
+/// 作废撤销入口。用户手动改了任一应用的归类后调用——旧批次的「原始状态」
+/// 已经不再是用户眼下看到的状态，再还原就会把手改也一起吞掉。
+pub fn invalidate_batch(conn: &rusqlite::Connection) {
+    let _ = conn.execute("DELETE FROM classify_batches", []);
+}
+
+/// 最近一个可撤销批次的摘要。
+#[derive(Serialize, Clone)]
+pub struct BatchInfo {
+    pub created_at_ms: i64,
+    pub scope: String,
+    pub affected: i64,
+}
+
+pub fn latest_batch(conn: &rusqlite::Connection) -> Option<BatchInfo> {
+    conn.query_row(
+        "SELECT created_at_ms, scope, affected FROM classify_batches
+         ORDER BY id DESC LIMIT 1",
+        [],
+        |r| {
+            Ok(BatchInfo {
+                created_at_ms: r.get(0)?,
+                scope: r.get(1)?,
+                affected: r.get(2)?,
+            })
+        },
+    )
+    .ok()
+}
+
+/// 撤销最近一个批次：把所有受影响应用恢复到批次执行前的状态，
+/// **包括被覆盖掉的手动覆盖记录**。返回还原的应用数。
+pub fn undo_latest_batch(conn: &rusqlite::Connection) -> Result<usize, String> {
+    let json: String = conn
+        .query_row(
+            "SELECT snapshot_json FROM classify_batches ORDER BY id DESC LIMIT 1",
+            [],
+            |r| r.get(0),
+        )
+        .map_err(|_| "没有可撤销的分类批次".to_string())?;
+    let snap: Vec<SnapshotEntry> =
+        serde_json::from_str(&json).map_err(|e| format!("批次快照损坏：{e}"))?;
+
+    for e in &snap {
+        match (&e.category, &e.source) {
+            // 批次执行前表里有行 → 原样写回（绕过优先级判定，这是还原不是新决策）
+            (Some(cat), Some(src)) => {
+                store::restore_row(
+                    conn,
+                    &e.app_id,
+                    cat,
+                    src,
+                    e.confidence,
+                    e.classified_at_ms.unwrap_or(0),
+                )
+                .map_err(|err| err.to_string())?;
+            }
+            // 批次执行前没有行 → 删掉本次写进去的那行，回到未分类 / builtin
+            _ => {
+                store::delete(conn, &e.app_id).map_err(|err| err.to_string())?;
+            }
+        }
+    }
+    conn.execute("DELETE FROM classify_batches", [])
+        .map_err(|e| e.to_string())?;
+    Ok(snap.len())
+}
+
+// ── 分类主流程 ──────────────────────────────────────────────────────────────
+
 /// 一次分类流程的结果（回给前端展示 / 日志）。
 #[derive(Serialize, Clone)]
 pub struct ClassifyOutcome {
     /// busy | empty | skipped | classified | degraded | invalid_response
     pub status: String,
-    /// 当前待分类队列长度（触发前）。
+    /// 本次范围内待处理的应用数（触发前）。
     pub queue_len: usize,
     /// 本次成功落库的分类条数。
     pub classified: usize,
     /// 人类可读的一句话结果 / 跳过原因。
     pub message: String,
+    /// 本次批次是否可撤销（有落库改动才有意义）。
+    pub can_undo: bool,
 }
 
 impl ClassifyOutcome {
@@ -204,6 +398,7 @@ impl ClassifyOutcome {
             queue_len,
             classified,
             message: message.into(),
+            can_undo: false,
         }
     }
 }
@@ -214,6 +409,7 @@ pub async fn classify_if_due(
     code_map: &Mutex<AiCodeMap>,
     db_path: &Path,
     force: bool,
+    scope: Scope,
 ) -> ClassifyOutcome {
     let _guard = match acquire() {
         Some(g) => g,
@@ -221,16 +417,39 @@ pub async fn classify_if_due(
     };
 
     // ── 阶段 1：攒批（同步，短生命周期连接） ──
-    let (batch, queue_len) = {
+    let (targets, queue_len, cats) = {
         let conn = match rusqlite::Connection::open(db_path) {
             Ok(c) => c,
-            Err(e) => return ClassifyOutcome::new("invalid_response", 0, 0, format!("打开数据库失败：{e}")),
+            Err(e) => {
+                return ClassifyOutcome::new("invalid_response", 0, 0, format!("打开数据库失败：{e}"))
+            }
         };
-        let pending = match collect_pending(&conn) {
+        let cats = match assignable(&conn) {
+            Ok(c) => c,
+            Err(e) => {
+                return ClassifyOutcome::new(
+                    "invalid_response",
+                    0,
+                    0,
+                    format!("读取分类表失败：{e}"),
+                )
+            }
+        };
+        if cats.is_empty() {
+            return ClassifyOutcome::new("empty", 0, 0, "没有可用的分类，先在分类页建一个");
+        }
+        let targets = match collect_targets(&conn, scope) {
             Ok(p) => p,
-            Err(e) => return ClassifyOutcome::new("invalid_response", 0, 0, format!("读取待分类列表失败：{e}")),
+            Err(e) => {
+                return ClassifyOutcome::new(
+                    "invalid_response",
+                    0,
+                    0,
+                    format!("读取待分类列表失败：{e}"),
+                )
+            }
         };
-        let queue_len = pending.len();
+        let queue_len = targets.len();
         if queue_len == 0 {
             return ClassifyOutcome::new("empty", 0, 0, "没有待分类的应用");
         }
@@ -246,49 +465,108 @@ pub async fn classify_if_due(
                 );
             }
         }
-        let batch: Vec<AppInfo> = pending.into_iter().take(BATCH_MAX).collect();
-        (batch, queue_len)
+        (targets, queue_len, cats)
     };
 
-    // ── 阶段 2：请求分类（异步，走单一出口） ──
-    let payload = build_payload(&batch);
-    let result = envelope::call_ai(config, code_map, db_path, "ai.app-classify", payload, true).await;
-    if !result.ok {
-        return ClassifyOutcome::new(
-            "degraded",
-            queue_len,
-            0,
-            result.reason.unwrap_or_else(|| "AI 不可用".into()),
-        );
-    }
-    let content = result.content.unwrap_or_default();
-    let parsed = match validate(&content, batch.len()) {
-        Ok(p) => p,
-        Err(e) => return ClassifyOutcome::new("invalid_response", queue_len, 0, e),
+    // 手动触发按 30 个一组连发多批；后台轮询只发一批。
+    let chunk_limit = if force { MAX_CHUNKS } else { 1 };
+    let chunks: Vec<&[AppInfo]> = targets.chunks(BATCH_MAX).take(chunk_limit).collect();
+    let covered: usize = chunks.iter().map(|c| c.len()).sum();
+    let truncated = queue_len.saturating_sub(covered);
+    let valid: HashSet<String> = cats.iter().map(|c| c.id.clone()).collect();
+
+    // 先把整轮会碰到的应用的原始状态拍下来，再开始写——撤销要能还原到动手之前。
+    let all_ids: Vec<String> = chunks
+        .iter()
+        .flat_map(|c| c.iter().map(|a| a.app_id.clone()))
+        .collect();
+    let snapshot = match rusqlite::Connection::open(db_path) {
+        Ok(conn) => snapshot_of(&conn, &all_ids),
+        Err(e) => {
+            return ClassifyOutcome::new("invalid_response", queue_len, 0, format!("打开数据库失败：{e}"))
+        }
     };
 
-    // ── 阶段 3：落库（同步，新连接；store 层再兜一道优先级硬规则） ──
-    let conn = match rusqlite::Connection::open(db_path) {
-        Ok(c) => c,
-        Err(e) => return ClassifyOutcome::new("invalid_response", queue_len, 0, format!("打开数据库失败：{e}")),
-    };
     let mut classified = 0usize;
-    for (i, entry) in parsed.iter().enumerate() {
-        let Some((cat, conf)) = entry else { continue };
-        let info = &batch[i];
-        match store::set_category(&conn, &info.app_id, &info.name, &info.app_id, *cat, Source::Ai, *conf) {
-            Ok(true) => classified += 1,
-            Ok(false) => { /* 被 manual/builtin 优先级挡下，跳过 */ }
-            Err(_) => { /* 单条写失败不影响其余 */ }
+    let mut last_error: Option<(String, String)> = None;
+
+    for batch in &chunks {
+        // ── 阶段 2：请求分类（异步，走单一出口） ──
+        let payload = build_payload(batch, &cats);
+        let result =
+            envelope::call_ai(config, code_map, db_path, "ai.app-classify", payload, true).await;
+        if !result.ok {
+            last_error = Some((
+                "degraded".into(),
+                result.reason.unwrap_or_else(|| "AI 不可用".into()),
+            ));
+            break;
+        }
+        let content = result.content.unwrap_or_default();
+        let parsed = match validate(&content, batch.len(), &valid) {
+            Ok(p) => p,
+            Err(e) => {
+                last_error = Some(("invalid_response".into(), e));
+                break;
+            }
+        };
+
+        // ── 阶段 3：落库（同步，新连接；store 层再兜一道优先级硬规则） ──
+        let conn = match rusqlite::Connection::open(db_path) {
+            Ok(c) => c,
+            Err(e) => {
+                last_error = Some(("invalid_response".into(), format!("打开数据库失败：{e}")));
+                break;
+            }
+        };
+        for (i, entry) in parsed.iter().enumerate() {
+            let Some((cat, conf)) = entry else { continue };
+            let info = &batch[i];
+            let written = if scope == Scope::AllOverride {
+                // 「包含覆盖手动记录」是用户显式选择的破坏性操作，绕过优先级硬规则；
+                // 代价由撤销兜底——快照里存了每条手动覆盖的原样。
+                store::force_set(&conn, &info.app_id, cat, Source::Ai, *conf).map(|_| true)
+            } else {
+                store::set_category(
+                    &conn,
+                    &info.app_id,
+                    &info.name,
+                    &info.app_id,
+                    cat,
+                    Source::Ai,
+                    *conf,
+                )
+            };
+            match written {
+                Ok(true) => classified += 1,
+                Ok(false) => { /* 被 manual/builtin 优先级挡下，跳过 */ }
+                Err(_) => { /* 单条写失败不影响其余 */ }
+            }
         }
     }
 
-    ClassifyOutcome::new(
-        "classified",
-        queue_len,
-        classified,
-        format!("已分类 {classified}/{queue_len} 个应用"),
-    )
+    // 一条都没写成 → 不留批次（没什么可撤销的），直接把失败原因报上去。
+    if classified == 0 {
+        if let Some((status, msg)) = last_error {
+            return ClassifyOutcome::new(&status, queue_len, 0, msg);
+        }
+        return ClassifyOutcome::new("classified", queue_len, 0, "没有可落库的分类结果");
+    }
+
+    if let Ok(conn) = rusqlite::Connection::open(db_path) {
+        let _ = save_batch(&conn, scope, classified, &snapshot);
+    }
+
+    let mut message = format!("已分类 {classified}/{queue_len} 个应用");
+    if truncated > 0 {
+        message.push_str(&format!("；本次只处理了前 {covered} 个，还剩 {truncated} 个未处理"));
+    }
+    if let Some((_, e)) = last_error {
+        message.push_str(&format!("；中途中断：{e}"));
+    }
+    let mut outcome = ClassifyOutcome::new("classified", queue_len, classified, message);
+    outcome.can_undo = true;
+    outcome
 }
 
 /// 分类状态快照（供前端展示队列与上次时间）。
@@ -297,21 +575,39 @@ pub struct ClassifyStatus {
     pub queue_len: usize,
     pub last_classified_at_ms: Option<i64>,
     pub running: bool,
+    /// 有记录的应用总数（「全部 App」范围的规模）。
+    pub total_apps: usize,
+    /// 存在手动覆盖的应用数（「包含覆盖手动记录」二次确认要显示这个数）。
+    pub manual_count: i64,
+    /// 最近一个可撤销批次；没有则为 null。
+    pub undo: Option<BatchInfo>,
 }
 
 pub fn classify_status(db_path: &Path) -> ClassifyStatus {
-    let (queue_len, last) = rusqlite::Connection::open(db_path)
-        .ok()
+    let conn = rusqlite::Connection::open(db_path).ok();
+    let (queue_len, last, total, manual, undo) = conn
+        .as_ref()
         .map(|conn| {
-            let q = collect_pending(&conn).map(|p| p.len()).unwrap_or(0);
-            let last = last_classified_at(&conn).ok().flatten();
-            (q, last)
+            let q = collect_pending(conn).map(|p| p.len()).unwrap_or(0);
+            let last = last_classified_at(conn).ok().flatten();
+            let total = collect_all_apps(conn).map(|a| a.len()).unwrap_or(0);
+            let manual: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM app_categories WHERE source = 'manual'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap_or(0);
+            (q, last, total, manual, latest_batch(conn))
         })
-        .unwrap_or((0, None));
+        .unwrap_or((0, None, 0, 0, None));
     ClassifyStatus {
         queue_len,
         last_classified_at_ms: last,
         running: RUNNING.load(Ordering::SeqCst),
+        total_apps: total,
+        manual_count: manual,
+        undo,
     }
 }
 
@@ -390,7 +686,7 @@ pub async fn poll_once(
         return false;
     }
     // 3) 达标才碰库：走原有完整分类流程（内部会再精确核一次门）。
-    classify_if_due(config, code_map, db_path, false).await;
+    classify_if_due(config, code_map, db_path, false, Scope::Unclassified).await;
     // 4) 分类后队列变了（或精确门判定为 skip，缓存可能虚高），刷新缓存对齐真实值。
     refresh_pending(db_path);
     true

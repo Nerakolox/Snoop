@@ -15,6 +15,7 @@ import KeymapTest from "./pages/KeymapTest";
 import { useContextState, useContextActions } from "./store/context";
 import { TopBarToolsProvider } from "./components/topbar/TopBarToolsContext";
 import { useAiEnabled } from "./ai/master";
+import { loadCategories } from "./categories/store";
 
 // 两段动画：先淡出旧页（旧内容往上飞），换页并等新页 layout 完成，
 // 再淡入新页（新内容从下方浮上）
@@ -57,6 +58,12 @@ export default function App() {
   );
   const timerRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
+
+  // 分类表启动即拉一次：报告卡片等地方是同步读 labelOf 的（拿不到 hook），
+  // 快照没建立就会退回显示分类 id。
+  useEffect(() => {
+    void loadCategories();
+  }, []);
 
   useEffect(() => {
     const handler = (e: Event) => {

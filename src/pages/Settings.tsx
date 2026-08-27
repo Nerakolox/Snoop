@@ -8,8 +8,9 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import {
   Sun, Moon, Monitor, Power, Minimize2,
-  Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code,
+  Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code, Tags,
 } from "lucide-react";
+import Categories from "./settings/Categories";
 import { resetAppIconCache } from "../components/AppIcon";
 import PageShell from "../components/PageShell";
 import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELayoutPicker";
@@ -92,7 +93,11 @@ function SegmentedControl<T extends string>({
   );
 }
 
+/** 设置页的二级页。null = 设置主页。二级页只从这里进，主导航栏不开新入口。 */
+type SubPage = null | "categories";
+
 export default function Settings() {
+  const [subPage, setSubPage] = useState<SubPage>(null);
   const [settings, setSettings] = useState<AppSettings>({
     collection_paused: false,
     ignore_list: [],
@@ -349,6 +354,10 @@ export default function Settings() {
     }
   }
 
+  if (subPage === "categories") {
+    return <Categories onBack={() => setSubPage(null)} />;
+  }
+
   return (
     <PageShell className="settings-page">
 
@@ -439,6 +448,20 @@ export default function Settings() {
 
         <SettingRow label="配列" desc="影响「输入」页热力图的键位排布">
           <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
+        </SettingRow>
+      </div>
+
+      <div className="settings-group">
+        <div className="settings-group-title">分类</div>
+
+        <SettingRow
+          label="应用分类"
+          desc="管理分类本身（新建 / 改名 / 改色 / 归档 / 排序），以及每个 App 归到哪一类"
+        >
+          <button className="setting-btn" onClick={() => setSubPage("categories")}>
+            <Tags size={13} />
+            管理分类
+          </button>
         </SettingRow>
       </div>
 

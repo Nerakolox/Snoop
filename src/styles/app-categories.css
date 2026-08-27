@@ -1,16 +1,315 @@
-/* ---------- 应用分类（设置页 Task 3） ---------- */
+/* ---------- 设置 → 分类（二级页） ----------
+   色彩规约：全部走语义 token，无硬编码色值。
+   **此页不出现暖色阶** —— --intensity-* 是「活跃强度」的专属编码，
+   分类管理跟强度没有关系，借用它会让读者误读。
+   分类自身的色点走 OKLCH（categories/color.ts），L/C 由 --cat-l / --cat-c 给。 */
 
-.cat-panel {
+/* 页面根：只放布局，padding 由 PageShell 提供（见 CLAUDE.md） */
+.categories-page {
+  gap: var(--space-6);
+}
+
+.cat-page-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cat-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px var(--space-2) 4px var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+
+.cat-back:hover {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.cat-page-title {
+  font-size: var(--text-lg);
+  font-weight: 650;
+  color: var(--color-text);
+}
+
+/* 分组标题右侧挂一个操作按钮（「新建分类」） */
+.categories-page .settings-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.cat-new-btn {
+  margin-left: auto;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.cat-limit-hint {
+  padding: var(--space-2) var(--space-6);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* ── 分类目录列表 ── */
+
+.cat-cat-list {
   display: flex;
   flex-direction: column;
 }
 
-.cat-toolbar {
+.cat-cat-row {
   display: flex;
   align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.cat-cat-row:last-child {
+  border-bottom: none;
+}
+
+.cat-cat-row.is-dragging {
+  opacity: 0.45;
+}
+
+.cat-drag {
+  display: inline-flex;
+  color: var(--color-text-3);
+  cursor: grab;
+  flex-shrink: 0;
+}
+
+.cat-drag:active {
+  cursor: grabbing;
+}
+
+/* 分类色点：颜色来自数据（inline style 的 oklch），这里只管形状 */
+.cat-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cat-cat-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+
+.cat-cat-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--color-text);
+}
+
+.cat-cat-desc {
+  font-size: 11px;
+  color: var(--color-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cat-cat-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.cat-cat-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* ── 已归档折叠区 ── */
+
+.cat-archived-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-6);
+  border: none;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cat-archived-head:hover {
+  color: var(--color-text);
+}
+
+.cat-archived-head svg {
+  transition: transform var(--dur-fast) var(--ease-smooth);
+}
+
+.cat-archived-head svg.is-collapsed {
+  transform: rotate(-90deg);
+}
+
+.cat-archived-list .cat-cat-row {
+  background: var(--color-surface-2);
+}
+
+.cat-archived-list .cat-cat-name {
+  color: var(--color-text-2);
+}
+
+/* ── 应用归类的筛选栏 ── */
+
+.cat-filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--color-border);
 }
+
+.cat-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.cat-search-icon {
+  position: absolute;
+  left: var(--space-2);
+  color: var(--color-text-3);
+  pointer-events: none;
+}
+
+.cat-search .ai-input {
+  padding-left: 26px;
+}
+
+/* ── 通用小图标按钮（编辑 / 归档 / 恢复 / 删除 / 重置） ── */
+
+.cat-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-2);
+  cursor: pointer;
+  padding: 0;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+
+.cat-icon-btn:hover {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+/* 危险动作（永久删除）不借用暖色阶，用中性描边 + 悬停才显色 */
+.cat-icon-btn.is-danger:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  border-color: var(--color-text-2);
+}
+
+.cat-icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── 新建 / 编辑分类弹窗 ── */
+
+.cat-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 420px;
+}
+
+.cat-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.cat-field-label {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.cat-field-hint {
+  font-size: 11px;
+  color: var(--color-text-3);
+}
+
+.cat-textarea {
+  resize: vertical;
+  min-height: 60px;
+  line-height: 1.5;
+  padding: var(--space-2);
+}
+
+.cat-color-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cat-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.cat-color-input {
+  width: 32px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  cursor: pointer;
+}
+
+.cat-color-meta {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  flex: 1;
+}
+
+.cat-color-warn {
+  align-items: flex-start;
+}
+
+/* ---------- 应用归类列表 ---------- */
 
 .cat-list {
   display: flex;
@@ -63,13 +362,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-.cat-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  flex-shrink: 0;
-}
-
 .cat-source {
   display: inline-flex;
   align-items: center;
@@ -88,20 +380,21 @@
   background: var(--color-accent-soft);
 }
 
+/* AI / 内置规则 / 未分类三种来源走中性阶区分深浅，**不用暖色阶**：
+   暖色是活跃强度的专属编码，拿它标「来源」会让读者误读成「这个应用很活跃」。 */
 .cat-source.is-ai {
-  color: var(--intensity-4);
-  border-color: color-mix(in oklab, var(--intensity-4) 40%, transparent);
-  background: color-mix(in oklab, var(--intensity-4) 8%, transparent);
+  color: var(--color-text-2);
+  border-color: var(--neutral-4);
 }
 
-.cat-confidence {
-  font-size: var(--text-xs);
+.cat-source.is-builtin {
   color: var(--color-text-3);
-  font-variant-numeric: tabular-nums;
 }
 
-.cat-warn {
-  color: var(--intensity-4);
+.cat-source.is-none {
+  color: var(--color-text-3);
+  background: transparent;
+  border-style: dashed;
 }
 
 .cat-actions {
@@ -130,32 +423,6 @@
 }
 
 .cat-select:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.cat-reset {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-2);
-  color: var(--color-text-2);
-  cursor: pointer;
-  padding: 0;
-  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
-}
-
-.cat-reset:hover {
-  background: var(--color-accent-soft);
-  color: var(--color-accent);
-  border-color: var(--color-accent);
-}
-
-.cat-reset:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

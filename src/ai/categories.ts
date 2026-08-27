@@ -1,35 +1,16 @@
-// 应用分类的前端元数据 —— 类别值 / 中文名。
-// 与后端 `Category` 枚举严格对齐（as_str / label）。改枚举必须同步这里。
-
-export interface CategoryMeta {
-  value: string;
-  label: string;
-}
-
-// 分类是离散互斥的类别，但**占比可视化不再给每个类别一个固定色相**：
+// 分类占比的**排名色阶** —— 只管「第几名」，不管「是哪一类」。
+//
+// 分类身份（名称、颜色、说明）已经数据化，住在 `src/categories/*`：
+// 显示名走 `categories/store.ts` 的 labelOf，分类色走 `categories/color.ts`。
+// 这个文件只剩下占比可视化用的排名色阶，与分类是谁无关。
+//
+// 分类是离散互斥的类别，但**占比可视化不给每个类别一个固定色相**：
 // 颜色只编码「占比排名」（排名越靠前越深 / 越亮），类别身份交给文字（图例 / tooltip）。
 // 这与时间线「颜色编码强度、身份交给行头」是同一套逻辑，整站一致。
 //
 // 排名色阶走**中性灰阶**而非品牌紫：暖色阶是「活跃强度」的唯一编码，品牌紫只归交互与身份，
 // 占比是第三个维度，两套都不能借用，否则读者会把"深浅"误读成"活跃"。
 // 唯一的紫是第一名那一段 —— 那是"强调单个关键项"，与「XX% 是娱乐」的结论句呼应。
-export const CATEGORIES: CategoryMeta[] = [
-  { value: "development", label: "开发" },
-  { value: "communication", label: "沟通" },
-  { value: "browsing", label: "浏览" },
-  { value: "entertainment", label: "娱乐" },
-  { value: "design", label: "设计" },
-  { value: "document", label: "文档" },
-  { value: "system", label: "系统" },
-  { value: "remote", label: "远程控制" },
-  { value: "download", label: "下载工具" },
-  { value: "ai_assistant", label: "AI 助手" },
-  { value: "other", label: "其他" },
-];
-
-export const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
-  CATEGORIES.map((c) => [c.value, c.label]),
-);
 
 /**
  * 分类占比的「品牌紫深浅阶」—— 浅色态的 hex，**仅供导出版式（report/ReportCard）使用**。

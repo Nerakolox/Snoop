@@ -1,7 +1,10 @@
-// 「AI」页 —— 服务 / 隐私 / 分类 / 记录 四区块，吸顶 Tab 栏切换。
+// 「AI」页 —— 服务 / 隐私 / 记录 三区块，吸顶 Tab 栏切换。
 //
-// 内容本身全部搬自原设置页的 AISettings / AppCategories，本页只做布局：
-// 吸顶分段控件切 tab，body 常驻 <AISettings tab={tab} />（组件内 state 不丢）。
+// 本页只做布局：吸顶分段控件切 tab，body 常驻 <AISettings tab={tab} />
+//（组件内 state 不丢）。
+//
+// 分类**不在这里**：分类已是用户可完整管理的一等功能，入口在「设置 → 分类」。
+// 本页只留纯 AI 配置（模型、密钥、隐私分级、审计）。
 
 import { useState } from "react";
 import PageShell from "../components/PageShell";
@@ -10,7 +13,6 @@ import AISettings, { type AiTab } from "../components/ai/AISettings";
 const TABS: { value: AiTab; label: string }[] = [
   { value: "service", label: "服务" },
   { value: "privacy", label: "隐私" },
-  { value: "category", label: "分类" },
   { value: "log", label: "记录" },
 ];
 

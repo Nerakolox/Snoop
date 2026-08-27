@@ -2,6 +2,8 @@
 // 注意：命令的**顶层参数**用 camelCase（Tauri 默认），嵌套结构体字段沿用
 // snake_case（后端未加 rename_all）。
 
+import type { BatchInfo } from "../categories/types";
+
 export type Tier = "T0" | "T1" | "T2" | "T3";
 
 /** 一个 AI 功能的声明（来自 get_ai_features）。 */
@@ -67,6 +69,8 @@ export interface ClassifyOutcome {
   queue_len: number;
   classified: number;
   message: string;
+  /** 本次有落库改动、可以一键撤销。 */
+  can_undo: boolean;
 }
 
 /** get_classify_status 的返回。 */
@@ -74,9 +78,17 @@ export interface ClassifyStatus {
   queue_len: number;
   last_classified_at_ms: number | null;
   running: boolean;
+  /** 有记录的应用总数（「全部 App」范围的规模）。 */
+  total_apps: number;
+  /** 存在手动覆盖的应用数（「包含覆盖手动记录」二次确认要显示这个数）。 */
+  manual_count: number;
+  /** 最近一个可撤销批次；没有则为 null。 */
+  undo: BatchInfo | null;
 }
 
-/** 设置页分类列表的一行（list_classified_apps 返回）。 */
+/** 应用归类列表的一行（list_classified_apps 返回）。
+ *  `category` 是**数据层的原始分类 id**，不做归档折叠——前端要靠它显示
+ *  「其他（原 XX，已归档）」。 */
 export interface AppCategoryRow {
   app_id: string;
   app_name: string;

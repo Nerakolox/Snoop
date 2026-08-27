@@ -95,10 +95,18 @@ pub fn run() {
             ai::commands::call_ai,
             app_classify::commands::classify_apps,
             app_classify::commands::get_classify_status,
+            app_classify::commands::undo_classify_batch,
             app_classify::commands::list_classified_apps,
             app_classify::commands::set_app_category,
             app_classify::commands::reset_app_category,
             app_classify::commands::get_category_breakdown,
+            app_classify::commands::list_categories,
+            app_classify::commands::create_category,
+            app_classify::commands::update_category,
+            app_classify::commands::set_category_archived,
+            app_classify::commands::get_category_delete_impact,
+            app_classify::commands::delete_category,
+            app_classify::commands::reorder_categories,
             report::commands::get_report_list,
             report::commands::get_report,
             report::commands::regenerate_report,
@@ -230,6 +238,10 @@ pub fn run() {
                 // 启动即算一次待分类计数，此后后台轮询只读内存计数，
                 // 达标（队列≥8 / >24h）才真正查库分类。
                 app_classify::engine::refresh_pending(&classify_db_path);
+                // 报告叙事把分类 id 翻成中文名时手边没有连接，靠这份全局快照。
+                if let Ok(conn) = rusqlite::Connection::open(&classify_db_path) {
+                    app_classify::catalog::prime(&conn);
+                }
 
                 let bg_ai = ai_state.clone();
                 let bg_db = classify_db_path.clone();

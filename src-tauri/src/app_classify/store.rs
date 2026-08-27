@@ -2,21 +2,25 @@
 //!
 //! 模型约定：
 //!   - 表 `app_categories` 只落两类需要持久化的来源：`manual`（用户手改）与
-//!     `ai`（LLM 结果）。`builtin` 由内置表**计算得出**，不占表行。
+//!     `ai`（LLM 结果）。`builtin` 由规则表**计算得出**，不占表行。
+//!   - 「未分类」的表示是**没有行**，而不是写一行指向 `uncategorized`。
 //!   - 优先级在**读写两处**都强制，不依赖调用方自觉：
 //!     - 读：`resolve` 返回顺序 manual（表）→ builtin（计算）→ ai（表）→ 无。
 //!     - 写：`set_category` 用「新来源优先级 ≥ 当前生效优先级」才允许落库，
 //!       ai(1) 永远覆盖不了 builtin(2) 或 manual(3)，manual 永远最高。
 //!   - 这样「用户手动改过，后续 AI 分类不得覆盖」由本层保证。
+//!
+//! `category` 一律是 `categories.id`。本层**不做归档折叠**——归档只影响展示层
+//! 聚合（见 [`super::catalog::fold_archived`]），数据层的归类指向保持原样，
+//! 所以恢复一个分类后其下应用自动回来，无需重新归类。
 
-// Task 2/3 接入前，store 的读写 API 暂无人调用。
 #![allow(dead_code)]
 
 use rusqlite::{params, Connection, Result};
 use serde::Serialize;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use super::{builtin, Category};
+use super::builtin;
 
 pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
@@ -62,7 +66,7 @@ impl Source {
     }
 }
 
-/// 一条分类结果（读回给前端用）。
+/// 一条分类结果（读回给前端用）。`category` 是 `categories.id`。
 #[derive(Clone, Debug, Serialize)]
 pub struct ClassifiedApp {
     pub app_id: String,
@@ -103,7 +107,7 @@ fn effective_priority(conn: &Connection, app_id: &str, app_name: &str, bundle_id
         }
     }
     // builtin 优于 ai（即便表里已有 ai 行）
-    if builtin::match_builtin(app_name, bundle_id).is_some() {
+    if builtin::match_builtin(conn, app_name, bundle_id).is_some() {
         return Source::Builtin.priority();
     }
     if let Some(ref row) = st {
@@ -128,15 +132,15 @@ pub fn resolve(
         }
         if row.source == "ai" {
             // builtin 命中时覆盖 ai；否则退回 ai
-            if builtin::match_builtin(app_name, bundle_id).is_none() {
+            if builtin::match_builtin(conn, app_name, bundle_id).is_none() {
                 return Ok(Some(row));
             }
         }
     }
-    if let Some(cat) = builtin::match_builtin(app_name, bundle_id) {
+    if let Some(cat) = builtin::match_builtin(conn, app_name, bundle_id) {
         return Ok(Some(ClassifiedApp {
             app_id: app_id.to_string(),
-            category: cat.as_str().to_string(),
+            category: cat,
             source: Source::Builtin.as_str().to_string(),
             confidence: None,
             classified_at_ms: 0,
@@ -154,7 +158,7 @@ pub fn set_category(
     app_id: &str,
     app_name: &str,
     bundle_id: &str,
-    category: Category,
+    category_id: &str,
     source: Source,
     confidence: Option<f64>,
 ) -> Result<bool> {
@@ -163,7 +167,20 @@ pub fn set_category(
     if new_prio < cur_prio {
         return Ok(false);
     }
+    force_set(conn, app_id, category_id, source, confidence)?;
+    Ok(true)
+}
 
+/// 绕过优先级硬规则直接写一行。**只给「撤销批次」用**——还原快照时要把
+/// 表恢复到批次执行前的原样（包括被 AI 覆盖掉的那些行），这不是一次新的分类
+/// 决策，不该再过一遍优先级判定。
+pub fn force_set(
+    conn: &Connection,
+    app_id: &str,
+    category_id: &str,
+    source: Source,
+    confidence: Option<f64>,
+) -> Result<()> {
     let confidence = if source == Source::Ai { confidence } else { None };
     conn.execute(
         "INSERT INTO app_categories (app_id, category, source, confidence, classified_at_ms)
@@ -173,15 +190,31 @@ pub fn set_category(
              source = excluded.source,
              confidence = excluded.confidence,
              classified_at_ms = excluded.classified_at_ms",
-        params![
-            app_id,
-            category.as_str(),
-            source.as_str(),
-            confidence,
-            now_ms()
-        ],
+        params![app_id, category_id, source.as_str(), confidence, now_ms()],
     )?;
-    Ok(true)
+    Ok(())
+}
+
+/// 同 [`force_set`]，但保留原始落库时间（还原快照用）。
+pub fn restore_row(
+    conn: &Connection,
+    app_id: &str,
+    category_id: &str,
+    source: &str,
+    confidence: Option<f64>,
+    classified_at_ms: i64,
+) -> Result<()> {
+    conn.execute(
+        "INSERT INTO app_categories (app_id, category, source, confidence, classified_at_ms)
+         VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(app_id) DO UPDATE SET
+             category = excluded.category,
+             source = excluded.source,
+             confidence = excluded.confidence,
+             classified_at_ms = excluded.classified_at_ms",
+        params![app_id, category_id, source, confidence, classified_at_ms],
+    )?;
+    Ok(())
 }
 
 /// 删除某应用的分类（「重置为自动」：删掉手动覆盖后，重新走 resolve 回落到
@@ -204,4 +237,23 @@ pub fn list_all(conn: &Connection) -> Result<Vec<ClassifiedApp>> {
     )?;
     let rows = stmt.query_map([], row_to_classified)?;
     rows.collect()
+}
+
+/// 删除全部指向某分类的持久化行（永久删除分类时调用：其下应用落回未分类，
+/// 指向它的手动覆盖一并清除）。返回删除行数。
+pub fn delete_by_category(conn: &Connection, category_id: &str) -> Result<u64> {
+    conn.execute(
+        "DELETE FROM app_categories WHERE category = ?1",
+        [category_id],
+    )
+    .map(|n| n as u64)
+}
+
+/// 统计指向某分类的手动覆盖条数（永久删除前的影响面提示用）。
+pub fn count_manual_by_category(conn: &Connection, category_id: &str) -> Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM app_categories WHERE category = ?1 AND source = 'manual'",
+        [category_id],
+        |r| r.get(0),
+    )
 }

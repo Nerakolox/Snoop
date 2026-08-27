@@ -39,6 +39,15 @@
   /* 泳道空轨道底色 —— 与 --color-surface 区分开的极淡暖白，肉眼可辨「无数据空轨道」vs「渲染失败」 */
   --color-track: #FCFCFD;
 
+  /* 分类色的 OKLCH 明度/彩度（数据表达：应用分类的**身份**，非强度非排序）。
+     分类只持久化色相 H，L 与 C 由主题层给——所以切深浅主题时分类色自动适配，
+     不必为每个分类存两套色值。分类色相由 src/categories/color.ts 分配，
+     并避开 --intensity-* 与 --color-accent 的色相禁区。
+     浅色主题：中等明度 + 中等彩度，在白底上够沉、彼此可辨。 */
+  --cat-l: 0.62;  --cat-c: 0.15;
+  /* 淡一层的同色（chip 底色等），色相不变只降彩度提明度 */
+  --cat-l-soft: 0.93; --cat-c-soft: 0.045;
+
   /* 圆角 */
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -109,6 +118,9 @@
   --neutral-4:       #635D69;
   --neutral-5:       #4C4652;
   --neutral-6:       #38333F;  /* 排名最靠后 → 最暗 */
+  /* 分类色：深色底上要更亮才认得出，彩度略降免得刺眼。色相由数据给，此处不涉及。 */
+  --cat-l: 0.72;  --cat-c: 0.14;
+  --cat-l-soft: 0.32; --cat-c-soft: 0.055;
   --shadow-sm: 0 1px 2px rgba(0,0,0,.3);
   --shadow-md: 0 4px 16px rgba(0,0,0,.4);
 }
@@ -138,6 +150,8 @@
   --neutral-4: #B5B1BE;
   --neutral-5: #CFCBD8;
   --neutral-6: #E2DFE8;
+  --cat-l: 0.62;  --cat-c: 0.15;
+  --cat-l-soft: 0.93; --cat-c-soft: 0.045;
   --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
   --shadow-md: 0 4px 16px rgba(0,0,0,.12);
 }

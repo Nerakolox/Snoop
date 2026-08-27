@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 
-use crate::app_classify::store;
+use crate::app_classify::{catalog, store};
 
 // ── 阈值常量（集中一处，方便日后调） ────────────────────────────────────────────
 
@@ -352,7 +352,10 @@ pub(crate) fn top_apps(buckets: &[RawBucket], n: usize) -> Vec<AppRank> {
     v
 }
 
-/// 分类占比（复用批次 2 的 `store::resolve` + 11 类，未分类计 `other`）。
+/// 分类占比（复用 `store::resolve`，未分类计 `other`）。
+///
+/// 存的是分类 **id** 而非显示名：改名不该动历史报告。已归档的分类走
+/// [`catalog::Folder`] 并入「其他」，与概览页分类占比同一个折叠口径。
 pub(crate) fn category_shares(
     conn: &Connection,
     buckets: &[RawBucket],
@@ -366,11 +369,12 @@ pub(crate) fn category_shares(
         e.1 += b.duration_ms;
     }
 
+    let folder = catalog::Folder::load(conn)?;
     let mut totals: HashMap<String, i64> = HashMap::new();
     for (id, (name, ms)) in by_app {
         let cat = store::resolve(conn, &id, &name, &id)?
-            .map(|c| c.category)
-            .unwrap_or_else(|| "other".to_string());
+            .map(|c| folder.fold(&c.category))
+            .unwrap_or_else(|| crate::app_classify::ID_OTHER.to_string());
         *totals.entry(cat).or_insert(0) += ms;
     }
 

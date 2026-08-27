@@ -86,8 +86,10 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_ai_audit_created
             ON ai_audit_log(created_at_ms);
 
-            -- 应用分类（F4）。只落 manual/ai 两类持久化来源，builtin 由内置表计算。
+            -- 应用分类（F4）。只落 manual/ai 两类持久化来源，builtin 由规则表计算。
             -- 优先级 hard 规则 manual > builtin > ai 在 store 层读写两处强制。
+            -- category 存的是 categories.id，**不是名称**：名称是可改的显示名，
+            -- 改名不该动历史数据。
             CREATE TABLE IF NOT EXISTS app_categories (
                 app_id           TEXT PRIMARY KEY,
                 category         TEXT NOT NULL,
@@ -98,6 +100,53 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_app_categories_source
             ON app_categories(source);
+
+            -- 一次性迁移/播种的标记位。没有 user_version 机制，用这张表记
+            -- 「这批种子灌过了」，避免用户删掉的分类/规则下次启动又长回来。
+            CREATE TABLE IF NOT EXISTS app_meta (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            -- 分类表。分类是**用户可管理的数据**，不再是固定枚举。
+            -- id 创建后永不变更，是所有引用（归类、手动覆盖、规则、报告 JSON）的锚点。
+            -- 只持久化 hue（OKLCH 色相角）：深浅主题下的 L/C 由主题层各自套用固定值，
+            -- 所以切主题分类色自动适配。custom_color 非空时优先，且不再参与主题适配。
+            CREATE TABLE IF NOT EXISTS categories (
+                id           TEXT PRIMARY KEY,
+                name         TEXT NOT NULL,
+                description  TEXT NOT NULL DEFAULT '',
+                hue          REAL NOT NULL,
+                custom_color TEXT,
+                is_system    INTEGER NOT NULL DEFAULT 0,
+                is_archived  INTEGER NOT NULL DEFAULT 0,
+                sort_order   INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_categories_sort
+            ON categories(is_archived, sort_order);
+
+            -- 内置规则表。原先是 Rust 静态数组，改成表是因为「永久删除分类」
+            -- 要求清掉指向它的规则——静态数组做不到。
+            CREATE TABLE IF NOT EXISTS builtin_rules (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                keyword     TEXT NOT NULL,
+                category_id TEXT NOT NULL,
+                sort_order  INTEGER NOT NULL DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_builtin_rules_category
+            ON builtin_rules(category_id);
+
+            -- 批量 AI 分类的批次快照，供「撤销本次分类」还原。
+            -- 只保留最近一个批次：写入新批次或用户手改任一 App 归类时，旧批次即失效。
+            CREATE TABLE IF NOT EXISTS classify_batches (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at_ms INTEGER NOT NULL,
+                scope         TEXT NOT NULL,
+                affected      INTEGER NOT NULL,
+                snapshot_json TEXT NOT NULL
+            );
 
             -- 日报存储（批次 4a）。同 (report_date, report_type) 唯一。
             -- status: 'ok'（正常报告）| 'too_little'（记录太少，不调 AI、无叙事）。
@@ -124,6 +173,61 @@ impl Database {
         // UNIQUE 冲突直接失败，导致老用户升级后启动崩溃。
         self.migrate_dedup_buckets()?;
         self.migrate_unique_index()?;
+        self.migrate_category_seed()?;
+        Ok(())
+    }
+
+    /// 把改造前的 11 个固定枚举分类灌进 `categories` 表，并把内置规则从
+    /// Rust 静态数组灌进 `builtin_rules` 表。
+    ///
+    /// **迁移是无损的，且不需要改写任何历史数据**：新分类的 id 直接沿用旧枚举的
+    /// snake_case 字符串（`development` / `ai_assistant` / `other` …），所以
+    /// `app_categories.category` 里已有的归类结果和手动覆盖天然就指向正确的
+    /// 分类 id，一行都不用动。
+    ///
+    /// 两批种子各自打标记，只灌一次：用户删掉的分类或规则不会下次启动又长回来。
+    fn migrate_category_seed(&self) -> Result<()> {
+        use crate::app_classify::{builtin, SEED_CATEGORIES};
+
+        let seeded = |key: &str| -> Result<bool> {
+            self.conn
+                .prepare("SELECT 1 FROM app_meta WHERE key = ?1")?
+                .exists([key])
+        };
+        let mark = |key: &str| -> Result<()> {
+            self.conn.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value) VALUES (?1, '1')",
+                [key],
+            )?;
+            Ok(())
+        };
+
+        if !seeded("categories_seeded")? {
+            for (i, c) in SEED_CATEGORIES.iter().enumerate() {
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO categories
+                        (id, name, description, hue, custom_color, is_system, is_archived, sort_order)
+                     VALUES (?1, ?2, ?3, ?4, NULL, ?5, 0, ?6)",
+                    rusqlite::params![c.id, c.name, c.description, c.hue, c.is_system as i64, i as i64],
+                )?;
+            }
+            mark("categories_seeded")?;
+            println!("✓ 已初始化 {} 个内置分类", SEED_CATEGORIES.len());
+        }
+
+        if !seeded("builtin_rules_seeded")? {
+            for (i, (kw, cat)) in builtin::SEED_RULES.iter().enumerate() {
+                self.conn.execute(
+                    "INSERT INTO builtin_rules (keyword, category_id, sort_order)
+                     VALUES (?1, ?2, ?3)",
+                    rusqlite::params![kw, cat, i as i64],
+                )?;
+            }
+            mark("builtin_rules_seeded")?;
+            builtin::invalidate();
+            println!("✓ 已初始化 {} 条内置分类规则", builtin::SEED_RULES.len());
+        }
+
         Ok(())
     }
 

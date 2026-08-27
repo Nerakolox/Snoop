@@ -346,6 +346,7 @@ mod tests {
             );",
         )
         .unwrap();
+        crate::app_classify::catalog::create_tables_for_tests(&conn);
         conn
     }
 

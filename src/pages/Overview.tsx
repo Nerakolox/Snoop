@@ -25,7 +25,9 @@ import { useRangeData } from "../data/useRangeData";
 import { fetchHourlyHeartbeats } from "../data/client";
 import { getCategoryBreakdown } from "../ai/client";
 import { useTodayNotice } from "../ai/notice";
-import { CATEGORY_LABEL, categoryColorVar } from "../ai/categories";
+import { categoryColorVar } from "../ai/categories";
+// 显示名从分类表实时读：分类改名 / 归档后，占比图例要立刻跟着变。
+import { labelOf as categoryLabel, useCategories } from "../categories/store";
 import type { CategoryShare } from "../ai/types";
 import { formatAnchor, parseAnchor, toMs } from "../data/ranges";
 import {
@@ -211,7 +213,7 @@ function CategoryVerdict({
   const restTotalMs = rest.reduce((s, x) => s + x.duration_ms, 0);
   const topPct = totalMs > 0 ? (top.duration_ms / totalMs) * 100 : 0;
 
-  const labelOf = (c: string) => CATEGORY_LABEL[c] ?? c;
+  const labelOf = (c: string) => categoryLabel(c);
   const tipOf = (s: CategoryShare, pct: number) =>
     `${labelOf(s.category)} · ${fmtDuration(s.duration_ms)} · ${formatSharePct(pct)}`;
 
@@ -447,8 +449,12 @@ export default function Overview() {
     </div>
   );
 
-  // 分类占比：后端按范围聚合各分类活跃时长（有输入，未分类计入 other）。
+  // 分类占比：后端按范围聚合各分类活跃时长（有输入，未分类与已归档分类计入 other）。
   // 依赖 allBuckets，使 live 30s 轮询刷新 buckets 时占比也一并刷新。
+  //
+  // 订阅分类表：分类增删改名改色 / 归档 / 恢复后，占比要立刻按新分类重算重排，
+  // 这是预期行为（历史报告的冻结另有工单处理，不在此列）。
+  const categories = useCategories();
   const [categoryBreakdown, setCategoryBreakdown] = useState<CategoryShare[]>([]);
   useEffect(() => {
     let cancelled = false;
@@ -456,7 +462,7 @@ export default function Overview() {
       .then((r) => { if (!cancelled) setCategoryBreakdown(r); })
       .catch(console.error);
     return () => { cancelled = true; };
-  }, [rhythmRange.start_ms, rhythmRange.end_ms, allBuckets]);
+  }, [rhythmRange.start_ms, rhythmRange.end_ms, allBuckets, categories]);
   const totalCategoryMs = categoryBreakdown.reduce((s, x) => s + x.duration_ms, 0);
   // 零值类别不渲染：后端已过滤 duration_ms <= 0，这里再兜底，并确保排名颜色按占比降序。
   const shownCategories = useMemo(
@@ -675,7 +681,7 @@ export default function Overview() {
             <div className="cat-stack">
               {shownCategories.map((s, i) => {
                 const pct = totalCategoryMs > 0 ? (s.duration_ms / totalCategoryMs) * 100 : 0;
-                const tip = `${CATEGORY_LABEL[s.category] ?? s.category} · ${fmtDuration(
+                const tip = `${categoryLabel(s.category)} · ${fmtDuration(
                   s.duration_ms,
                 )} · ${formatSharePct(pct)}`;
                 return (
