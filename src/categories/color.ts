@@ -254,27 +254,6 @@ export function hueToHex(hue: number): string {
   return oklchToHex({ l, c, h: hue });
 }
 
-let cachedLightLC: { l: number; c: number } | null = null;
-
-/**
- * 色相 → **固定浅色态**的 hex。
- *
- * 导出海报（report/ReportCard）的样式是 `report-card.css?inline` 塞进
- * `<foreignObject>` 独立渲染的，读不到主文档 `:root` / `[data-theme]` 上的 token，
- * 所以 `oklch(var(--cat-l) …)` 在那里解析不出来，只能给一个具体色值。
- *
- * 取的是**浅色主题**的 L/C 而非当前主题：海报是一张固定浅色版式（`--rc-*` 全是
- * 写死的浅色 hex），同一份数据导出的 PNG 不该因为用户当时开着深色模式而变色。
- * 仍然读 token 而不是写死 0.62/0.15——改主题层的 L/C，海报跟着变。
- */
-export function hueToHexLight(hue: number): string {
-  if (!cachedLightLC) {
-    const [l, c] = readTokens("light", ["--cat-l", "--cat-c"]);
-    cachedLightLC = { l: parseFloat(l) || 0.62, c: parseFloat(c) || 0.15 };
-  }
-  return oklchToHex({ ...cachedLightLC, h: hue });
-}
-
 // ── 系统分类：没有身份色 ─────────────────────────────────────────────────────
 
 /**
@@ -285,12 +264,11 @@ export function hueToHexLight(hue: number): string {
  * 身份色，等于向读者承认"其他"也是一类东西——而它恰恰是"不是任何一类"。
  * 中性色如实表达「此处无身份」。
  *
- * 两者用深浅不同的两阶，同时出现时仍可区分。`hex` 是对应 token 在**浅色主题**
- * 下的值，只给读不到 token 的导出海报用（见 hueToHexLight 的说明）。
+ * 两者用深浅不同的两阶，同时出现时仍可区分。
  */
-const SYSTEM_FILL: Record<string, { css: string; hex: string }> = {
-  [ID_OTHER]:         { css: "var(--neutral-3)", hex: "#9B96A4" },
-  [ID_UNCATEGORIZED]: { css: "var(--neutral-5)", hex: "#CFCBD8" },
+const SYSTEM_FILL: Record<string, string> = {
+  [ID_OTHER]: "var(--neutral-3)",
+  [ID_UNCATEGORIZED]: "var(--neutral-5)",
 };
 
 /**
@@ -305,6 +283,10 @@ export function isSystemCategoryId(id: string): boolean {
  * 分类 → 数据可视化里的填充色。**占比条 / chip 圆点 / 下拉圆点共用这一个入口**，
  * 三处颜色因此不可能各自漂移。
  *
+ * 这条路径服务的是**实时视图**（概览 / 规律 / 分类设置）：改一个分类的颜色，
+ * 它们下一次渲染就是新色。报告不走这里——报告的配色在生成时就冻进了它自己的
+ * 快照（`src-tauri/src/report/snapshot.rs`），改色不该改写已经生成的报告。
+ *
  * `cat` 传 undefined 表示查不到（刚被永久删除，或快照还没加载完）——按「其他」
  * 的中性色处理，不要退回随便一个彩色。
  *
@@ -313,20 +295,12 @@ export function isSystemCategoryId(id: string): boolean {
  */
 export function categoryFill(id: string, cat?: Colorable): string {
   const sys = SYSTEM_FILL[id];
-  if (sys) return sys.css;
-  if (!cat || cat.is_archived) return SYSTEM_FILL[ID_OTHER].css;
+  if (sys) return sys;
+  if (!cat || cat.is_archived) return SYSTEM_FILL[ID_OTHER];
   return categoryColor(cat.hue, cat.custom_color);
 }
 
-/** 同 categoryFill，但给导出海报的固定浅色 hex。 */
-export function categoryFillHex(id: string, cat?: Colorable): string {
-  const sys = SYSTEM_FILL[id];
-  if (sys) return sys.hex;
-  if (!cat || cat.is_archived) return SYSTEM_FILL[ID_OTHER].hex;
-  return cat.custom_color ?? hueToHexLight(cat.hue);
-}
-
-/** categoryFill / categoryFillHex 需要的最小字段集。 */
+/** categoryFill 需要的最小字段集。 */
 export interface Colorable {
   hue: number;
   custom_color: string | null;

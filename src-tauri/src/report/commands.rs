@@ -10,7 +10,7 @@ use tauri::State;
 
 use crate::ai::AiState;
 use crate::commands::DbPath;
-use crate::report::{store, ReportView};
+use crate::report::{snapshot, store, ReportView};
 
 fn open_db(state: &State<'_, DbPath>) -> Result<rusqlite::Connection, String> {
     rusqlite::Connection::open(&state.0).map_err(|e| e.to_string())
@@ -48,9 +48,18 @@ pub fn get_report_list(state: State<'_, DbPath>) -> Result<Vec<ReportMeta>, Stri
         .collect())
 }
 
-/// 取某个报告的完整内容（含叙事）。无行返回 `None`。
+/// 取某个报告的完整内容（含叙事与快照）。无行返回 `None`。
 ///
 /// `data` 原样透传 `data_json`（三种报形状不同，前端靠 `report_type` 收窄）。
+///
+/// # 历史报告的一次性固化
+///
+/// 加快照列之前生成的报告 `snapshot_json` 为空。这类报告**首次被打开时**按当时的
+/// 分类表构造一次快照并写回，此后就和新报告一样凝固。补写只动 `snapshot_json`
+/// 这一列，叙述文本一个字不改——那是当初 AI 写的，不该被今天的分类改写。
+///
+/// 补写失败（比如库只读）不让打开报告失败：仍然返回刚算出的快照，只是没落盘，
+/// 下次打开会再算一遍。报告能看比固化更要紧。
 #[tauri::command]
 pub fn get_report(
     state: State<'_, DbPath>,
@@ -65,12 +74,25 @@ pub fn get_report(
         Some(r) => {
             let data: serde_json::Value =
                 serde_json::from_str(&r.data_json).map_err(|e| e.to_string())?;
+
+            let snapshot = match r.snapshot_json.as_deref() {
+                Some(json) => snapshot::parse(json),
+                None => {
+                    let snap = snapshot::build(&conn, &data).map_err(|e| e.to_string())?;
+                    if let Ok(json) = serde_json::to_string(&snap) {
+                        let _ = store::set_snapshot(&conn, &r.report_date, &r.report_type, &json);
+                    }
+                    snap
+                }
+            };
+
             Ok(Some(ReportView {
                 report_type: r.report_type,
                 status: r.status,
                 data,
                 narrative: r.narrative,
                 narrative_source: r.narrative_source,
+                snapshot,
             }))
         }
     }

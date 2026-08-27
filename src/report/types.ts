@@ -64,10 +64,43 @@ export interface ReportMeta {
 
 export type ReportKind = "day" | "week" | "month";
 
+// ── 生成时快照 ────────────────────────────────────────────────────────────────
+//
+// 报告是快照，视图是实时。分类的显示名与配色**只能**从 snapshot 读，
+// 绝不能拿 `category` id 再去 `categories/store` 查——那是实时状态，
+// 改名改色就会改写历史报告。概览页与规律页则相反，继续实时查。
+// 快照的构造与写入全在后端（`src-tauri/src/report/snapshot.rs`）。
+
+/** 快照里的一个分类：id 之外的一切都是生成那一刻的值。 */
+export interface CategorySnap {
+  id: string;
+  /** 生成时的显示名。分类被改名或永久删除后，这里仍是当时那个名字。 */
+  name: string;
+  /** 生成时解析后的最终色值，可直接作为 CSS 颜色使用（hex 或字面量 oklch()）。 */
+  color: string;
+  active_ms: number;
+  share_pct: number;
+}
+
+/** 快照里的一个 App，分类归属一并冻结。 */
+export interface AppSnap {
+  bundle_id: string;
+  name: string;
+  active_ms: number;
+  share_pct: number;
+  category_id: string;
+  category_name: string;
+}
+
+export interface ReportSnapshot {
+  categories: CategorySnap[];
+  apps: AppSnap[];
+}
+
 export type ReportView =
-  | { report_type: "day"; status: "ok" | "too_little"; data: DailyReport; narrative: string | null; narrative_source: string | null }
-  | { report_type: "week"; status: "ok" | "too_little"; data: WeeklyReport; narrative: string | null; narrative_source: string | null }
-  | { report_type: "month"; status: "ok" | "too_little"; data: MonthlyReport; narrative: string | null; narrative_source: string | null };
+  | { report_type: "day"; status: "ok" | "too_little"; data: DailyReport; narrative: string | null; narrative_source: string | null; snapshot: ReportSnapshot }
+  | { report_type: "week"; status: "ok" | "too_little"; data: WeeklyReport; narrative: string | null; narrative_source: string | null; snapshot: ReportSnapshot }
+  | { report_type: "month"; status: "ok" | "too_little"; data: MonthlyReport; narrative: string | null; narrative_source: string | null; snapshot: ReportSnapshot };
 
 // ── 周报 ──────────────────────────────────────────────────────────────────
 

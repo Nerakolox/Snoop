@@ -16,27 +16,31 @@
  * 海报内时长一律用 `formatDurationCompact`（单位「分」），应用内其它页面保持「分钟」。
  * 所有图片资源（Snoop 图标 / 二维码 `?inline`、app 图标 data URI）都是 data URI，
  * 保证 foreignObject → canvas 不被污染。
+ *
+ * # 分类的名字与颜色只来自 detail.snapshot
+ *
+ * 本组件**不 import `categories/store`**。分类的显示名与配色一律读报告自带的
+ * 生成时快照——报告是发出去的成品，改一个分类的名字或颜色不该把三个月前那张海报
+ * 一起改了。快照在后端生成时冻结（`src-tauri/src/report/snapshot.rs`），`color`
+ * 已经是解析好的具体色值，正好也解决了 foreignObject 读不到主文档 token、
+ * `oklch(var(--cat-l) …)` 在导出图里解析不出来的老问题。
  */
 
 import { memo } from "react";
 import type { ReactNode } from "react";
 import type {
-  AppRank,
-  CategoryDelta,
+  AppSnap,
   CategoryHalfShift,
-  CategoryShare,
+  CategorySnap,
   DayCell,
   HourCell,
   MonthWeek,
+  ReportSnapshot,
   ReportView,
   RhythmDay,
   RhythmSummary,
 } from "./types";
 import { formatDurationCompact, formatSharePct } from "../utils/format";
-// 报告里存的是分类 id，显示名与分类色都从分类表实时读（历史冻结另有工单，此处不涉及）。
-// 取色用 fillHexOf 而不是应用内的 fillOf：海报样式是 report-card.css?inline 塞进
-// <foreignObject> 独立渲染的，读不到主文档 token，`oklch(var(--cat-l) …)` 在那里解析不出来。
-import { fillHexOf, labelOf as categoryLabel } from "../categories/store";
 import { BASELINE_MIN_DAILY_MS, DOW_LABELS, dateLabel, deltaLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
 import { EXPORT_WIDTH } from "./export";
 import { renderQuips } from "./markup";
@@ -88,6 +92,17 @@ const KIND_BADGE: Record<ReportView["report_type"], string> = {
   week: "周报",
   month: "月报",
 };
+
+/**
+ * 快照的分类查找器：给只留了分类 id 的报告字段（月报的半月漂移）补回**当时**的显示名。
+ *
+ * 快照里没有的 id 退回 id 本身，**绝不回头去查分类表**——那会让这一处重新变成实时的，
+ * 于是同一张海报上「分类占比」冻着旧名字、「上半月 vs 下半月」却是新名字。
+ */
+function snapshotNameOf(snapshot: ReportSnapshot): (id: string) => string {
+  const byId = new Map(snapshot.categories.map((c) => [c.id, c.name]));
+  return (id) => byId.get(id) ?? id;
+}
 
 /** 标题行右端的对比槽：充足时中性色 ↑↓，不足时「记录时间还不够」。 */
 function HeadDelta({ prefix, pct }: { prefix: string; pct: number }) {
@@ -174,7 +189,7 @@ function ReportHead({
   );
 }
 
-function ReportAppBars({ apps, icons }: { apps: AppRank[]; icons: ResolvedIconMap | null }) {
+function ReportAppBars({ apps, icons }: { apps: AppSnap[]; icons: ResolvedIconMap | null }) {
   if (apps.length === 0) return <p className="report-card__empty">无数据</p>;
   const max = Math.max(...apps.map((a) => a.active_ms), 1);
   return (
@@ -202,17 +217,15 @@ function ReportAppBars({ apps, icons }: { apps: AppRank[]; icons: ResolvedIconMa
 }
 
 /** 极小类别（<1 分钟）合并成一行尾注：`文档、其他 2 类均不足 1 分钟，合计 <0.1%`。 */
-function categoryTinyNote(
-  categories: { category: string; active_ms: number; share_pct: number }[],
-): string | null {
+function categoryTinyNote(categories: CategorySnap[]): string | null {
   const tiny = categories.filter((c) => c.active_ms > 0 && c.active_ms < 60_000);
   if (tiny.length === 0) return null;
-  const names = tiny.map((c) => categoryLabel(c.category)).join("、");
+  const names = tiny.map((c) => c.name).join("、");
   const share = tiny.reduce((s, c) => s + c.share_pct, 0);
   return `${names} ${tiny.length} 类均不足 1 分钟，合计 ${formatSharePct(share)}`;
 }
 
-function ReportCategoryStack({ categories }: { categories: CategoryShare[] }) {
+function ReportCategoryStack({ categories }: { categories: CategorySnap[] }) {
   const shown = categories.filter((c) => c.active_ms > 0);
   if (shown.length === 0) return <p className="report-card__empty">无数据</p>;
   const tinyNote = categoryTinyNote(shown);
@@ -221,21 +234,18 @@ function ReportCategoryStack({ categories }: { categories: CategoryShare[] }) {
       <div className="report-card__cat-stack">
         {shown.map((c) => (
           <div
-            key={c.category}
+            key={c.id}
             className="report-card__cat-seg"
-            style={{ width: `${c.share_pct}%`, background: fillHexOf(c.category) }}
+            style={{ width: `${c.share_pct}%`, background: c.color }}
           />
         ))}
       </div>
       <div className="report-card__cat-legend">
         {shown.map((c) =>
           c.active_ms >= 60_000 ? (
-            <div key={c.category} className="report-card__cat-row">
-              <span
-                className="report-card__cat-swatch"
-                style={{ background: fillHexOf(c.category) }}
-              />
-              <span className="report-card__cat-label">{categoryLabel(c.category)}</span>
+            <div key={c.id} className="report-card__cat-row">
+              <span className="report-card__cat-swatch" style={{ background: c.color }} />
+              <span className="report-card__cat-label">{c.name}</span>
               <span className="report-card__cat-time">{formatDurationCompact(c.active_ms)}</span>
               <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
             </div>
@@ -247,11 +257,12 @@ function ReportCategoryStack({ categories }: { categories: CategoryShare[] }) {
   );
 }
 
+/** 周报的分类行：数字与配色同样来自快照，只有「vs 前 4 周」的 pp 差是报告数据里的。 */
 function ReportCategoryDeltaBars({
   categories,
   showDelta,
 }: {
-  categories: CategoryDelta[];
+  categories: (CategorySnap & { share_delta_pp: number })[];
   showDelta: boolean;
 }) {
   const shown = categories.filter((c) => c.active_ms > 0);
@@ -261,12 +272,9 @@ function ReportCategoryDeltaBars({
     <div className="report-card__cat-legend">
       {shown.map((c) =>
         c.active_ms >= 60_000 ? (
-          <div key={c.category} className="report-card__cat-row">
-            <span
-              className="report-card__cat-swatch"
-              style={{ background: fillHexOf(c.category) }}
-            />
-            <span className="report-card__cat-label">{categoryLabel(c.category)}</span>
+          <div key={c.id} className="report-card__cat-row">
+            <span className="report-card__cat-swatch" style={{ background: c.color }} />
+            <span className="report-card__cat-label">{c.name}</span>
             <span className="report-card__cat-time">{formatDurationCompact(c.active_ms)}</span>
             <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
             {showDelta && (
@@ -523,12 +531,18 @@ function ReportSleep({ days, summary }: { days: RhythmDay[]; summary: RhythmSumm
   );
 }
 
-function ReportHalfShift({ shifts }: { shifts: CategoryHalfShift[] }) {
+function ReportHalfShift({
+  shifts,
+  nameOf,
+}: {
+  shifts: CategoryHalfShift[];
+  nameOf: (id: string) => string;
+}) {
   return (
     <div className="report-card__halfshift">
       {shifts.slice(0, 5).map((h) => (
         <div key={h.category} className="report-card__halfshift-row">
-          <span className="report-card__halfshift-name">{categoryLabel(h.category)}</span>
+          <span className="report-card__halfshift-name">{nameOf(h.category)}</span>
           <span className="report-card__halfshift-values">
             {h.first_half_share_pct.toFixed(0)}% → {h.second_half_share_pct.toFixed(0)}%
           </span>
@@ -613,12 +627,12 @@ function DayBody({ detail, icons }: BodyProps) {
         <h4 className="report-card__section-title">
           分类占比<span className="report-card__section-note">按活跃时长统计</span>
         </h4>
-        <ReportCategoryStack categories={d.categories} />
+        <ReportCategoryStack categories={detail.snapshot.categories} />
       </section>
 
       <section className="report-card__section">
         <h4 className="report-card__section-title">应用 Top 5</h4>
-        <ReportAppBars apps={d.top_apps.slice(0, 5)} icons={icons} />
+        <ReportAppBars apps={detail.snapshot.apps.slice(0, 5)} icons={icons} />
       </section>
 
       <section className="report-card__section">
@@ -637,6 +651,12 @@ function weekdayWeekendLabel(kind: string, days: number, avgMs: number): string 
 
 function WeekBody({ detail, icons }: BodyProps) {
   const d = (detail as Extract<ReportView, { report_type: "week" }>).data;
+  // 分类行由快照驱动（名字 / 配色 / 时长 / 占比），只有「vs 前 4 周」的 pp 差回报告数据里取。
+  const deltaById = new Map(d.categories.map((c) => [c.category, c.share_delta_pp]));
+  const cats = detail.snapshot.categories.map((c) => ({
+    ...c,
+    share_delta_pp: deltaById.get(c.id) ?? 0,
+  }));
   const compare = d.baseline.baseline_sufficient ? (
     <HeadDelta prefix="vs 前 4 周日均" pct={d.baseline.daily_delta_pct} />
   ) : (
@@ -675,7 +695,7 @@ function WeekBody({ detail, icons }: BodyProps) {
             </span>
           </h4>
           <ReportCategoryDeltaBars
-            categories={d.categories}
+            categories={cats}
             showDelta={d.baseline.baseline_sufficient}
           />
         </section>
@@ -683,7 +703,7 @@ function WeekBody({ detail, icons }: BodyProps) {
 
       <section className="report-card__section">
         <h4 className="report-card__section-title">应用 Top 5</h4>
-        <ReportAppBars apps={d.top_apps.slice(0, 5)} icons={icons} />
+        <ReportAppBars apps={detail.snapshot.apps.slice(0, 5)} icons={icons} />
       </section>
 
       <div className="report-card__cols">
@@ -742,13 +762,13 @@ function MonthBody({ detail, icons }: BodyProps) {
           <h4 className="report-card__section-title">
             分类占比<span className="report-card__section-note">按活跃时长统计</span>
           </h4>
-          <ReportCategoryStack categories={d.categories} />
+          <ReportCategoryStack categories={detail.snapshot.categories} />
         </section>
       </div>
 
       <section className="report-card__section">
         <h4 className="report-card__section-title">应用 Top 10</h4>
-        <ReportAppBars apps={d.top_apps} icons={icons} />
+        <ReportAppBars apps={detail.snapshot.apps} icons={icons} />
       </section>
 
       <div className="report-card__cols">
@@ -765,7 +785,7 @@ function MonthBody({ detail, icons }: BodyProps) {
         <section className="report-card__section">
           <h4 className="report-card__section-title">上半月 vs 下半月</h4>
           {d.half_shift.length > 0 ? (
-            <ReportHalfShift shifts={d.half_shift} />
+            <ReportHalfShift shifts={d.half_shift} nameOf={snapshotNameOf(detail.snapshot)} />
           ) : (
             <p className="report-card__empty">无数据</p>
           )}

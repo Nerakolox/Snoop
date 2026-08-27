@@ -10,8 +10,10 @@
  * 月 = 按周走势 + vs 上月。应用 Top 5 只列图标 + 名称 + 百分比（不放时长条）。
  */
 
+import { useState } from "react";
 import type { ReactNode } from "react";
-import type { ReportView } from "./types";
+import { createPortal } from "react-dom";
+import type { AppSnap, ReportView } from "./types";
 import { formatDuration } from "../utils/format";
 import { BASELINE_MIN_DAILY_MS, dateLabel, deltaLabel, monthLabel, weekRangeLabel } from "./format";
 import { renderQuips } from "./markup";
@@ -75,12 +77,17 @@ function SummaryIcon({
   );
 }
 
-/** 应用 Top 5：紧凑行（图标 + 名称 + 百分比），不放时长条。 */
+/**
+ * 应用 Top 5：紧凑行（图标 + 名称 + 百分比），不放时长条。
+ *
+ * 吃的是报告的生成时快照而不是 `data.top_apps`，与海报同一份数据，
+ * 两处不可能各显示一套名字（见 ReportCard 头注释）。
+ */
 function SummaryApps({
   apps,
   icons,
 }: {
-  apps: { name: string; bundle_id: string; share_pct: number }[];
+  apps: AppSnap[];
   icons: ResolvedIconMap | null;
 }) {
   if (apps.length === 0) return <p className="report-summary__empty">无数据</p>;
@@ -133,7 +140,7 @@ function MainCols({
   compare,
 }: {
   title: string;
-  apps: { name: string; bundle_id: string; share_pct: number }[];
+  apps: AppSnap[];
   icons: ResolvedIconMap | null;
   bars: { active_ms: number }[];
   compare: ReactNode;
@@ -165,7 +172,7 @@ function DayMain({ detail, icons }: { detail: Extract<ReportView, { report_type:
       <Narrative detail={detail} />
       <MainCols
         title="一天的形状"
-        apps={d.top_apps}
+        apps={detail.snapshot.apps}
         icons={icons}
         bars={d.hourly}
         compare={
@@ -197,7 +204,7 @@ function WeekMain({ detail, icons }: { detail: Extract<ReportView, { report_type
       <Narrative detail={detail} />
       <MainCols
         title="这一周"
-        apps={d.top_apps}
+        apps={detail.snapshot.apps}
         icons={icons}
         bars={d.days}
         compare={
@@ -227,7 +234,7 @@ function MonthMain({ detail, icons }: { detail: Extract<ReportView, { report_typ
       <Narrative detail={detail} />
       <MainCols
         title="按周走势"
-        apps={d.top_apps}
+        apps={detail.snapshot.apps}
         icons={icons}
         bars={d.weeks}
         compare={
@@ -259,6 +266,9 @@ export default function ReportSummary({
   onOpenLightbox: () => void;
   onCollapse: () => void;
 }) {
+  // 重新生成会覆盖这份报告的快照与叙述文本，且不可撤销——先问一句。
+  const [confirmRegen, setConfirmRegen] = useState(false);
+
   return (
     <div className="report-summary">
       <button type="button" className="report-summary__header" onClick={onCollapse} title="收起">
@@ -312,14 +322,47 @@ export default function ReportSummary({
             <button
               type="button"
               className="report-summary__regen"
-              onClick={onRegenerate}
+              onClick={() => setConfirmRegen(true)}
               disabled={regenerating}
+              title="用当前的分类设置重算这份报告"
             >
-              {regenerating ? "重新生成中…" : "重新生成"}
+              {regenerating ? "重新生成中…" : "按当前分类重新生成"}
             </button>
           </div>
         </aside>
       </div>
+
+      {confirmRegen &&
+        createPortal(
+          <div className="dev-confirm-overlay" onClick={() => setConfirmRegen(false)}>
+            <div className="dev-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+              <div className="dev-confirm-header">
+                <h3>按当前分类重新生成</h3>
+              </div>
+              <p className="dev-confirm-desc">
+                这份报告现在显示的是<b>生成那一刻</b>的分类名称与配色。重新生成会用
+                <b>当前</b>的分类设置重算，并覆盖原有的分类结果与这段吐槽文案。
+                <br />
+                覆盖后不可撤销。
+              </p>
+              <div className="dev-confirm-actions">
+                <button className="setting-btn" onClick={() => setConfirmRegen(false)}>
+                  取消
+                </button>
+                <button
+                  className="setting-btn setting-btn-primary"
+                  onClick={() => {
+                    setConfirmRegen(false);
+                    onRegenerate();
+                  }}
+                >
+                  重新生成
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

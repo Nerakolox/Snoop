@@ -38,6 +38,11 @@ pub struct ReportRow {
     pub narrative: Option<String>,
     /// `ai` | `template`（`too_little` 为 None）。
     pub narrative_source: Option<String>,
+    /// [`super::snapshot::ReportSnapshot`] 序列化。生成时写入，此后不再随分类表变化。
+    ///
+    /// `None` 只出现在加列之前就存在的历史报告上——[`super::commands::get_report`]
+    /// 首次打开它们时补写，之后恒为 `Some`。
+    pub snapshot_json: Option<String>,
 }
 
 fn row_to_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReportRow> {
@@ -51,19 +56,20 @@ fn row_to_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReportRow> {
         data_json: row.get(6)?,
         narrative: row.get(7)?,
         narrative_source: row.get(8)?,
+        snapshot_json: row.get(9)?,
     })
 }
 
 const COLS: &str = "report_date, report_type, status, generated_at_ms, \
-    active_ms, foreground_ms, data_json, narrative, narrative_source";
+    active_ms, foreground_ms, data_json, narrative, narrative_source, snapshot_json";
 
 /// 插入或覆盖（同 (report_date, report_type) 只保留一条）。
 pub fn upsert(conn: &Connection, r: &ReportRow) -> Result<()> {
     conn.execute(
         "INSERT INTO daily_reports
          (report_date, report_type, status, generated_at_ms, active_ms, foreground_ms,
-          data_json, narrative, narrative_source)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+          data_json, narrative, narrative_source, snapshot_json)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
          ON CONFLICT(report_date, report_type) DO UPDATE SET
              status = excluded.status,
              generated_at_ms = excluded.generated_at_ms,
@@ -71,7 +77,8 @@ pub fn upsert(conn: &Connection, r: &ReportRow) -> Result<()> {
              foreground_ms = excluded.foreground_ms,
              data_json = excluded.data_json,
              narrative = excluded.narrative,
-             narrative_source = excluded.narrative_source",
+             narrative_source = excluded.narrative_source,
+             snapshot_json = excluded.snapshot_json",
         params![
             r.report_date,
             r.report_type,
@@ -82,7 +89,20 @@ pub fn upsert(conn: &Connection, r: &ReportRow) -> Result<()> {
             r.data_json,
             r.narrative,
             r.narrative_source,
+            r.snapshot_json,
         ],
+    )?;
+    Ok(())
+}
+
+/// 只补写快照，不动这一行的其它任何字段（尤其是叙述文本）。
+///
+/// 给历史报告的一次性固化用：见 [`super::commands::get_report`]。
+pub fn set_snapshot(conn: &Connection, date: &str, rtype: &str, snapshot_json: &str) -> Result<()> {
+    conn.execute(
+        "UPDATE daily_reports SET snapshot_json = ?3
+         WHERE report_date = ?1 AND report_type = ?2",
+        params![date, rtype, snapshot_json],
     )?;
     Ok(())
 }

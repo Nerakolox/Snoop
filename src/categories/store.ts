@@ -1,16 +1,20 @@
 // 分类目录的前端单一真源。
 //
-// 页面（概览、报告、分类页）不各自 invoke 一遍 `list_categories`，而是共用这一份
+// 页面（概览、规律、分类页）不各自 invoke 一遍 `list_categories`，而是共用这一份
 // 快照 + 订阅。理由有两个：
-//   1. 显示名要**实时**跟随分类表。分类改名后，概览的占比图例、分类页的下拉、
-//      报告的分类行必须同时变——各自缓存一份必然漂移。
+//   1. 显示名要**实时**跟随分类表。分类改名后，概览的占比图例、规律页的分类行、
+//      分类页的下拉必须同时变——各自缓存一份必然漂移。
 //   2. 分类表一变就得连带作废按分类聚合出来的缓存（含猫吐槽）。作废动作放在
 //      写入口这一处，比散在每个调用点可靠。
+//
+// **报告不在此列。** 报告是快照不是视图：一份已生成的报告显示的是生成那一刻的
+// 分类名与配色，存在它自己的 `snapshot` 里（`src-tauri/src/report/snapshot.rs`），
+// 改名改色一律不影响。报告组件因此不 import 本模块——见 report/ReportCard.tsx。
 
 import { useEffect, useSyncExternalStore } from "react";
 import { invalidateQuipCache } from "../ai/quip";
 import { listCategories } from "./client";
-import { categoryFill, categoryFillHex } from "./color";
+import { categoryFill } from "./color";
 import { ID_UNCATEGORIZED } from "./constants";
 import type { CategoryRow } from "./types";
 
@@ -79,8 +83,8 @@ export function invalidateCategories(): Promise<void> {
 /**
  * 分类 id → 显示名。
  *
- * 查不到有两种情况，都退回 id 本身而不是留空：分类刚被永久删除（历史报告里
- * 还留着它的 id），或快照还没加载完。
+ * 查不到有两种情况，都退回 id 本身而不是留空：分类刚被永久删除（别处还留着
+ * 它的 id），或快照还没加载完。
  */
 export function labelOf(id: string): string {
   return snapshot?.find((c) => c.id === id)?.name ?? id;
@@ -101,11 +105,6 @@ export function categoryById(id: string): CategoryRow | undefined {
  */
 export function fillOf(id: string): string {
   return categoryFill(id, categoryById(id));
-}
-
-/** 同 fillOf，但给导出海报用的固定浅色 hex。 */
-export function fillHexOf(id: string): string {
-  return categoryFillHex(id, categoryById(id));
 }
 
 /**

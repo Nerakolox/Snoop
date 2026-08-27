@@ -150,6 +150,8 @@ impl Database {
 
             -- 日报存储（批次 4a）。同 (report_date, report_type) 唯一。
             -- status: 'ok'（正常报告）| 'too_little'（记录太少，不调 AI、无叙事）。
+            -- snapshot_json: 生成那一刻的分类显示名 / 颜色 / 聚合结果（见 report::snapshot）。
+            -- 允许为 NULL，只为兼容加列之前就存在的历史报告——首次打开时补写。
             CREATE TABLE IF NOT EXISTS daily_reports (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 report_date      TEXT NOT NULL,
@@ -161,6 +163,7 @@ impl Database {
                 data_json        TEXT NOT NULL,
                 narrative        TEXT,
                 narrative_source TEXT,
+                snapshot_json    TEXT,
                 UNIQUE(report_date, report_type)
             );
             ",
@@ -174,6 +177,7 @@ impl Database {
         self.migrate_dedup_buckets()?;
         self.migrate_unique_index()?;
         self.migrate_category_seed()?;
+        self.migrate_report_snapshot()?;
         Ok(())
     }
 
@@ -315,6 +319,25 @@ impl Database {
                 ",
             )?;
             println!("✓ 已迁移 duration_sec -> duration_ms");
+        }
+        Ok(())
+    }
+
+    /// 给存量库的 `daily_reports` 补上 `snapshot_json` 列。
+    ///
+    /// 不回填内容：历史报告的快照按「首次打开时按当时的分类聚合一次再固化」补
+    /// （见 `report::commands::get_report`）。启动时全表回填要为每份历史报告解一遍
+    /// 分类，成本压在启动路径上，而绝大多数历史报告用户再也不会打开。
+    fn migrate_report_snapshot(&self) -> Result<()> {
+        let has_col: bool = self
+            .conn
+            .prepare("SELECT 1 FROM pragma_table_info('daily_reports') WHERE name='snapshot_json'")?
+            .exists([])?;
+
+        if !has_col {
+            self.conn
+                .execute_batch("ALTER TABLE daily_reports ADD COLUMN snapshot_json TEXT;")?;
+            println!("✓ 已添加报告快照字段 snapshot_json");
         }
         Ok(())
     }

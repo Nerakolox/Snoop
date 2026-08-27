@@ -59,8 +59,8 @@ export default function App() {
   const timerRef = useRef<number | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  // 分类表启动即拉一次：报告卡片等地方是同步读 labelOf 的（拿不到 hook），
-  // 快照没建立就会退回显示分类 id。
+  // 分类表启动即拉一次：CategoryPicker 等地方是同步读 labelOf 的，
+  // 快照没建立就会先闪一下分类 id 再变成名字。
   useEffect(() => {
     void loadCategories();
   }, []);

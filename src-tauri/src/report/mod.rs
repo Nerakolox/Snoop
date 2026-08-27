@@ -13,6 +13,7 @@ pub mod daily;
 pub mod export;
 pub mod monthly;
 pub mod narrative;
+pub mod snapshot;
 pub mod store;
 pub mod weekly;
 
@@ -26,9 +27,10 @@ use crate::ai::config::AiConfigState;
 use crate::ai::envelope::AiCodeMap;
 
 use common::{MIN_MONTH_DAYS, MIN_WEEK_DAYS};
+use snapshot::ReportSnapshot;
 use store::MIN_ACTIVE_MS;
 
-/// 给前端的报告视图（数据 + 叙事）。
+/// 给前端的报告视图（数据 + 叙事 + 快照）。
 ///
 /// `data` 用 [`Value`] 而不是 tagged enum：三种报的 `data` 形状不同，而 `get_report`
 /// 从 `data_json` 取出来本来就只有字符串，转 `Value` 是零成本的；换成 tagged enum
@@ -43,6 +45,9 @@ pub struct ReportView {
     pub data: Value,
     pub narrative: Option<String>,
     pub narrative_source: Option<String>,
+    /// 生成时的分类显示名 / 颜色 / 归属（见 [`snapshot`]）。分类的显示名与配色
+    /// **只能**从这里读，不许前端拿 id 再去查分类表——那就漏回实时状态了。
+    pub snapshot: ReportSnapshot,
 }
 
 /// 三种报计算结果的统一外壳，让落库路径只写一遍。
@@ -183,6 +188,9 @@ pub async fn generate_report(
 }
 
 /// 落库 + 组装 `ReportView`。三种报、手动/自动共用这一条写路径。
+///
+/// 快照在这里生成：**报告凝固的时刻就是这一刻**。之后分类怎么改名改色归档删除，
+/// 这一行都不会再变——除非用户显式「按当前分类重新生成」，那会重走本函数。
 fn write_row(
     conn: &rusqlite::Connection,
     report: &Computed,
@@ -190,6 +198,9 @@ fn write_row(
     narrative: Option<String>,
     narrative_source: Option<String>,
 ) -> Result<Option<ReportView>, String> {
+    let data = report.to_json();
+    let snap = snapshot::build(conn, &data).map_err(|e| e.to_string())?;
+
     let row = store::ReportRow {
         report_date: report.report_date(),
         report_type: report.report_type().to_string(),
@@ -197,18 +208,20 @@ fn write_row(
         generated_at_ms: store::now_ms(),
         active_ms: report.active_ms(),
         foreground_ms: report.foreground_ms(),
-        data_json: serde_json::to_string(&report.to_json()).unwrap_or_default(),
+        data_json: serde_json::to_string(&data).unwrap_or_default(),
         narrative: narrative.clone(),
         narrative_source: narrative_source.clone(),
+        snapshot_json: serde_json::to_string(&snap).ok(),
     };
     store::upsert(conn, &row).map_err(|e| e.to_string())?;
 
     Ok(Some(ReportView {
         report_type: row.report_type.clone(),
         status: status.to_string(),
-        data: report.to_json(),
+        data,
         narrative,
         narrative_source,
+        snapshot: snap,
     }))
 }
 
