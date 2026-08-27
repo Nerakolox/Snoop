@@ -8,6 +8,9 @@ import { useDayRollover } from "../hooks/useDayRollover";
 
 export type RangeKind = "day" | "week" | "month";
 
+/** 设置页的二级页。null = 设置主页。二级页只从设置页内部或深链进，主导航栏不开入口。 */
+export type SettingsSub = null | "categories";
+
 export interface ContextState {
   page: NavKey;
   kind: RangeKind;
@@ -15,6 +18,8 @@ export interface ContextState {
   appId: string | null;        // null = 全部应用
   focusHour: number | null;    // 时间线定位，仅 timeline 消费
   selectedKey: string | null;  // 单键下钻，仅 input 消费
+  settingsSub: SettingsSub;    // 设置二级页深链，仅 settings 消费
+  focusCategory: string | null; // 设置分类页定位到哪个分类，仅设置分类页消费
 }
 
 export const KIND_LABEL: Record<RangeKind, string> = {
@@ -156,6 +161,7 @@ type Action =
   | { t: "SET_APP"; appId: string | null }
   | { t: "SET_FOCUS_HOUR"; hour: number | null }
   | { t: "SET_SELECTED_KEY"; key: string | null }
+  | { t: "SET_SETTINGS_SUB"; sub: SettingsSub }
   | { t: "NAVIGATE"; patch: Partial<ContextState> }
   | { t: "BACK" }
   | { t: "DAY_ROLLOVER"; today: string };
@@ -202,11 +208,32 @@ function reducer(s: Store, a: Action): Store {
     case "SET_SELECTED_KEY":
       return { ...s, cur: { ...cur, selectedKey: a.key } };
 
+    /**
+     * 设置二级页的进入 / 退出。不压栈：它是设置页内部的形态切换，
+     * 用户按「返回」应该回到进设置之前的那一页，而不是回到设置主页。
+     * 退出二级页时一并清掉 focusCategory——定位高亮不该在下次进来时还留着。
+     */
+    case "SET_SETTINGS_SUB":
+      return {
+        ...s,
+        cur: {
+          ...cur,
+          settingsSub: a.sub,
+          focusCategory: a.sub === null ? null : cur.focusCategory,
+        },
+      };
+
     case "NAVIGATE": {
       const next = { ...cur, ...a.patch };
       // patch 里带了 kind 时同步修正 anchor（除非 patch 自己给了 anchor）
       if (a.patch.kind && !a.patch.anchor) {
         next.anchor = reanchor(cur.kind, cur.anchor, a.patch.kind, s.today);
+      }
+      // 设置二级页是**一次性**深链目标：patch 没带就归零。否则从分类页跳走再
+      // 用侧栏点「设置」，会莫名其妙又落回分类页——用户没要求过那个二级页。
+      if (a.patch.settingsSub === undefined) {
+        next.settingsSub = null;
+        next.focusCategory = null;
       }
       const stack = [...s.stack, cur].slice(-HISTORY_MAX);
       // ⚠️ 必须展开 ...s：漏了会把 today 丢成 undefined，
@@ -262,6 +289,8 @@ export interface Actions {
   setApp(appId: string | null): void;
   setFocusHour(hour: number | null): void;
   setSelectedKey(key: string | null): void;
+  /** 进入 / 退出设置二级页。传 null 退回设置主页，并清掉分类定位。 */
+  setSettingsSub(sub: SettingsSub): void;
   /** 唯一的压栈入口。跨页跳转 / 页面内下钻都走它。 */
   navigate(patch: Partial<ContextState>): void;
   back(): void;
@@ -279,6 +308,8 @@ export function ContextProvider({ children }: { children: ReactNode }) {
         appId: null,
         focusHour: null,
         selectedKey: null,
+        settingsSub: null,
+        focusCategory: null,
       },
       stack: [],
       today,
@@ -300,6 +331,7 @@ export function ContextProvider({ children }: { children: ReactNode }) {
     setApp:         (appId)  => dispatch({ t: "SET_APP", appId }),
     setFocusHour:   (hour)   => dispatch({ t: "SET_FOCUS_HOUR", hour }),
     setSelectedKey: (key)    => dispatch({ t: "SET_SELECTED_KEY", key }),
+    setSettingsSub: (sub)    => dispatch({ t: "SET_SETTINGS_SUB", sub }),
     navigate:       (patch)  => dispatch({ t: "NAVIGATE", patch }),
     back:           ()       => dispatch({ t: "BACK" }),
   }), []);

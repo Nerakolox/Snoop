@@ -16,7 +16,7 @@ import PageShell from "../components/PageShell";
 import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELayoutPicker";
 import { useAiEnabled } from "../ai/master";
 import { getAiConfig } from "../ai/client";
-import { useContextActions } from "../store/context";
+import { useContextActions, useContextState } from "../store/context";
 
 type UpdateState =
   | { status: "idle" }
@@ -93,11 +93,13 @@ function SegmentedControl<T extends string>({
   );
 }
 
-/** 设置页的二级页。null = 设置主页。二级页只从这里进，主导航栏不开新入口。 */
-type SubPage = null | "categories";
-
+/**
+ * 设置页的二级页现在住在全局 context（`ContextState.settingsSub`）而不是本地 state：
+ * 各数据页的分类 chip 与就地改分类下拉都要能直接跳进「分类」页并定位到某个分类，
+ * 本地 state 从外面够不着。它是一次性深链目标，NAVIGATE 时 patch 没带就会被归零。
+ */
 export default function Settings() {
-  const [subPage, setSubPage] = useState<SubPage>(null);
+  const { settingsSub, focusCategory } = useContextState();
   const [settings, setSettings] = useState<AppSettings>({
     collection_paused: false,
     ignore_list: [],
@@ -354,8 +356,13 @@ export default function Settings() {
     }
   }
 
-  if (subPage === "categories") {
-    return <Categories onBack={() => setSubPage(null)} />;
+  if (settingsSub === "categories") {
+    return (
+      <Categories
+        onBack={() => actions.setSettingsSub(null)}
+        focusId={focusCategory}
+      />
+    );
   }
 
   return (
@@ -458,7 +465,7 @@ export default function Settings() {
           label="应用分类"
           desc="管理分类本身（新建 / 改名 / 改色 / 归档 / 排序），以及每个 App 归到哪一类"
         >
-          <button className="setting-btn" onClick={() => setSubPage("categories")}>
+          <button className="setting-btn" onClick={() => actions.setSettingsSub("categories")}>
             <Tags size={13} />
             管理分类
           </button>

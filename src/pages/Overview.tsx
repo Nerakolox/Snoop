@@ -25,9 +25,9 @@ import { useRangeData } from "../data/useRangeData";
 import { fetchHourlyHeartbeats } from "../data/client";
 import { getCategoryBreakdown } from "../ai/client";
 import { useTodayNotice } from "../ai/notice";
-import { categoryColorVar } from "../ai/categories";
-// 显示名从分类表实时读：分类改名 / 归档后，占比图例要立刻跟着变。
-import { labelOf as categoryLabel, useCategories } from "../categories/store";
+// 显示名与**分类色**都从分类表实时读：分类改名 / 改色 / 归档后，占比图例与配色要立刻跟着变。
+import { fillOf, labelOf as categoryLabel, useCategories } from "../categories/store";
+import CategoryPicker from "../components/shared/CategoryPicker";
 import type { CategoryShare } from "../ai/types";
 import { formatAnchor, parseAnchor, toMs } from "../data/ranges";
 import {
@@ -199,7 +199,11 @@ function OverviewHeader({
 
 /** 分类占比的「结论句 + chip」块（D 方案）：
  *  第一名用结论句大字突出（占比 + 类别 + 时长），其余压成可换行的圆角 chip。
- *  删掉原逐行图例，只保留这一种形态。 */
+ *  删掉原逐行图例，只保留这一种形态。
+ *
+ *  chip 点击**不筛数据**，而是跳到设置分类页并定位到该分类：chip 管的是分类体系
+ *  （改名 / 改色 / 归档），App 排行行上的就地下拉管的是单个 App 的归属。两者互补，
+ *  各自指向自己那一层，不互相抢一个「点了会筛选」的默认预期。 */
 function CategoryVerdict({
   categories,
   totalMs,
@@ -207,6 +211,7 @@ function CategoryVerdict({
   categories: CategoryShare[];
   totalMs: number;
 }) {
+  const actions = useContextActions();
   if (categories.length === 0) return null;
   const top = categories[0];
   const rest = categories.slice(1);
@@ -215,7 +220,7 @@ function CategoryVerdict({
 
   const labelOf = (c: string) => categoryLabel(c);
   const tipOf = (s: CategoryShare, pct: number) =>
-    `${labelOf(s.category)} · ${fmtDuration(s.duration_ms)} · ${formatSharePct(pct)}`;
+    `${labelOf(s.category)} · ${fmtDuration(s.duration_ms)} · ${formatSharePct(pct)} · 点击管理该分类`;
 
   return (
     <>
@@ -229,16 +234,26 @@ function CategoryVerdict({
         <>
           <p className="cat-rest-line">其余 {rest.length} 类合计 {fmtDuration(restTotalMs)}</p>
           <div className="cat-chips">
-            {rest.map((s, i) => {
+            {rest.map((s) => {
               const pct = totalMs > 0 ? (s.duration_ms / totalMs) * 100 : 0;
               return (
                 <Tooltip key={s.category} content={tipOf(s, pct)}>
-                  <span className="cat-chip">
-                    {/* rest 从总排名 1 起算，+1 后与堆叠条里同一段的颜色严格对齐 */}
-                    <span className="cat-chip-dot" style={{ background: categoryColorVar(i + 1) }} />
+                  <button
+                    type="button"
+                    className="cat-chip"
+                    onClick={() =>
+                      actions.navigate({
+                        page: "settings",
+                        settingsSub: "categories",
+                        focusCategory: s.category,
+                      })
+                    }
+                  >
+                    {/* 圆点 = 分类自有身份色，与堆叠条里同一段严格同色（同一个 fillOf） */}
+                    <span className="cat-chip-dot" style={{ background: fillOf(s.category) }} />
                     <span className="cat-chip-label">{labelOf(s.category)}</span>
                     <span className="cat-chip-pct">{formatSharePct(pct)}</span>
-                  </span>
+                  </button>
                 </Tooltip>
               );
             })}
@@ -627,43 +642,50 @@ export default function Overview() {
             const pct = (app.minutes / maxMinutes) * 100;
             const dim = appId !== null && appId !== app.bundleId;
             return (
-              <button
-                key={app.bundleId}
-                type="button"
-                className={`app-row drillable${dim ? " app-row--dim" : ""}`}
-                onClick={() => goToApp(app.bundleId, app.name)}
-              >
-                <Tooltip content={app.name}>
-                  <div className="app-row-name">
-                    <AppIcon bundleId={app.bundleId} appName={app.name} size={18} />
-                    <span>{app.name}</span>
+              <div key={app.bundleId} className="app-row-wrap">
+                <button
+                  type="button"
+                  className={`app-row drillable${dim ? " app-row--dim" : ""}`}
+                  onClick={() => goToApp(app.bundleId, app.name)}
+                >
+                  <Tooltip content={app.name}>
+                    <div className="app-row-name">
+                      <AppIcon bundleId={app.bundleId} appName={app.name} size={18} />
+                      <span>{app.name}</span>
+                    </div>
+                  </Tooltip>
+                  <div className="app-row-track">
+                    <div
+                      className="app-row-fill"
+                      style={{
+                        width: `${pct}%`,
+                        background: intensityVar(app.intensity),
+                      }}
+                    />
                   </div>
-                </Tooltip>
-                <div className="app-row-track">
-                  <div
-                    className="app-row-fill"
-                    style={{
-                      width: `${pct}%`,
-                      background: intensityVar(app.intensity),
-                    }}
+                  <div className="app-row-time">{formatDurationPlain(app.minutes * 60_000)}</div>
+                  <DeltaBadge
+                    current={app.minutes}
+                    previous={prevMinutesByApp.get(app.bundleId) ?? 0}
+                    vsLabel={vsLabel}
+                    baseThreshold={baseThreshold}
                   />
-                </div>
-                <div className="app-row-time">{formatDurationPlain(app.minutes * 60_000)}</div>
-                <DeltaBadge
-                  current={app.minutes}
-                  previous={prevMinutesByApp.get(app.bundleId) ?? 0}
-                  vsLabel={vsLabel}
-                  baseThreshold={baseThreshold}
-                />
-              </button>
+                </button>
+                {/* 改完不用手动重拉：写入方 invalidateCategories 换掉分类表快照，上面
+                    订阅它的 useCategories 触发重渲染，占比 effect 依赖 categories 随之
+                    重跑，堆叠条与 chips 的数据和配色一起更新。 */}
+                <CategoryPicker appId={app.bundleId} appName={app.name} />
+              </div>
             );
           })}
         </div>
       </section>
 
       {/* ③½ 分类占比 —— 水平堆叠条 + 结论句 + chip。
-          颜色只编码占比排名，且走中性灰阶（深 → 浅），不碰暖色阶（那是活跃强度的地盘）；
-          唯一的品牌紫给第一名那一段，和「XX% 是娱乐」的结论句遥相呼应。 */}
+          每段用**该分类自己的身份色**（等亮度多色相、已避开暖色带，见 categories/color.ts）：
+          分类是离散互斥的类别，颜色编码「是哪一类」，不编码量级也不编码排名——排序由
+          左右位置和百分比数字承担。「其他」「未分类」以及并入「其他」的已归档分类走中性色，
+          它们不是真实分类，不该分到一个身份色。 */}
       <section className="panel">
         <h3 className="panel-title cat-panel-title">
           <span>{categoryTitle}</span>
@@ -679,7 +701,7 @@ export default function Overview() {
         ) : (
           <>
             <div className="cat-stack">
-              {shownCategories.map((s, i) => {
+              {shownCategories.map((s) => {
                 const pct = totalCategoryMs > 0 ? (s.duration_ms / totalCategoryMs) * 100 : 0;
                 const tip = `${categoryLabel(s.category)} · ${fmtDuration(
                   s.duration_ms,
@@ -690,7 +712,7 @@ export default function Overview() {
                       className="cat-stack-seg"
                       style={{
                         width: `${pct}%`,
-                        background: categoryColorVar(i),
+                        background: fillOf(s.category),
                       }}
                     />
                   </Tooltip>

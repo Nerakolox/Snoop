@@ -8,7 +8,7 @@
 // （--intensity-* 是活跃强度的专属编码，跟分类管理没有关系）。分类自身的色点
 // 走 categories/color.ts 的 OKLCH，L/C 由主题层给。
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, ArchiveRestore, ChevronDown, ChevronLeft, GripVertical,
@@ -22,8 +22,8 @@ import {
   createCategory, deleteCategory, getCategoryDeleteImpact,
   reorderCategories, setCategoryArchived, updateCategory,
 } from "../../categories/client";
-import { categoryColor } from "../../categories/color";
-import { invalidateCategories, useCategories } from "../../categories/store";
+import { categoryColor, isSystemCategoryId } from "../../categories/color";
+import { assignableCategories, fillOf, invalidateCategories, useCategories } from "../../categories/store";
 import type { CategoryRow, ClassifyScope, DeleteImpact } from "../../categories/types";
 import { ID_UNCATEGORIZED, MAX_ACTIVE_CATEGORIES } from "../../categories/constants";
 import CategoryEditor, { type EditorResult } from "./CategoryEditor";
@@ -40,7 +40,25 @@ const SCOPE_OPTIONS: { value: ClassifyScope; label: string; desc: string }[] = [
   { value: "all_override", label: "全部（覆盖手动）", desc: "重分全部应用，手改的决定也会被覆盖" },
 ];
 
-export default function Categories({ onBack }: { onBack: () => void }) {
+/**
+ * 目录里那个色点。
+ *
+ * 系统分类（其他 / 未分类）走和数据页一致的中性色——它们没有身份色，这里也不该
+ * 亮出一个彩点。其余分类**包括已归档的**都显示自己的真实颜色：归档只是从统计里
+ * 隐身，你仍然要能在这里看到并改它的色，恢复后就是这个色。
+ */
+function listDot(c: CategoryRow): string {
+  return isSystemCategoryId(c.id) ? fillOf(c.id) : categoryColor(c.hue, c.custom_color);
+}
+
+export default function Categories({
+  onBack,
+  focusId,
+}: {
+  onBack: () => void;
+  /** 深链定位到的分类 id（从概览 / 报告的分类 chip 跳进来时带上）。null = 不定位。 */
+  focusId?: string | null;
+}) {
   const stored = useCategories();
   /** 本地顺序副本：拖拽时先动这里，松手再落库。 */
   const [order, setOrder] = useState<CategoryRow[] | null>(null);
@@ -73,11 +91,23 @@ export default function Categories({ onBack }: { onBack: () => void }) {
   const active = useMemo(() => (order ?? []).filter((c) => !c.is_archived), [order]);
   const archived = useMemo(() => (order ?? []).filter((c) => c.is_archived), [order]);
   const byId = useMemo(() => new Map((order ?? []).map((c) => [c.id, c])), [order]);
-  /** 可作为归类目标的分类：未归档，且排除「未分类」（那是状态不是目标）。 */
-  const assignable = useMemo(
-    () => active.filter((c) => c.id !== ID_UNCATEGORIZED),
-    [active],
-  );
+  /** 可作为归类目标的分类。与各数据页的就地改分类下拉共用同一条筛选。 */
+  const assignable = useMemo(() => assignableCategories(order), [order]);
+
+  // ── 深链定位 ──────────────────────────────────────────────────────────────
+  const focusRef = useRef<HTMLDivElement | null>(null);
+
+  // 目标在「已归档」折叠区里就先展开：不展开的话滚过去也是一片空白。
+  useEffect(() => {
+    if (!focusId || !order) return;
+    if (order.find((c) => c.id === focusId)?.is_archived) setArchivedOpen(true);
+  }, [focusId, order]);
+
+  // 依赖 archivedOpen：展开动作会改变布局，要等它落定后再滚。
+  useEffect(() => {
+    if (!focusId) return;
+    focusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [focusId, order, archivedOpen]);
 
   async function reloadApps() {
     try {
@@ -307,7 +337,10 @@ export default function Categories({ onBack }: { onBack: () => void }) {
           {active.map((c) => (
             <div
               key={c.id}
-              className={`cat-cat-row${dragId === c.id ? " is-dragging" : ""}`}
+              ref={c.id === focusId ? focusRef : undefined}
+              className={`cat-cat-row${dragId === c.id ? " is-dragging" : ""}${
+                c.id === focusId ? " is-focused" : ""
+              }`}
               draggable
               onDragStart={() => setDragId(c.id)}
               onDragEnd={() => setDragId(null)}
@@ -317,10 +350,7 @@ export default function Categories({ onBack }: { onBack: () => void }) {
               <span className="cat-drag" title="拖拽排序">
                 <GripVertical size={14} />
               </span>
-              <span
-                className="cat-dot"
-                style={{ background: categoryColor(c.hue, c.custom_color) }}
-              />
+              <span className="cat-dot" style={{ background: listDot(c) }} />
               <div className="cat-cat-main">
                 <span className="cat-cat-name">{c.name}</span>
                 <span className="cat-cat-desc">{c.description || "（无说明，AI 无从判断归属）"}</span>
@@ -354,11 +384,12 @@ export default function Categories({ onBack }: { onBack: () => void }) {
           <div className="cat-cat-list cat-archived-list">
             {archived.length === 0 && <div className="cat-empty">没有已归档的分类</div>}
             {archived.map((c) => (
-              <div key={c.id} className="cat-cat-row">
-                <span
-                  className="cat-dot"
-                  style={{ background: categoryColor(c.hue, c.custom_color) }}
-                />
+              <div
+                key={c.id}
+                ref={c.id === focusId ? focusRef : undefined}
+                className={`cat-cat-row${c.id === focusId ? " is-focused" : ""}`}
+              >
+                <span className="cat-dot" style={{ background: listDot(c) }} />
                 <div className="cat-cat-main">
                   <span className="cat-cat-name">{c.name}</span>
                   <span className="cat-cat-desc">

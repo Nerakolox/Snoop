@@ -26,6 +26,7 @@ import {
   type Intensity,
 } from "../analytics";
 import AppIcon from "../components/AppIcon";
+import CategoryPicker from "../components/shared/CategoryPicker";
 import PageShell from "../components/PageShell";
 import { useToast } from "../components/shared/Toast";
 import { formatAnchor, parseAnchor, toMs } from "../data/ranges";
@@ -586,35 +587,39 @@ export default function Insights() {
               const pct = apps[0] ? (a.hours / apps[0].hours) * 100 : 0;
               const dim = appId !== null && appId !== a.bundleId;
               return (
-                <button
-                  key={a.bundleId}
-                  type="button"
-                  className={`ins-app-row drillable${dim ? " ins-app-row--dim" : ""}`}
-                  onClick={() => goToApp(a.bundleId, a.name)}
-                >
-                  <Tooltip content={a.name}>
-                    <div className="ins-app-name">
-                      <AppIcon bundleId={a.bundleId} appName={a.name} size={18} />
-                      <span>{a.name}</span>
+                <div key={a.bundleId} className="app-row-wrap">
+                  <button
+                    type="button"
+                    className={`ins-app-row drillable${dim ? " ins-app-row--dim" : ""}`}
+                    onClick={() => goToApp(a.bundleId, a.name)}
+                  >
+                    <Tooltip content={a.name}>
+                      <div className="ins-app-name">
+                        <AppIcon bundleId={a.bundleId} appName={a.name} size={18} />
+                        <span>{a.name}</span>
+                      </div>
+                    </Tooltip>
+                    <div className="app-row-track">
+                      <div
+                        className="app-row-fill"
+                        style={{
+                          width: `${pct}%`,
+                          background: intensityVar(a.intensity),
+                        }}
+                      />
                     </div>
-                  </Tooltip>
-                  <div className="app-row-track">
-                    <div
-                      className="app-row-fill"
-                      style={{
-                        width: `${pct}%`,
-                        background: intensityVar(a.intensity),
-                      }}
+                    <div className="ins-app-time">{fmtHours(a.hours)}h</div>
+                    <DeltaBadge
+                      current={a.currentMin}
+                      previous={a.previousMin}
+                      vsLabel={vsLabel}
+                      baseThreshold={baseThreshold}
                     />
-                  </div>
-                  <div className="ins-app-time">{fmtHours(a.hours)}h</div>
-                  <DeltaBadge
-                    current={a.currentMin}
-                    previous={a.previousMin}
-                    vsLabel={vsLabel}
-                    baseThreshold={baseThreshold}
-                  />
-                </button>
+                  </button>
+                  {/* 规律页本身不展示分类聚合，改完无需重拉本页数据；概览 / 报告
+                      下次渲染会从新的分类表快照取值。 */}
+                  <CategoryPicker appId={a.bundleId} appName={a.name} />
+                </div>
               );
             })}
           </div>

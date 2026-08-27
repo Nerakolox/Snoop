@@ -10,6 +10,8 @@
 import { useEffect, useSyncExternalStore } from "react";
 import { invalidateQuipCache } from "../ai/quip";
 import { listCategories } from "./client";
+import { categoryFill, categoryFillHex } from "./color";
+import { ID_UNCATEGORIZED } from "./constants";
 import type { CategoryRow } from "./types";
 
 let snapshot: CategoryRow[] | null = null;
@@ -87,6 +89,34 @@ export function labelOf(id: string): string {
 /** 分类 id → 分类记录（含已归档）。 */
 export function categoryById(id: string): CategoryRow | undefined {
   return snapshot?.find((c) => c.id === id);
+}
+
+/**
+ * 分类 id → 可视化填充色（CSS）。**占比条与 chip 圆点的唯一取色入口。**
+ *
+ * 和 labelOf 一样从快照实时读，所以改完某个分类的颜色，订阅了 useCategories 的
+ * 页面下一次渲染就是新色——占比条、chips、就地下拉三处同步变化。
+ *
+ * 系统分类与查不到的 id 走中性色，判定逻辑在 color.ts 的 categoryFill 里。
+ */
+export function fillOf(id: string): string {
+  return categoryFill(id, categoryById(id));
+}
+
+/** 同 fillOf，但给导出海报用的固定浅色 hex。 */
+export function fillHexOf(id: string): string {
+  return categoryFillHex(id, categoryById(id));
+}
+
+/**
+ * 可作为归类目标的分类：未归档，且排除「未分类」（那是状态不是目标）。
+ *
+ * 分类页的下拉和各数据页的就地改分类下拉共用这一条筛选——两处若各写一遍，
+ * 迟早出现「设置里改不了但概览里能改」这种自相矛盾。后端 set_app_category
+ * 对归档分类与「未分类」都会直接拒写，这里是与它对齐的前端投影。
+ */
+export function assignableCategories(rows: CategoryRow[] | null): CategoryRow[] {
+  return (rows ?? []).filter((c) => !c.is_archived && c.id !== ID_UNCATEGORIZED);
 }
 
 /**

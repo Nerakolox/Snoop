@@ -33,9 +33,10 @@ import type {
   RhythmSummary,
 } from "./types";
 import { formatDurationCompact, formatSharePct } from "../utils/format";
-import { shareColorLight } from "../ai/categories";
-// 报告里存的是分类 id，显示名从分类表实时读（历史冻结另有工单，此处不涉及）。
-import { labelOf as categoryLabel } from "../categories/store";
+// 报告里存的是分类 id，显示名与分类色都从分类表实时读（历史冻结另有工单，此处不涉及）。
+// 取色用 fillHexOf 而不是应用内的 fillOf：海报样式是 report-card.css?inline 塞进
+// <foreignObject> 独立渲染的，读不到主文档 token，`oklch(var(--cat-l) …)` 在那里解析不出来。
+import { fillHexOf, labelOf as categoryLabel } from "../categories/store";
 import { BASELINE_MIN_DAILY_MS, DOW_LABELS, dateLabel, deltaLabel, formatSleepMin, monthLabel, weekRangeLabel } from "./format";
 import { EXPORT_WIDTH } from "./export";
 import { renderQuips } from "./markup";
@@ -218,19 +219,22 @@ function ReportCategoryStack({ categories }: { categories: CategoryShare[] }) {
   return (
     <div className="report-card__cat">
       <div className="report-card__cat-stack">
-        {shown.map((c, i) => (
+        {shown.map((c) => (
           <div
             key={c.category}
             className="report-card__cat-seg"
-            style={{ width: `${c.share_pct}%`, background: shareColorLight(i) }}
+            style={{ width: `${c.share_pct}%`, background: fillHexOf(c.category) }}
           />
         ))}
       </div>
       <div className="report-card__cat-legend">
-        {shown.map((c, i) =>
+        {shown.map((c) =>
           c.active_ms >= 60_000 ? (
             <div key={c.category} className="report-card__cat-row">
-              <span className="report-card__cat-swatch" style={{ background: shareColorLight(i) }} />
+              <span
+                className="report-card__cat-swatch"
+                style={{ background: fillHexOf(c.category) }}
+              />
               <span className="report-card__cat-label">{categoryLabel(c.category)}</span>
               <span className="report-card__cat-time">{formatDurationCompact(c.active_ms)}</span>
               <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>
@@ -255,10 +259,13 @@ function ReportCategoryDeltaBars({
   const tinyNote = categoryTinyNote(shown);
   return (
     <div className="report-card__cat-legend">
-      {shown.map((c, i) =>
+      {shown.map((c) =>
         c.active_ms >= 60_000 ? (
           <div key={c.category} className="report-card__cat-row">
-            <span className="report-card__cat-swatch" style={{ background: shareColorLight(i) }} />
+            <span
+              className="report-card__cat-swatch"
+              style={{ background: fillHexOf(c.category) }}
+            />
             <span className="report-card__cat-label">{categoryLabel(c.category)}</span>
             <span className="report-card__cat-time">{formatDurationCompact(c.active_ms)}</span>
             <span className="report-card__cat-pct">{formatSharePct(c.share_pct)}</span>

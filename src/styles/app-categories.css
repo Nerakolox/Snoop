@@ -85,6 +85,13 @@
   opacity: 0.45;
 }
 
+/* 深链定位命中的那一行（从概览 / 报告的分类 chip 跳进来）。
+   品牌紫用在这里是本分：它标的是「你要找的就是这个」——身份与交互，不是数据量级。 */
+.cat-cat-row.is-focused {
+  background: var(--color-accent-soft);
+  box-shadow: inset 2.5px 0 0 var(--color-accent);
+}
+
 .cat-drag {
   display: inline-flex;
   color: var(--color-text-3);
@@ -471,7 +478,8 @@
   color: var(--color-text-3);
 }
 
-/* chip 行：第 2 名之后压成圆角 chip，横向可换行 */
+/* chip 行：第 2 名之后压成圆角 chip，横向可换行。
+   chip 是 <button>：点击跳设置分类页并定位到该分类（chip 管体系，App 行管个体）。 */
 .cat-chips {
   display: flex;
   flex-wrap: wrap;
@@ -480,6 +488,8 @@
 }
 
 .cat-chip {
+  appearance: none;
+  font: inherit;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -489,8 +499,20 @@
   border: 1px solid var(--color-border);
   font-size: var(--text-xs);
   color: var(--color-text-2);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth);
 }
 
+.cat-chip:hover,
+.cat-chip:focus-visible {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
+/* 圆点是分类的**身份色**（系统分类走中性色，见 categories/color.ts）。
+   chip 的底与字一律中性 token：整排 chips 只让圆点着色，否则一片花。 */
 .cat-chip-dot {
   width: 7px;
   height: 7px;
@@ -502,4 +524,194 @@
   font-variant-numeric: tabular-nums;
   font-weight: 600;
   color: var(--color-text);
+}
+
+/* ---------- 就地改分类：行内小按钮 + 下拉 ---------- */
+
+/* App 排行行的容器：行本身仍是整块可点的 <button>（下钻），改分类按钮是它的
+   **兄弟节点**而不是子节点——<button> 套 <button> 是非法 HTML，点击目标也会打架。 */
+.app-row-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-inline: calc(-1 * var(--space-3));
+}
+
+/* 行在 wrapper 里占满剩余宽度；负外边距移交给 wrapper，悬停底色的几何不变。 */
+.app-row-wrap > .app-row,
+.app-row-wrap > .ins-app-row {
+  flex: 1;
+  min-width: 0;
+  margin-inline: 0;
+}
+
+.cat-pick-btn {
+  appearance: none;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--color-text-3);
+  cursor: pointer;
+  /* 常态隐藏但**保留占位**：用 opacity 而不是 display，行宽不会在悬停时跳动。 */
+  opacity: 0;
+  transition:
+    opacity var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    background var(--dur-fast) var(--ease-smooth);
+}
+
+.app-row-wrap:hover .cat-pick-btn,
+.cat-pick-btn:focus-visible,
+.cat-pick-btn.is-open {
+  opacity: 1;
+}
+
+.cat-pick-btn:hover,
+.cat-pick-btn.is-open {
+  color: var(--color-text);
+  background: var(--color-surface-2);
+  border-color: var(--color-border);
+}
+
+.cat-pick-menu {
+  position: fixed;
+  z-index: 100; /* 与其他弹层同层，见 topbar.css 的 z-index 约定 */
+  min-width: 176px;
+  max-width: 240px;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.cat-pick-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  margin-bottom: var(--space-1);
+}
+
+.cat-pick-app {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-pick-cur {
+  flex: 0 0 auto;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  display: inline-flex;
+  align-items: center;
+}
+
+.cat-pick-cur .is-spin {
+  animation: settings-spin 0.8s linear infinite;
+}
+
+/* 写入失败的提示。刻意用中性色而不是项目里 .ai-warn 那支 --intensity-4：
+   这是分类 UI 内部，暖色阶在这里只该表示活跃强度，不能拿来喊错。 */
+.cat-pick-err {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text);
+}
+
+.cat-pick-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.cat-pick-item {
+  appearance: none;
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  text-align: left;
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-smooth);
+}
+
+.cat-pick-item:hover:not(:disabled),
+.cat-pick-item:focus-visible {
+  background: var(--color-surface-2);
+}
+
+.cat-pick-item:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.cat-pick-item.is-active {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+/* 下拉里的圆点与占比条、chips 同一个取色入口（store.fillOf），改色三处同步。 */
+.cat-pick-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.cat-pick-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cat-pick-empty {
+  padding: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.cat-pick-manage {
+  appearance: none;
+  font: inherit;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2);
+  margin-top: var(--space-1);
+  border: none;
+  border-top: 1px solid var(--color-border);
+  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+  background: none;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-smooth);
+}
+
+.cat-pick-manage:hover,
+.cat-pick-manage:focus-visible {
+  color: var(--color-accent);
 }
