@@ -61,8 +61,8 @@
 - 建议修法：图例按分类数固定占位，零值置灰但保留行位。
 - 优先级：低。
 - 备注：原「配色硬编码 Tailwind hex、不随主题切换」一条已解决 —— 分类色改为每个分类
-  自己的 OKLCH 色相（只存 hue，L/C 由主题层给），取色统一走 `categories/store` 的
-  `fillOf` / `fillHexOf`，硬编码色板文件 `ai/categories.ts` 已删除。
+  自己的 OKLCH 色相（只存 hue，L/C 由主题层给），实时视图取色统一走 `categories/store`
+  的 `fillOf`，硬编码色板文件 `ai/categories.ts` 已删除。（报告不走这条路，见第 8 条。）
 
 ### 4. AI 页输入框对齐
 
@@ -104,3 +104,20 @@
   macOS `WKWebView.takeSnapshotWithConfiguration:`），需把 wry 提为直接依赖 + 双平台真机验证——
   正是本批主动避开的路径。只有 foreignObject 确实跑不通才回头。
 - 优先级：低。
+
+### 8. 报告快照未完全自包含：周月的 pp 差仍从 data_json 取
+
+- 现象：报告快照（`report/snapshot.rs` 的 `CategorySnap`）存了分类 id、显示名、解析后的色值、
+  活跃时长、占比五项。但周报分类行的 `share_delta_pp`（vs 前 4 周的百分点差）和月报
+  「上半月 vs 下半月」的 `delta_pp` 不在其中，`ReportCard` 仍从 `data_json` 取这两个数，
+  只有名字和配色走快照。
+- 影响：**当前无正确性问题**。`data_json` 本身就是生成时算好落库的，与快照同一时刻凝固、
+  同生命周期，所以两边取数的结果一致，「已生成的报告不受后续分类变更影响」照样成立。
+  代价只在结构上：快照不是一份能脱离 `data_json` 独立渲染的完整数据，将来若要把快照
+  单独导出（分享一份报告数据、迁移到别的展示端），得连 `data_json` 一起带走。
+- 建议修法：真需要自包含时，给 `CategorySnap` 加一个可选的 `share_delta_pp`，
+  由 `build` 从 `data_json` 的分类项里一并读进来（周报的 `CategoryDelta` 本来就有这个字段，
+  日报月报没有，故为 `Option`）；月报的 `half_shift` 是另一套形状，需要单开一个数组。
+  不做这一步之前，别把「快照 = 报告的全部展示数据」当成已经成立的前提。
+- 优先级：低（结构整洁性，不是缺陷）。
+- 来源：报告生成时快照（分类冻结）。
