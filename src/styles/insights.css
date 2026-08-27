@@ -118,13 +118,18 @@
   flex: 1;
 }
 
-/* 绘图区：固定高度 180px，柱子 1fr 平分容器宽度、柱间固定 3px gap。
-   容器变宽柱子跟着变宽，不再写死像素宽；标签行在下方的兄弟容器里，不挤占柱高。 */
+/* 绘图区：高度吃满面板被拉伸出来的剩余空间，min-height 180px 兜底。
+   面板高度是右侧 App 排行撑出来的，这里写死 180px 会在标签行下方留一大片空白。
+   flex:1 的 basis 是 0、参与内在尺寸计算的是 min-height，所以面板自身的自然高度
+   仍旧是「180px + 标签行」，不会和外层行高互相依赖。
+   柱子 1fr 平分容器宽度、柱间固定 3px gap，容器变宽柱子跟着变宽，不写死像素宽；
+   标签行在下方的兄弟容器里，不挤占柱高。 */
 .ins-trend-bars {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
   gap: 3px;
-  height: 180px;
+  flex: 1;
+  min-height: 180px;
 }
 
 .ins-trend-col {

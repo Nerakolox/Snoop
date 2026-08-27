@@ -514,7 +514,7 @@ export default function Insights() {
             {isCurrentAnchor ? (viewKind === "week" ? "本周" : "本月") : "该范围"}前台时长趋势
           </h3>
           <div className="ins-trend">
-            {/* 绘图区：固定高度，柱子 1fr 平分容器宽度、柱间固定 3px gap */}
+            {/* 绘图区：高度吃满面板剩余空间（不足 180px 时兜底），柱子 1fr 平分容器宽度、柱间固定 3px gap */}
             <div
               className="ins-trend-bars"
               style={{ gridTemplateColumns: `repeat(${trendDays.length}, 1fr)` }}
