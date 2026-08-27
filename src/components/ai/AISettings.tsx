@@ -4,7 +4,8 @@
 // 保存即进 OS 原生加密存储，前端拿到的只有 `has_key` 布尔。
 //
 // 批次 3 起本组件不再直接嵌在设置页，而是作为「AI」页的 body 常驻，
-// 由 `tab` prop 决定展示哪个区块（服务 / 隐私 / 分类 / 记录）。
+// 由 `tab` prop 决定展示哪个区块（服务 / 隐私 / 记录）。分类已独立成一等功能，
+// 入口在「设置 → 分类」，这里不再有任何分类配置。
 // 所有 state 保持在组件内不变——切 tab 只改 prop，数据不丢。
 
 import { Fragment, useEffect, useMemo, useState } from "react";

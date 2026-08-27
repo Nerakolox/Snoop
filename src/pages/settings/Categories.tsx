@@ -543,7 +543,9 @@ export default function Categories({ onBack }: { onBack: () => void }) {
         <CategoryEditor
           editing={editing}
           // 含已归档：归档只是隐藏，恢复后会重新出现，那时再撞色就晚了。
-          existingHues={(order ?? []).map((c) => c.hue)}
+          // 但要排掉正在编辑的这一个——「重置为默认色」问的是「系统会给它挑哪个
+          // 色」，它自己当前的（可能还是 customColor 下的陈旧）色相不该把自己挤开。
+          existingHues={(order ?? []).filter((c) => c.id !== editing?.id).map((c) => c.hue)}
           onCancel={() => setEditing(undefined)}
           onSubmit={submitEditor}
         />
