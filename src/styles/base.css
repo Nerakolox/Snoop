@@ -413,12 +413,16 @@ body[data-platform="macos"] .sidebar-nav {
   white-space: nowrap;
 }
 
-.sidebar-live-badge {
+/* 四态颜文字。右对齐，所以四档宽度不一时抖动落在左边，右沿始终齐平。 */
+.sidebar-live-face {
   margin-left: auto;
-  font-size: 10px;
+  font-size: var(--text-xs);
+  line-height: 1;
   color: var(--color-text-3);
   white-space: nowrap;
   flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sidebar-live-quip {

@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   computeIntensity,
+  moodFaceOf,
   moodLabelOf,
   pickCatQuip,
   RECENT_ACTIVITY_WINDOW_MS,
@@ -62,7 +63,15 @@ export default function SidebarLive() {
           <span className={`sidebar-live-dot sidebar-live-dot--${status.intensity}`} aria-hidden />
           <span className="sidebar-live-label">{moodLabelOf(status.intensity)}</span>
         </div>
-        <span className="sidebar-live-badge">LIVE · 不随范围变</span>
+        {/* 纯装饰：状态已由左边的标签念出来，颜文字对读屏是噪音。
+            title 兜住原来「LIVE · 不随范围变」那句话承担的信息。 */}
+        <span
+          className="sidebar-live-face"
+          title="实时状态，不随页面筛选变化"
+          aria-hidden
+        >
+          {moodFaceOf(status.intensity)}
+        </span>
       </div>
       <Tooltip content="点击换一句">
         <button
