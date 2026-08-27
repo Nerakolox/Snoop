@@ -14,7 +14,8 @@ export const RECENT_ACTIVITY_WINDOW_MS = 2 * 60_000; // 2 分钟
 
 /**
  * 时长 → 0..5 六档（品牌紫深浅阶索引）。sqrt 感知分档，把小值多拉开几档。
- * 概览页节奏图与规律页趋势图共用这一条，保证「时长深浅」的视觉语言一致。
+ * 仅剩规律页趋势图在用：概览页节奏图已改为按活跃强度取暖色阶（analytics/intensity.ts），
+ * 「时长」这个维度不再参与取色，只出现在格内文字里。
  */
 export function durationLevel(ms: number, maxMs: number): number {
   if (ms <= 0 || maxMs <= 0) return 0;

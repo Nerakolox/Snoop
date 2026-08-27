@@ -338,9 +338,10 @@
   outline-offset: 1px;
 }
 
-/* 零活跃（有采集但无输入）：最浅一档实色 */
+/* 零活跃（有采集但无输入）：中性浅灰实色。
+   用 --intensity-0 而非暖色阶最浅档 —— 挂机不是"最弱的活跃"，它压根不在强度轴上。 */
 .hour-bar--idle {
-  background: var(--duration-1);
+  background: var(--intensity-0);
 }
 
 /* 无数据（未采集）：透明底 + 1px 描边 */
@@ -356,7 +357,7 @@
   opacity: 0.45;
 }
 
-/* 当前小时：外圈品牌色环标记，不用填充色（颜色已让给时长） */
+/* 当前小时：外圈品牌色环标记，不用填充色（填充色已让给活跃强度） */
 .hour-bar--now {
   box-shadow: 0 0 0 2px var(--color-accent);
 }
@@ -439,9 +440,9 @@
   color: var(--color-surface);
 }
 
-/* 零活跃（有采集但无输入）：最浅一档实色 */
+/* 零活跃（有采集但无输入）：中性浅灰实色，不进暖色阶（同 .hour-bar--idle） */
 .week-cell--idle {
-  background: var(--duration-1);
+  background: var(--intensity-0);
 }
 
 /* 无数据（未采集）：透明底 + 1px 描边 */
@@ -450,7 +451,7 @@
   border: 1px solid var(--color-border);
 }
 
-/* 今天：外圈品牌色环标记，不用填充色（颜色已让给时长） */
+/* 今天：外圈品牌色环标记，不用填充色（填充色已让给活跃强度） */
 .week-cell--today {
   box-shadow: 0 0 0 2px var(--color-accent);
 }
@@ -467,7 +468,8 @@
   color: var(--color-text-3);
 }
 
-/* 图例：时长深浅阶（少 → 多）+ 三态示意（零活跃 / 无数据 / 未到来） */
+/* 图例：暖色强度阶（弱 → 强）+ 三态示意（零活跃 / 无数据 / 未到来）。
+   后三者一律中性/描边，绝不取暖色，否则会被读成"最低强度档"。 */
 .rhythm-legend {
   display: flex;
   align-items: center;
@@ -483,9 +485,9 @@
   border-radius: 4px;
 }
 
-/* 零活跃：最浅一档实色（与「少」同色，语义靠文字 + hover 区分） */
+/* 零活跃：中性浅灰实色。与暖色阶四档天然拉开，一眼就看得出"不在强度轴上"。 */
 .rhythm-legend-swatch--idle {
-  background: var(--duration-1);
+  background: var(--intensity-0);
   margin-left: var(--space-3);
 }
 
@@ -551,9 +553,9 @@
   outline-offset: 1px;
 }
 
-/* 零活跃（有采集但无输入）：最浅一档实色 */
+/* 零活跃（有采集但无输入）：中性浅灰实色，不进暖色阶（同 .hour-bar--idle） */
 .month-cell--idle {
-  background: var(--duration-1);
+  background: var(--intensity-0);
 }
 
 /* 无数据（未采集）：透明底 + 1px 描边 */
@@ -569,7 +571,7 @@
   opacity: 0.45;
 }
 
-/* 今天：外圈品牌色环标记，不用填充色（颜色已让给时长） */
+/* 今天：外圈品牌色环标记，不用填充色（填充色已让给活跃强度） */
 .month-cell--today {
   box-shadow: 0 0 0 2px var(--color-accent);
 }

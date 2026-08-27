@@ -25,19 +25,20 @@
   --intensity-3: #E68A3C;
   --intensity-4: #D1602C;
 
-  /* 分类占比色阶（品牌紫深浅阶）：颜色只编码占比排名，排名越靠前越深。
-     与 ai/categories.ts 的 SHARE_RAMP_LIGHT 严格一致。
-     端点手写（最深接近品牌紫、最浅接近背景），中间按感知均匀拉开，避免前几档挤成同一种紫。 */
-  --share-1: #3C2FB9;  /* 占比最高 → 最深 */
-  --share-2: #5644D9;
-  --share-3: #6D5AE6;
-  --share-4: #8B7DF0;
-  --share-5: #ABA2F5;
-  --share-6: #C9C4F9;
-  --share-7: #E8E5FC;  /* 占比最低 → 最浅 */
+  /* 中性梯度（数据表达：**非强度**维度的排序 / 占比，深 → 浅）。
+     色彩分工：暖色阶 --intensity-* 专属"活跃强度"，品牌紫专属交互与身份，
+     其余任何"谁多谁少"的连续排序一律走这条中性阶，不再借用品牌紫。
+     浅色主题：neutral-1 最深（≈ --color-text-2）→ neutral-6 最浅（≈ --color-border）。 */
+  --neutral-1: #6B6670;  /* 排名最靠前 → 最深 */
+  --neutral-2: #857F87;
+  --neutral-3: #9F999F;
+  --neutral-4: #B9B3B6;
+  --neutral-5: #D3CDCD;
+  --neutral-6: #E8E3D9;  /* 排名最靠后 → 最浅 */
 
   /* 时长色阶（品牌紫深浅阶）：颜色只编码「时长多少」，深=时长多。
-     与 --share-* 同属品牌紫，但语义独立（时长 vs 排名），故单列一套。
+     仅剩规律页趋势图在用（概览页节奏图已改走暖色强度阶）。新页面别再扩散这套紫阶：
+     品牌紫的地盘是交互与身份，量级排序请用上面的 --neutral-*。
      浅色态：--duration-1 最浅（零活跃/极少）→ --duration-6 最深（时长最多）。
      端点手写，中间按感知均匀拉开，避免前几档挤成同一种紫。 */
   --duration-1: #E8E5FC;
@@ -112,15 +113,14 @@
   --intensity-2:         #B36A38;
   --intensity-3:         #E08A3C;
   --intensity-4:         #FF9670;
-  /* 分类占比色阶：深色态对比方向与浅色相反 —— 排名越靠前越亮（深色背景上「更亮」才读作「更靠前」）。
+  /* 中性梯度：深色态对比方向与浅色相反 —— 排名越靠前越亮（深色背景上「更亮」才读作「更靠前」）。
      数值手写，不走 filter/invert/opacity 派生。 */
-  --share-1:         #CDC5FF;  /* 占比最高 → 最亮 */
-  --share-2:         #B3A8FB;
-  --share-3:         #8B7CF0;
-  --share-4:         #6F61DF;
-  --share-5:         #5749BC;
-  --share-6:         #433794;
-  --share-7:         #332A72;  /* 占比最低 → 最暗 */
+  --neutral-1:       #A8A2AE;  /* 排名最靠前 → 最亮 */
+  --neutral-2:       #918B97;
+  --neutral-3:       #7A7480;
+  --neutral-4:       #635D69;
+  --neutral-5:       #4C4652;
+  --neutral-6:       #38333F;  /* 排名最靠后 → 最暗 */
   /* 时长色阶：深色态对比方向与浅色相反 —— 时长越多越亮（深色背景上「更亮」才读作「更多」）。
      数值手写，不走 filter/invert/opacity 派生。 */
   --duration-1:         #332A72;
@@ -151,14 +151,13 @@
   --intensity-2: #F0B77A;
   --intensity-3: #E68A3C;
   --intensity-4: #D1602C;
-  /* 分类占比色阶：同 :root，浅色态排名越靠前越深。 */
-  --share-1: #3C2FB9;
-  --share-2: #5644D9;
-  --share-3: #6D5AE6;
-  --share-4: #8B7DF0;
-  --share-5: #ABA2F5;
-  --share-6: #C9C4F9;
-  --share-7: #E8E5FC;
+  /* 中性梯度：同 :root，浅色态排名越靠前越深。色相跟随本主题偏冷的中性色。 */
+  --neutral-1: #5C5868;
+  --neutral-2: #7B7686;
+  --neutral-3: #9B96A4;
+  --neutral-4: #B5B1BE;
+  --neutral-5: #CFCBD8;
+  --neutral-6: #E2DFE8;
   /* 时长色阶：同 :root，浅色态深=时长多。 */
   --duration-1: #E8E5FC;
   --duration-2: #C9C4F9;

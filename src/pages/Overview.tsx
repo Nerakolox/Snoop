@@ -8,8 +8,7 @@ import {
   aggregateByApp,
   daysWithDataOf,
   durationByHourFromBuckets,
-  durationColorVar,
-  durationLevel,
+  intensityByHourFromBuckets,
   intensityVar,
   statsByDayFromBuckets,
   type Intensity,
@@ -26,7 +25,7 @@ import { useRangeData } from "../data/useRangeData";
 import { fetchHourlyHeartbeats } from "../data/client";
 import { getCategoryBreakdown } from "../ai/client";
 import { useTodayNotice } from "../ai/notice";
-import { CATEGORY_LABEL, shareColorVar } from "../ai/categories";
+import { CATEGORY_LABEL, categoryColorVar } from "../ai/categories";
 import type { CategoryShare } from "../ai/types";
 import { formatAnchor, parseAnchor, toMs } from "../data/ranges";
 import {
@@ -151,8 +150,9 @@ function judgeLabel(avgHours: number): string {
 
 const WEEKDAY_LABELS = ["一", "二", "三", "四", "五", "六", "日"];
 
-/** 时长深浅阶的 6 个档位索引，供图例逐一渲染色块。 */
-const DURATION_LEVELS = [0, 1, 2, 3, 4, 5] as const;
+/** 暖色强度阶的 4 个活跃档（弱 → 强），供图例逐一渲染色块。
+ *  档 0 不进图例：那是「零活跃」，由图例后面的三态示意单独说明。 */
+const INTENSITY_LEVELS: readonly Intensity[] = [1, 2, 3, 4];
 
 /** JS getDay(): 周日=0..周六=6 → 周一为第一列的索引 0..6，与 analytics/aggregate.ts 的 mondayIndex 同一约定 */
 function mondayIndex(dayMs: number): number {
@@ -232,7 +232,8 @@ function CategoryVerdict({
               return (
                 <Tooltip key={s.category} content={tipOf(s, pct)}>
                   <span className="cat-chip">
-                    <span className="cat-chip-dot" style={{ background: shareColorVar(i + 1) }} />
+                    {/* rest 从总排名 1 起算，+1 后与堆叠条里同一段的颜色严格对齐 */}
+                    <span className="cat-chip-dot" style={{ background: categoryColorVar(i + 1) }} />
                     <span className="cat-chip-label">{labelOf(s.category)}</span>
                     <span className="cat-chip-pct">{formatSharePct(pct)}</span>
                   </span>
@@ -358,7 +359,6 @@ export default function Overview() {
     const stats = statsByDayFromBuckets(buckets, rhythmRange.start_ms, rhythmRange.end_ms);
     return stats.map((s) => ({ ...s, hasData: s.foregroundMs > 0 }));
   }, [buckets, rhythmRange]);
-  const maxDayForegroundMs = Math.max(...dailyStats.map((d) => d.foregroundMs), 1);
 
   // 心跳（Snoop 是否在运行）按本地整点 —— 用于区分「零活跃(有采集但无输入)」与「无数据(未采集)」。
   // 与 Insights 作息画像同源：get_hourly_heartbeats 不接 app 参数，但心跳是「应用是否在跑」的全局事实，
@@ -381,27 +381,31 @@ export default function Overview() {
   // 此处不能引用下面才声明的 isCurrentAnchor（TDZ），直接等价地内联其判据。
   const isTodayView = viewKind === "day" && viewAnchor === normalizeAnchor(viewKind, today);
   const currentHour = new Date().getHours();
+  // 时长与强度两条独立的数据线：时长只喂格内文字/tooltip，强度只喂颜色。
+  // 二者故意解耦 —— 「挂机 3 小时」的格子时长很长但颜色很弱，那是对的，不是 bug。
   const hourlyDuration = useMemo(() => durationByHourFromBuckets(buckets), [buckets]);
+  const hourlyIntensity = useMemo(() => intensityByHourFromBuckets(buckets), [buckets]);
   const hourCells = useMemo(() => {
     const HOUR_MS = 60 * 60 * 1000;
-    const maxMs = Math.max(...hourlyDuration, 1);
     return Array.from({ length: 24 }, (_, h) => {
       const durationMs = hourlyDuration[h];
       const future = isTodayView && h > currentHour;
       const hasData = durationMs > 0;
       const idle = !future && !hasData && heartbeatHours.has(rhythmRange.start_ms + h * HOUR_MS);
       const state = future ? "future" : hasData ? "has_data" : idle ? "idle" : "no_data";
-      return { hour: h, durationMs, level: hasData ? durationLevel(durationMs, maxMs) : 0, state };
+      // 有前台时长但强度为 0（纯挂机）→ intensity 0，取 --intensity-0 的中性浅灰，不进暖色阶。
+      return { hour: h, durationMs, intensity: hasData ? hourlyIntensity[h] : 0, state };
     });
-  }, [hourlyDuration, isTodayView, currentHour, heartbeatHours, rhythmRange.start_ms]);
+  }, [hourlyDuration, hourlyIntensity, isTodayView, currentHour, heartbeatHours, rhythmRange.start_ms]);
 
-  // 「本周/本月节奏」的逐日状态：在 dailyStats 上补状态 + 格内文字 + 深浅档位。
+  // 「本周/本月节奏」的逐日状态：在 dailyStats 上补状态 + 格内文字 + 强度档位。
   // 三态 + 有数据（渲染优先级：未到来 > 零活跃 > 有数据 > 无数据）：
   //   future  未到来 = 日期在今天之后
   //   idle    零活跃 = 有桶（有前台时长）但无活跃输入（强度 0，纯挂机）
   //   no_data 无数据 = 完全没有桶（未采集）
-  //   hasData 有数据 = 有桶且有活跃输入 → 品牌紫深浅编码时长
+  //   hasData 有数据 = 有桶且有活跃输入 → 暖色阶编码活跃强度（statsByDayFromBuckets 已按 EPM 算好）
   // 判据用「桶存在性 + 强度」，不用心跳：心跳只说明 Snoop 在跑，区分不了「有桶没输入」。
+  // 颜色取强度、格内文字取时长，两者独立：长时间低强度的日子=浅色长数字，是预期结果。
   const dayCells = useMemo(() => {
     const todayMs = parseAnchor(today).getTime();
     return dailyStats.map((d) => {
@@ -409,31 +413,31 @@ export default function Overview() {
       const active = d.intensity > 0;         // 有活跃输入
       const hasData = active;
       const idle = hasBucket && !active;
-      const level = hasData ? durationLevel(d.foregroundMs, maxDayForegroundMs) : 0;
       return {
         dayMs: d.dayMs,
         foregroundMs: d.foregroundMs,
         hasData,
         idle,
-        level,
-        isDeep: hasData && level >= 4,
+        intensity: d.intensity,
+        // 只有最深的档 4 才翻白字：档 3（--intensity-3）是中调橙，白字对比度不够。
+        isDeep: hasData && d.intensity >= 4,
         isToday: d.dayMs === todayMs,
         future: d.dayMs > todayMs,
         label: hasData ? formatCompactDuration(d.foregroundMs) : "",
       };
     });
-  }, [dailyStats, maxDayForegroundMs, today]);
+  }, [dailyStats, today]);
 
   const rhythmTotalLabel = foregroundDuration > 0 ? `合计 ${fmtDuration(foregroundDuration)}` : null;
 
-  // 节奏图例（周/月共用）：时长深浅阶 + 三态示意，逐项与格子实际渲染对齐。
+  // 节奏图例（周/月共用）：暖色强度阶（弱 → 强）+ 三态示意，逐项与格子实际渲染对齐。
   const rhythmLegend = (
     <div className="rhythm-legend">
-      <span className="rhythm-legend-caption">少</span>
-      {DURATION_LEVELS.map((l) => (
-        <span key={l} className="rhythm-legend-swatch" style={{ background: durationColorVar(l) }} />
+      <span className="rhythm-legend-caption">弱</span>
+      {INTENSITY_LEVELS.map((l) => (
+        <span key={l} className="rhythm-legend-swatch" style={{ background: intensityVar(l) }} />
       ))}
-      <span className="rhythm-legend-caption">多</span>
+      <span className="rhythm-legend-caption">强</span>
       <span className="rhythm-legend-swatch rhythm-legend-swatch--idle" />
       <span className="rhythm-legend-caption">零活跃</span>
       <span className="rhythm-legend-swatch rhythm-legend-swatch--empty" />
@@ -651,7 +655,9 @@ export default function Overview() {
         </div>
       </section>
 
-      {/* ③½ 分类占比 —— 水平堆叠条 + 结论句 + chip，颜色只编码占比排名（品牌紫深浅阶） */}
+      {/* ③½ 分类占比 —— 水平堆叠条 + 结论句 + chip。
+          颜色只编码占比排名，且走中性灰阶（深 → 浅），不碰暖色阶（那是活跃强度的地盘）；
+          唯一的品牌紫给第一名那一段，和「XX% 是娱乐」的结论句遥相呼应。 */}
       <section className="panel">
         <h3 className="panel-title cat-panel-title">
           <span>{categoryTitle}</span>
@@ -678,7 +684,7 @@ export default function Overview() {
                       className="cat-stack-seg"
                       style={{
                         width: `${pct}%`,
-                        background: shareColorVar(i),
+                        background: categoryColorVar(i),
                       }}
                     />
                   </Tooltip>
@@ -690,7 +696,9 @@ export default function Overview() {
         )}
       </section>
 
-      {/* ④ 节奏 —— 日=24 格时长条 / 周=7 方格 / 月=紧凑格子带（均品牌紫深浅阶编码时长） */}
+      {/* ④ 节奏 —— 日=24 格 / 周=7 方格 / 月=紧凑格子带。
+          三种形态统一：**颜色编码活跃强度**（暖色阶，走 analytics/intensity 的 EPM 分档），
+          格内文字仍是时长。二者解耦，颜色回答「敲得多猛」，数字回答「待了多久」。 */}
       <section className="panel">
         <h3 className="panel-title rhythm-panel-title">
           <span>{rhythmTitle}</span>
@@ -708,7 +716,7 @@ export default function Overview() {
                   (cell.state === "no_data" ? " hour-bar--no-data" : "") +
                   (cell.state === "future" ? " hour-bar--future" : "") +
                   (isNow ? " hour-bar--now" : "");
-                const style = cell.state === "has_data" ? { background: durationColorVar(cell.level) } : undefined;
+                const style = cell.state === "has_data" ? { background: intensityVar(cell.intensity) } : undefined;
                 const tip =
                   cell.state === "has_data"
                     ? `${formatHour(cell.hour)} · ${fmtDuration(cell.durationMs)}`
@@ -754,7 +762,7 @@ export default function Overview() {
                     (d.isDeep ? " is-deep" : "") +
                     (d.idle ? " week-cell--idle" : d.hasData ? "" : " week-cell--no-data") +
                     (d.isToday ? " week-cell--today" : "");
-                  const style = d.hasData ? { background: durationColorVar(d.level) } : undefined;
+                  const style = d.hasData ? { background: intensityVar(d.intensity) } : undefined;
                   const tip = d.hasData
                     ? `${weekdayLabelOf(d.dayMs)} · ${fmtDuration(d.foregroundMs)}`
                     : d.idle
@@ -795,7 +803,7 @@ export default function Overview() {
                         ? ""
                         : " month-cell--no-data") +
                   (d.isToday ? " month-cell--today" : "");
-                const style = d.hasData ? { background: durationColorVar(d.level) } : undefined;
+                const style = d.hasData ? { background: intensityVar(d.intensity) } : undefined;
                 const tip = d.hasData
                   ? `${dateLabelOf(d.dayMs)} · ${fmtDuration(d.foregroundMs)}`
                   : d.future

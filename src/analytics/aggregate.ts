@@ -167,7 +167,7 @@ export function intensityByHourFromBuckets(buckets: RawBucket[]): Intensity[] {
 
 /**
  * 按**本地小时**把桶分组，返回每小时的并集前台时长（ms），定长 24，无数据的小时为 0。
- * 供「今日节奏」用品牌紫深浅编码时长（替代原强度分档的暖色轴）。
+ * 供「今日节奏」显示格内时长文字 / tooltip —— 只喂**文字**，颜色由 intensityByHourFromBuckets 喂。
  *
  * 与 intensityByHourFromBuckets 同源：吃已按 appId 过滤好的 RawBucket[]，有无筛选同一条路径。
  */
