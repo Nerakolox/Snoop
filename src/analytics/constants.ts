@@ -12,21 +12,6 @@ export const MOUSE_PIXELS_PER_METER = 3846; // ~1 米 = 3846 像素
 /** "此刻状态"判断的时间窗口（ms）—— 取最近这段时间的桶算当前强度。 */
 export const RECENT_ACTIVITY_WINDOW_MS = 2 * 60_000; // 2 分钟
 
-/**
- * 时长 → 0..5 六档（品牌紫深浅阶索引）。sqrt 感知分档，把小值多拉开几档。
- * 仅剩规律页趋势图在用：概览页节奏图已改为按活跃强度取暖色阶（analytics/intensity.ts），
- * 「时长」这个维度不再参与取色，只出现在格内文字里。
- */
-export function durationLevel(ms: number, maxMs: number): number {
-  if (ms <= 0 || maxMs <= 0) return 0;
-  return Math.min(5, Math.round(Math.sqrt(ms / maxMs) * 5));
-}
-
-/** 档位 → 主题感知的品牌紫 CSS 变量引用（--duration-1 最浅 → --duration-6 最深）。 */
-export function durationColorVar(level: number): string {
-  return `var(--duration-${level + 1})`;
-}
-
 /** 侧栏实时区的四态标签——五档强度折叠成四态，3/4 合并为"爆肝中"。 */
 export function moodLabelOf(intensity: Intensity): string {
   if (intensity >= 3) return "爆肝中";

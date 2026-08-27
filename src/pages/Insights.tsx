@@ -16,8 +16,6 @@ import {
   aggregateByApp,
   aggregateDowHourGrid,
   daysWithDataOf,
-  durationColorVar,
-  durationLevel,
   intensityVar,
   moodLabelOf,
   ratioToSliderPos,
@@ -276,7 +274,9 @@ export default function Insights() {
   );
   const maxDayForegroundMs = Math.max(...dailyStats.map((d) => d.foregroundMs), 1);
 
-  // 逐日三态 + 未来/今天，与概览页节奏图同源（品牌紫深浅编码时长，三态区分）。
+  // 逐日三态 + 未来/今天，与概览页节奏图同源：柱高编码时长、填充色编码活跃强度。
+  // intensity 直接取 statsByDayFromBuckets 已算好的值（analytics/intensity.ts 的 EPM 速率分档），
+  // 组件内不另写阈值。
   const trendDays = useMemo(
     () =>
       dailyStats.map((d) => {
@@ -291,10 +291,10 @@ export default function Insights() {
           noData: !hasBucket,
           future: d.dayMs > todayMs,
           isToday: d.dayMs === todayMs,
-          level: hasData ? durationLevel(d.foregroundMs, maxDayForegroundMs) : 0,
+          intensity: d.intensity,
         };
       }),
-    [dailyStats, maxDayForegroundMs, todayMs]
+    [dailyStats, todayMs]
   );
 
   // ---- App 排行 --------------------------------------------------------------
@@ -522,7 +522,7 @@ export default function Insights() {
               {trendDays.map((d) => {
                 const pct = d.hasData ? (d.foregroundMs / maxDayForegroundMs) * 100 : 0;
                 const tip = d.hasData
-                  ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.foregroundMs / (60 * 60 * 1000))}h`
+                  ? `${dateLabelOf(d.dayMs)} · ${fmtHours(d.foregroundMs / (60 * 60 * 1000))}h · 强度 ${d.intensity}（${moodLabelOf(d.intensity)}）`
                   : d.future
                     ? `${dateLabelOf(d.dayMs)} · 未到来`
                     : d.idle
@@ -534,7 +534,7 @@ export default function Insights() {
                       {d.hasData ? (
                         <div
                           className={`ins-trend-bar${d.isToday ? " ins-trend-bar--today" : ""}`}
-                          style={{ height: `${pct}%`, background: durationColorVar(d.level) }}
+                          style={{ height: `${pct}%`, background: intensityVar(d.intensity) }}
                         />
                       ) : (
                         <div

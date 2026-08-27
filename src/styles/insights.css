@@ -147,7 +147,7 @@
     filter var(--dur-fast) var(--ease-smooth);
 }
 
-/* 今天：外圈品牌色环，不用填充色（颜色已让给时长深浅） */
+/* 今天：外圈品牌色环，不用填充色（填充色已让给活跃强度暖色阶） */
 .ins-trend-bar--today {
   box-shadow: 0 0 0 2px var(--color-accent);
 }
@@ -160,9 +160,10 @@
   box-sizing: border-box;
 }
 
-/* 零活跃（有采集但无输入）：最浅一档实色短柱，能看出「有记录但很少」 */
+/* 零活跃（有采集但无输入）：中性浅色实心短柱，能看出「有记录但没输入」。
+   走 --intensity-0 这个 ramp 外的中性档，不取暖色阶最低档 —— 挂机压根不在强度轴上。 */
 .ins-trend-bar--idle {
-  background: var(--duration-1);
+  background: var(--intensity-0);
 }
 
 /* 无数据（未采集）：极淡虚线框，不画成贴地实线 */
