@@ -13,7 +13,14 @@ export default function TopBarTools({ placement = "leading" }: { placement?: "le
   if (placement === "trailing") return <TrailingTools />;
   const { page, focusHour, selectedKey } = useContextState();
   const actions = useContextActions();
-  const pageItems = useTopBarToolItems().filter((it) => (it.placement ?? "leading") === "leading");
+  // 过滤结果要 memoize：filter 每次都返回新数组，直接喂给下面的 allItems useMemo
+  // 会让它在每次 render 都变新引用，进而触发 useLayoutEffect([allItems]) 里的
+  // setVisibleKeys/setOverflowKeys 再 render，形成死循环。
+  const rawItems = useTopBarToolItems();
+  const pageItems = useMemo(
+    () => rawItems.filter((it) => (it.placement ?? "leading") === "leading"),
+    [rawItems],
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
