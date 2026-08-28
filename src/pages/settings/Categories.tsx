@@ -27,6 +27,10 @@ import { assignableCategories, fillOf, invalidateCategories, useCategories } fro
 import type { CategoryRow, ClassifyScope, DeleteImpact } from "../../categories/types";
 import { ID_UNCATEGORIZED, MAX_ACTIVE_CATEGORIES } from "../../categories/constants";
 import CategoryEditor, { type EditorResult } from "./CategoryEditor";
+import CategoryCabinet, { type DragUndoEntry } from "./CategoryCabinet";
+
+/** 分类页视图选择（分类柜 / 列表）的 localStorage 键。 */
+const VIEW_KEY = "snoop_category_view";
 
 const SOURCE_LABEL: Record<string, string> = {
   manual: "手动",
@@ -64,8 +68,23 @@ export default function Categories({
   const [order, setOrder] = useState<CategoryRow[] | null>(null);
   useEffect(() => setOrder(stored), [stored]);
 
+  // 视图切换：分类柜是默认视图，选择持久化，重进分类页时还原。
+  const [view, setView] = useState<"cabinet" | "list">(() =>
+    localStorage.getItem(VIEW_KEY) === "list" ? "list" : "cabinet",
+  );
+  useEffect(() => {
+    localStorage.setItem(VIEW_KEY, view);
+  }, [view]);
+  // 深链定位到的分类只在列表视图里有对应行：带 focusId 就切到列表，否则定位无处可滚。
+  useEffect(() => {
+    if (focusId) setView("list");
+  }, [focusId]);
+
   const [apps, setApps] = useState<AppCategoryRow[] | null>(null);
   const [busyApp, setBusyApp] = useState<string | null>(null);
+  // 分类柜「拖入应用以新建分类」：先记下待归类应用，弹出新建分类编辑器，
+  // 提交后拿新分类 id 再批量归类。
+  const [pendingDropApps, setPendingDropApps] = useState<AppCategoryRow[] | null>(null);
   const [archivedOpen, setArchivedOpen] = useState(false);
 
   // undefined = 弹窗关闭；null = 新建；CategoryRow = 编辑
@@ -104,10 +123,11 @@ export default function Categories({
   }, [focusId, order]);
 
   // 依赖 archivedOpen：展开动作会改变布局，要等它落定后再滚。
+  // 依赖 view：分类柜视图里没有可滚的目标行，切到列表后才滚。
   useEffect(() => {
-    if (!focusId) return;
+    if (!focusId || view !== "list") return;
     focusRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-  }, [focusId, order, archivedOpen]);
+  }, [focusId, order, archivedOpen, view]);
 
   async function reloadApps() {
     try {
@@ -150,14 +170,21 @@ export default function Categories({
 
   async function submitEditor(r: EditorResult) {
     const target = editing;
+    const pending = pendingDropApps;
     setEditing(undefined);
+    setPendingDropApps(null);
     await guard(async () => {
+      let createdId: string | null = null;
       if (target) {
         await updateCategory(target.id, r.name, r.description, r.hue, r.customColor);
       } else {
-        await createCategory(r.name, r.description, r.hue, r.customColor);
+        createdId = (await createCategory(r.name, r.description, r.hue, r.customColor)).id;
       }
       await afterMutation();
+      // 分类柜「拖入应用以新建分类」：新建成功后把待归类应用一次性归到新分类下。
+      if (createdId && pending && pending.length > 0) {
+        await assignApps(pending, createdId);
+      }
     });
   }
 
@@ -242,6 +269,62 @@ export default function Categories({
     }
   }
 
+  // ── 分类柜：多应用批量写入 ────────────────────────────────────────────────
+  //
+  // 分类柜的拖拽 / 右键 / 撤销一次可能涉及多个应用。这里按顺序逐个写（SQLite
+  // 串行更稳），全部成功后再统一作废分类缓存并重拉状态，避免每个应用都触发一次
+  // 全量刷新。每个入口返回是否成功，分类柜据此决定要不要记录 / 清除撤销条目。
+
+  async function applyAppWrites(tasks: (() => Promise<AppCategoryRow>)[]): Promise<boolean> {
+    try {
+      const updated: AppCategoryRow[] = [];
+      for (const t of tasks) updated.push(await t());
+      const byIdMap = new Map(updated.map((u) => [u.app_id, u]));
+      setApps((rs) => rs?.map((x) => byIdMap.get(x.app_id) ?? x) ?? null);
+      await invalidateCategories();
+      await reloadStatus();
+      return true;
+    } catch (e) {
+      setErr(String(e));
+      return false;
+    }
+  }
+
+  async function assignApps(list: AppCategoryRow[], categoryId: string): Promise<boolean> {
+    return applyAppWrites(list.map((r) => () => setAppCategory(r.app_id, r.app_name, categoryId)));
+  }
+
+  async function resetApps(list: AppCategoryRow[]): Promise<boolean> {
+    return applyAppWrites(list.map((r) => () => resetAppCategory(r.app_id, r.app_name)));
+  }
+
+  async function undoDrag(entries: DragUndoEntry[]): Promise<boolean> {
+    return applyAppWrites(entries.map((e) => () =>
+      e.origCategory === null
+        ? resetAppCategory(e.app.app_id, e.app.app_name)
+        : setAppCategory(e.app.app_id, e.app.app_name, e.origCategory),
+    ));
+  }
+
+  function createAndAssign(apps: AppCategoryRow[]) {
+    setPendingDropApps(apps);
+    setEditing(null);
+  }
+
+  async function reorderFolders(newActiveIds: string[]) {
+    await guard(async () => {
+      await reorderCategories([...newActiveIds, ...archived.map((c) => c.id)]);
+      await invalidateCategories();
+    });
+  }
+
+  // 分类柜的搜索框：与列表共用同一个 q。在分类柜里输入非空关键词就切到列表
+  // 视图（那里有筛选下拉和完整列表），清空不自动切回。
+  function onCabinetSearch(v: string) {
+    setQ(v);
+    if (v.trim() && view === "cabinet") setView("list");
+  }
+
   // ── 批量分类 ──────────────────────────────────────────────────────────────
 
   async function runClassify(s: ClassifyScope) {
@@ -302,6 +385,22 @@ export default function Categories({
             设置
           </button>
           <span className="cat-page-title">分类</span>
+          <div className="cat-view-toggle" role="tablist">
+            <button
+              type="button"
+              className={view === "cabinet" ? "is-active" : ""}
+              onClick={() => setView("cabinet")}
+            >
+              分类柜
+            </button>
+            <button
+              type="button"
+              className={view === "list" ? "is-active" : ""}
+              onClick={() => setView("list")}
+            >
+              列表
+            </button>
+          </div>
         </div>
       }
     >
@@ -312,7 +411,8 @@ export default function Categories({
         </div>
       )}
 
-      {/* ── 分类目录 ───────────────────────────────────────────────── */}
+      {/* ── 分类目录（仅列表视图；分类柜走 CategoryCabinet） ─────────────────── */}
+      {view === "list" && (
       <div className="settings-group">
         <div className="settings-group-title">
           分类
@@ -416,6 +516,7 @@ export default function Categories({
           </div>
         )}
       </div>
+      )}
 
       {/* ── 批量 AI 分类 ───────────────────────────────────────────── */}
       <div className="settings-group">
@@ -475,7 +576,8 @@ export default function Categories({
         </div>
       </div>
 
-      {/* ── 应用归类 ───────────────────────────────────────────────── */}
+      {/* ── 应用归类（列表视图）/ 分类柜（默认视图） ─────────────────────────── */}
+      {view === "list" ? (
       <div className="settings-group">
         <div className="settings-group-title">应用归类</div>
 
@@ -569,6 +671,24 @@ export default function Categories({
           </div>
         )}
       </div>
+      ) : (
+        <CategoryCabinet
+          apps={apps}
+          order={order}
+          atLimit={atLimit}
+          q={q}
+          onSearch={onCabinetSearch}
+          onEdit={(cat) => setEditing(cat)}
+          onArchive={(cat) => setConfirmArchive(cat)}
+          onRestore={doRestore}
+          onDelete={askDelete}
+          onCreateFromDrop={createAndAssign}
+          onAssign={assignApps}
+          onResetApps={resetApps}
+          onReorder={reorderFolders}
+          onUndoDrag={undoDrag}
+        />
+      )}
 
       {editing !== undefined && (
         <CategoryEditor
@@ -577,7 +697,10 @@ export default function Categories({
           // 但要排掉正在编辑的这一个——「重置为默认色」问的是「系统会给它挑哪个
           // 色」，它自己当前的（可能还是 customColor 下的陈旧）色相不该把自己挤开。
           existingHues={(order ?? []).filter((c) => c.id !== editing?.id).map((c) => c.hue)}
-          onCancel={() => setEditing(undefined)}
+          onCancel={() => {
+            setEditing(undefined);
+            setPendingDropApps(null);
+          }}
           onSubmit={submitEditor}
         />
       )}

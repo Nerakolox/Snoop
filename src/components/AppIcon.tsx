@@ -7,6 +7,8 @@ type Props = {
   appName: string;
   size?: number;
   className?: string;
+  /** 取不到图标时改用中性色首字母占位（分类柜的图标网格用），而不是按名字哈希出的主题色。 */
+  neutralFallback?: boolean;
 };
 
 // Snoop 自己的识别：直接用内置图标，绕过系统提取（dev 环境系统里
@@ -26,7 +28,7 @@ export function resetAppIconCache() {
   window.dispatchEvent(new CustomEvent(RESET_EVENT));
 }
 
-export default function AppIcon({ bundleId, appName, size = 20, className = "" }: Props) {
+export default function AppIcon({ bundleId, appName, size = 20, className = "", neutralFallback = false }: Props) {
   const isSelf = bundleId === SNOOP_BUNDLE_ID;
   const [iconData, setIconData] = useState<string | null>(null);
   const [loading, setLoading] = useState(!isSelf);
@@ -129,7 +131,32 @@ export default function AppIcon({ bundleId, appName, size = 20, className = "" }
     );
   }
 
-  // 兜底：首字母 + 主题色圆角块
+  // 兜底：首字母 + 主题色圆角块。分类柜要求中性色（不借分类色也不借名字哈希色），
+  // 用中性 surface 底 + 次级文字，和「无图标」这个状态本身一样不表态。
+  if (neutralFallback) {
+    return (
+      <div
+        className={`app-icon-fallback is-neutral ${className}`}
+        style={{
+          width: size,
+          height: size,
+          backgroundColor: "var(--color-surface-2)",
+          border: "1px solid var(--color-border)",
+          borderRadius: "20%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          color: "var(--color-text-2)",
+          fontSize: size * 0.5,
+          fontWeight: 600,
+          userSelect: "none",
+        }}
+      >
+        {firstLetter}
+      </div>
+    );
+  }
+
   return (
     <div
       className={`app-icon-fallback ${className}`}
