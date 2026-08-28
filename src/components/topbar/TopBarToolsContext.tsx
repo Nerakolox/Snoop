@@ -13,6 +13,8 @@ export type TopBarToolItem = {
   node: ReactNode;
   /** high = 宽度紧张时优先保持可见（筛选态芯片、降级警示）。默认 "normal" */
   priority?: "high" | "normal";
+  /** leading = 工具槽（spacer 左侧，默认）；trailing = spacer 右侧（全局返回按钮前）。 */
+  placement?: "leading" | "trailing";
 };
 
 const TopBarToolItemsContext = createContext<TopBarToolItem[]>([]);

@@ -58,6 +58,13 @@
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px;
   --space-4: 16px; --space-6: 24px; --space-8: 32px;
 
+  /* 输入控件尺寸：单行输入 / 搜索 / 选择 / HEX 与按钮统一高度、水平内边距与圆角。
+     编辑分类弹窗里「名称」输入框与「保存 / 取消」按钮同高，逐字对齐；
+     textarea 只共享水平内边距与圆角，高度自定（多行）。 */
+  --control-height: 30px;
+  --control-padding-x: var(--space-2);
+  --control-radius: var(--radius-sm);
+
   /* 字号 */
   --text-xs: 12px; --text-sm: 13px; --text-base: 14px;
   --text-lg: 16px; --text-xl: 20px; --text-2xl: 28px;

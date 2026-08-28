@@ -482,6 +482,20 @@
   color: var(--color-text);
 }
 
+/* 设置二级页的页面标题（与 .topbar__anchor-label 同语言，但语义是「当前页」而非「日期」） */
+.topbar__page-title {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  padding: 0 var(--space-1);
+}
+
+/* 右侧工具槽：spacer 之后、全局返回按钮之前，与 leading 槽同构但只做一行排开 */
+.topbar > .topbar__tools--trailing {
+  gap: var(--space-2);
+}
+
 /* 只读提示芯片（如 adaptKind 降级 note）：无点击行为，不需要悬停反馈 */
 .topbar__chip--readonly {
   display: inline-flex;

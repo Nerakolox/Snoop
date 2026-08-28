@@ -9,10 +9,11 @@ function formatHour(hour: number): string {
   return `${String(hour).padStart(2, "0")}:00`;
 }
 
-export default function TopBarTools() {
+export default function TopBarTools({ placement = "leading" }: { placement?: "leading" | "trailing" }) {
+  if (placement === "trailing") return <TrailingTools />;
   const { page, focusHour, selectedKey } = useContextState();
   const actions = useContextActions();
-  const pageItems = useTopBarToolItems();
+  const pageItems = useTopBarToolItems().filter((it) => (it.placement ?? "leading") === "leading");
 
   const containerRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -231,6 +232,26 @@ export default function TopBarTools() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * 顶栏右侧（spacer 之后、全局返回按钮之前）的工具槽。
+ *
+ * 用于设置二级页把「视图切换」这类操作放到右侧：数量少、永不溢出，故不做
+ * 测量/「⋯」折叠，直接一行排开——leading 槽已有完整的溢出收纳逻辑，这里不必重复。
+ */
+function TrailingTools() {
+  const items = useTopBarToolItems().filter((it) => (it.placement ?? "leading") === "trailing");
+  if (items.length === 0) return <div className="topbar__tools" />;
+  return (
+    <div className="topbar__tools topbar__tools--trailing">
+      {items.map((it) => (
+        <div className="topbar__tools-item" key={it.key}>
+          {it.node}
+        </div>
+      ))}
     </div>
   );
 }

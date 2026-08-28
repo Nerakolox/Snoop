@@ -220,6 +220,23 @@ export function pickNewHue(existing: number[]): number {
   return Math.round((best.hue % 360) * 10) / 10;
 }
 
+/**
+ * 取色器「推荐色」：在允许弧上按最大间隙策略依次取 `count` 个不撞已用色相的色相。
+ *
+ * 复用 pickNewHue——每取一个就把它当作「已占用」喂回去找下一个，所以结果在允许弧上
+ * 均匀摊开、彼此可辨，且都避开 `existing` 里其它分类的色相。第一个就是新建时的默认色。
+ */
+export function pickRecommendedHues(existing: number[], count: number): number[] {
+  const used = existing.slice();
+  const out: number[] = [];
+  for (let i = 0; i < count; i++) {
+    const h = pickNewHue(used);
+    used.push(h);
+    out.push(h);
+  }
+  return out;
+}
+
 // ── 输出成 CSS 颜色 ──────────────────────────────────────────────────────────
 
 /**

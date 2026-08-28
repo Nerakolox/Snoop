@@ -7,14 +7,13 @@ import { useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Palette, RotateCcw } from "lucide-react";
 import {
-  categoryColor,
   forbiddenReason,
   hexToOklch,
-  hueToHex,
   isHueAllowed,
   pickNewHue,
 } from "../../categories/color";
 import type { CategoryRow } from "../../categories/types";
+import CategoryColorPicker from "./CategoryColorPicker";
 
 export interface EditorResult {
   name: string;
@@ -55,8 +54,11 @@ export default function CategoryEditor({
     null,
   );
 
-  const swatch = categoryColor(hue, customColor);
-  const pickerValue = customColor ?? hueToHex(hue);
+  function applyHue(h: number) {
+    setHue(Math.round(h * 10) / 10);
+    setCustomColor(null);
+    setPendingForbidden(null);
+  }
 
   function handlePick(hex: string) {
     const o = hexToOklch(hex);
@@ -120,12 +122,12 @@ export default function CategoryEditor({
         <div className="cat-field">
           <span className="cat-field-label">颜色</span>
           <div className="cat-color-row">
-            <span className="cat-color-swatch" style={{ background: swatch }} />
-            <input
-              type="color"
-              className="cat-color-input"
-              value={pickerValue}
-              onChange={(e) => handlePick(e.target.value)}
+            <CategoryColorPicker
+              hue={hue}
+              customColor={customColor}
+              existingHues={existingHues}
+              onApplyHue={applyHue}
+              onPickHex={handlePick}
             />
             <span className="cat-color-meta">
               {customColor ? `自定义 ${customColor}` : `色相 ${hue.toFixed(1)}°`}

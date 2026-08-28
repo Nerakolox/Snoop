@@ -320,6 +320,8 @@ export default function TopBar() {
 
       <div className="topbar__spacer" data-tauri-drag-region />
 
+      <TopBarTools placement="trailing" />
+
       <Tooltip content="返回">
         <button
           type="button"

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import AppIcon from "../../components/AppIcon";
 import PageShell from "../../components/PageShell";
+import { useTopBarTools } from "../../components/topbar/TopBarToolsContext";
 import { classifyApps, getClassifyStatus, listClassifiedApps, resetAppCategory, setAppCategory, undoClassifyBatch } from "../../ai/client";
 import type { AppCategoryRow, ClassifyStatus } from "../../ai/types";
 import {
@@ -79,6 +80,54 @@ export default function Categories({
   useEffect(() => {
     if (focusId) setView("list");
   }, [focusId]);
+
+  // 页头合并进顶部 tab 栏：返回入口 + 标题放左侧（leading），视图切换放右侧（trailing）。
+  // 页面本身不再渲染自己的页头行，顶距由 PageShell 无 header 路径提供。
+  useTopBarTools(
+    [
+      {
+        key: "back",
+        node: (
+          <button
+            type="button"
+            className="topbar__tool-btn"
+            data-tauri-drag-region="false"
+            onClick={onBack}
+          >
+            <ChevronLeft size={15} />
+            设置
+          </button>
+        ),
+      },
+      {
+        key: "title",
+        node: <span className="topbar__page-title">分类</span>,
+      },
+      {
+        key: "view-toggle",
+        placement: "trailing",
+        node: (
+          <div className="cat-view-toggle" role="tablist">
+            <button
+              type="button"
+              className={view === "cabinet" ? "is-active" : ""}
+              onClick={() => setView("cabinet")}
+            >
+              分类柜
+            </button>
+            <button
+              type="button"
+              className={view === "list" ? "is-active" : ""}
+              onClick={() => setView("list")}
+            >
+              列表
+            </button>
+          </div>
+        ),
+      },
+    ],
+    [view, onBack],
+  );
 
   const [apps, setApps] = useState<AppCategoryRow[] | null>(null);
   const [busyApp, setBusyApp] = useState<string | null>(null);
@@ -422,35 +471,7 @@ export default function Categories({
   const atLimit = active.length >= MAX_ACTIVE_CATEGORIES;
 
   return (
-    <PageShell
-      className="categories-page"
-      stickyHeader
-      header={
-        <div className="cat-page-header">
-          <button className="cat-back" onClick={onBack}>
-            <ChevronLeft size={15} />
-            设置
-          </button>
-          <span className="cat-page-title">分类</span>
-          <div className="cat-view-toggle" role="tablist">
-            <button
-              type="button"
-              className={view === "cabinet" ? "is-active" : ""}
-              onClick={() => setView("cabinet")}
-            >
-              分类柜
-            </button>
-            <button
-              type="button"
-              className={view === "list" ? "is-active" : ""}
-              onClick={() => setView("list")}
-            >
-              列表
-            </button>
-          </div>
-        </div>
-      }
-    >
+    <PageShell className="categories-page">
       {err && (
         <div className="ai-warn">
           <AlertTriangle size={13} />

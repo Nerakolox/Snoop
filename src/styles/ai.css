@@ -104,10 +104,10 @@
 }
 
 .ai-input {
-  height: 28px;
-  padding: 0 var(--space-2);
+  height: var(--control-height);
+  padding: 0 var(--control-padding-x);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--control-radius);
   background: var(--color-surface-2);
   color: var(--color-text);
   font-size: var(--text-xs);
@@ -133,10 +133,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--control-height);
+  height: var(--control-height);
   border: 1px solid var(--color-border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--control-radius);
   background: var(--color-surface-2);
   color: var(--color-text-2);
   cursor: pointer;
