@@ -102,6 +102,16 @@ export default function Categories({
   const [classifyMsg, setClassifyMsg] = useState("");
   const [confirmOverride, setConfirmOverride] = useState(false);
 
+  // 底部撤销提示条：覆盖分类柜的两种拖拽写入——
+  //   1) 归类/重置（apps 记录原分类，撤销逐个还原）；
+  //   2) 「拖入新建分类」（createdCategoryId 标记：撤销时除还原应用外，还要删掉新建的分类）。
+  const [undoEntry, setUndoEntry] = useState<{
+    apps: DragUndoEntry[];
+    targetName: string;
+    count: number;
+    createdCategoryId?: string;
+  } | null>(null);
+
   // 筛选
   const [q, setQ] = useState("");
   const [filterCat, setFilterCat] = useState("all");
@@ -181,9 +191,18 @@ export default function Categories({
         createdId = (await createCategory(r.name, r.description, r.hue, r.customColor)).id;
       }
       await afterMutation();
-      // 分类柜「拖入应用以新建分类」：新建成功后把待归类应用一次性归到新分类下。
+      // 分类柜「拖入应用以新建分类」：新建成功后把待归类应用一次性归到新分类下，
+      // 并记一条可撤销记录（撤销时连同新建的分类一起删掉）。
       if (createdId && pending && pending.length > 0) {
-        await assignApps(pending, createdId);
+        const ok = await assignApps(pending, createdId);
+        if (ok) {
+          setUndoEntry({
+            apps: pending.map((a) => ({ app: a, origCategory: a.category })),
+            targetName: r.name,
+            count: pending.length,
+            createdCategoryId: createdId,
+          });
+        }
       }
     });
   }
@@ -304,6 +323,35 @@ export default function Categories({
         ? resetAppCategory(e.app.app_id, e.app.app_name)
         : setAppCategory(e.app.app_id, e.app.app_name, e.origCategory),
     ));
+  }
+
+  /** 分类柜拖拽归类 / 重置成功后上报的撤销条目。 */
+  function recordDragUndo(entry: { apps: DragUndoEntry[]; targetName: string; count: number }) {
+    setUndoEntry(entry);
+  }
+
+  async function doUndo() {
+    if (!undoEntry) return;
+    await guard(async () => {
+      if (undoEntry.createdCategoryId) {
+        // 撤销「拖入新建分类」：先还原应用到拖拽前的分类，再归档并删除新建的分类。
+        // 顺序不能反——先删分类会把它下面的归类行清成未分类，丢掉原分类信息。
+        const ok = await applyAppWrites(
+          undoEntry.apps.map((e) => () =>
+            e.origCategory === null
+              ? resetAppCategory(e.app.app_id, e.app.app_name)
+              : setAppCategory(e.app.app_id, e.app.app_name, e.origCategory),
+          ),
+        );
+        if (!ok) return;
+        await setCategoryArchived(undoEntry.createdCategoryId, true);
+        await deleteCategory(undoEntry.createdCategoryId);
+        await afterMutation();
+      } else {
+        await undoDrag(undoEntry.apps);
+      }
+      setUndoEntry(null);
+    });
   }
 
   function createAndAssign(apps: AppCategoryRow[]) {
@@ -685,7 +733,7 @@ export default function Categories({
           onAssign={assignApps}
           onResetApps={resetApps}
           onReorder={reorderFolders}
-          onUndoDrag={undoDrag}
+          onRecordUndo={recordDragUndo}
         />
       )}
 
@@ -785,6 +833,31 @@ export default function Categories({
                 </button>
               </div>
             </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ── 底部撤销提示条（分类柜拖拽写入） ── */}
+      {undoEntry &&
+        createPortal(
+          <div className="cab-undo-bar">
+            <span className="cab-undo-msg">
+              {undoEntry.createdCategoryId
+                ? `已新建分类「${undoEntry.targetName}」并归类 ${undoEntry.count} 个应用`
+                : `已归类 ${undoEntry.count} 个应用到「${undoEntry.targetName}」`}
+            </span>
+            <button type="button" className="setting-btn" onClick={doUndo}>
+              <Undo2 size={13} />
+              撤销
+            </button>
+            <button
+              type="button"
+              className="cab-undo-close"
+              onClick={() => setUndoEntry(null)}
+              aria-label="关闭"
+            >
+              ×
+            </button>
           </div>,
           document.body,
         )}

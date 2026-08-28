@@ -30,7 +30,7 @@ import {
 } from "@dnd-kit/sortable";
 import { restrictToWindowEdges } from "@dnd-kit/modifiers";
 import {
-  Archive, ArchiveRestore, ChevronDown, ChevronRight, Pencil, Plus, Search, Trash2, Undo2,
+  Archive, ArchiveRestore, ChevronDown, ChevronRight, Pencil, Plus, Search, Trash2,
 } from "lucide-react";
 import AppIcon from "../../components/AppIcon";
 import Tooltip from "../../components/shared/Tooltip";
@@ -206,7 +206,7 @@ export default function CategoryCabinet({
   onResetApps,
   onCreateFromDrop,
   onReorder,
-  onUndoDrag,
+  onRecordUndo,
 }: {
   apps: AppCategoryRow[] | null;
   order: CategoryRow[] | null;
@@ -221,7 +221,8 @@ export default function CategoryCabinet({
   onResetApps: (apps: AppCategoryRow[]) => Promise<boolean>;
   onCreateFromDrop: (apps: AppCategoryRow[]) => void;
   onReorder: (newActiveIds: string[]) => void;
-  onUndoDrag: (entries: DragUndoEntry[]) => Promise<boolean>;
+  /** 一次拖拽落点写入成功后上报撤销条目，由父级（Categories）统一渲染底部提示条。 */
+  onRecordUndo: (entry: { apps: DragUndoEntry[]; targetName: string; count: number }) => void;
 }) {
   const byId = useMemo(() => new Map((order ?? []).map((c) => [c.id, c])), [order]);
   const active = useMemo(() => (order ?? []).filter((c) => !c.is_archived), [order]);
@@ -331,14 +332,6 @@ export default function CategoryCabinet({
       closeTimerRef.current = null;
     }
   }
-
-  // ── 撤销提示条 ──────────────────────────────────────────────────────────────
-
-  const [undoEntry, setUndoEntry] = useState<{
-    apps: DragUndoEntry[];
-    targetName: string;
-    count: number;
-  } | null>(null);
 
   // ── 右键菜单（主菜单 + 分类选择子菜单） ────────────────────────────────────
 
@@ -585,18 +578,12 @@ export default function CategoryCabinet({
       : await onAssign(effective, targetId);
     if (ok) {
       const target = targetId ? byId.get(targetId) : undefined;
-      setUndoEntry({
+      onRecordUndo({
         apps: effective.map((a) => ({ app: a, origCategory: a.category })),
         targetName: target?.name ?? "未分类",
         count: effective.length,
       });
     }
-  }
-
-  async function doUndo() {
-    if (!undoEntry) return;
-    const ok = await onUndoDrag(undoEntry.apps);
-    if (ok) setUndoEntry(null);
   }
 
   async function pickCategory(categoryId: string | null) {
@@ -759,29 +746,6 @@ export default function CategoryCabinet({
             onAppContextMenu={onAppContextMenu}
           />
         )}
-
-        {/* ── 撤销提示条 ── */}
-        {undoEntry &&
-          createPortal(
-            <div className="cab-undo-bar">
-              <span className="cab-undo-msg">
-                已归类 {undoEntry.count} 个应用到「{undoEntry.targetName}」
-              </span>
-              <button type="button" className="setting-btn" onClick={doUndo}>
-                <Undo2 size={13} />
-                撤销
-              </button>
-              <button
-                type="button"
-                className="cab-undo-close"
-                onClick={() => setUndoEntry(null)}
-                aria-label="关闭"
-              >
-                ×
-              </button>
-            </div>,
-            document.body,
-          )}
 
         {/* ── 右键菜单（主菜单 + 分类选择子菜单） ── */}
         {menu &&
