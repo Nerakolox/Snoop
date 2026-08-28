@@ -16,4 +16,6 @@
   box-shadow: var(--shadow-md);
   pointer-events: none;
   white-space: normal;
+  /* 长路径这类无空格的连续文本允许换行，完整显示不截断、不溢出到气泡外 */
+  overflow-wrap: anywhere;
 }

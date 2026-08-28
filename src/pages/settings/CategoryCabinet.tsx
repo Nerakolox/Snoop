@@ -39,7 +39,10 @@ import { fillOf } from "../../categories/store";
 import { ID_OTHER, ID_UNCATEGORIZED } from "../../categories/constants";
 import type { CategoryRow } from "../../categories/types";
 
-/** 第二行区分标记的截断上限：过长保留末尾字符。 */
+/** 应用名显示标签的截断上限（中部省略保留首尾的字符预算）。 */
+const NAME_MAX = 16;
+
+/** 第二行区分标记的截断上限。 */
 const MARKER_MAX = 20;
 
 /** 悬停弹开文件夹的延迟（秒 → 毫秒）。 */
@@ -48,14 +51,34 @@ const HOVER_OPEN_MS = 500;
 /** 二级子菜单 / 弹层收回前的宽限（毫秒），留给鼠标跨进相邻弹层的间隙。 */
 const CLOSE_GRACE_MS = 150;
 
-// ── 同名标记 ──────────────────────────────────────────────────────────────────
+// ── 显示标签与同名标记 ──────────────────────────────────────────────────────
 //
-// 不做应用合并的前提下，同一可执行文件的不同路径各占一个独立图标。当一组图标
-// 同名时，比对这些条目的完整路径（Windows 上 app_id 即 exe 路径），取**第一处
-// 出现差异的路径段**作为第二行标记；该段过长则保留末尾。不同名的应用不显示。
+// 不做应用合并的前提下，同一可执行文件的不同路径各占一个独立图标。区分逻辑：
+//   - 应用名统一中部省略（保留首尾），得到「显示标签」；
+//   - 两个及以上条目的**显示标签**相同（渲染出来看着一样），这些条目追加第二行
+//     标记；不同显示标签的应用不显示标记；
+//   - 标记内容优先用可执行文件名（含扩展名，如 voicemeeter_x64.exe）；若可执行
+//     文件名也相同（如两条 snoop.exe）退回路径差异段（第一处出现差异的段）；
+//   - 标记超长先尾部截断，截断后若仍撞车改用中部省略保留首尾（如
+//     voicemeeter…x64.exe）。
 
 function pathSegments(path: string): string[] {
   return path.split(/[\\/]+/).filter(Boolean);
+}
+
+/** 可执行文件名（含扩展名）：路径最后一段。 */
+function basename(path: string): string {
+  const segs = pathSegments(path);
+  return segs[segs.length - 1] ?? "";
+}
+
+/** 中部省略：保留首尾字符，中间用 … 替换。首尾比尾部截断更能区分同前缀应用。 */
+function middleTruncate(s: string, max: number): string {
+  if (s.length <= max) return s;
+  const keep = max - 1; // 预留一个 … 的位置
+  const head = Math.ceil(keep / 2);
+  const tail = keep - head;
+  return `${s.slice(0, head)}…${s.slice(s.length - tail)}`;
 }
 
 function tailTruncate(s: string, max = MARKER_MAX): string {
@@ -63,32 +86,53 @@ function tailTruncate(s: string, max = MARKER_MAX): string {
   return `…${s.slice(s.length - (max - 1))}`;
 }
 
+/** 应用名的显示标签：中部省略。渲染与分组共用同一函数，保证二者一致。 */
+function displayLabel(name: string): string {
+  return middleTruncate(name.trim(), NAME_MAX);
+}
+
 function buildMarkers(apps: AppCategoryRow[]): Map<string, string> {
-  const byName = new Map<string, AppCategoryRow[]>();
+  // 按「显示标签」分组（而非全名）：只有渲染出来看着相同的才需要第二行区分。
+  const groups = new Map<string, AppCategoryRow[]>();
   for (const a of apps) {
-    const key = a.app_name.trim().toLowerCase();
-    const list = byName.get(key) ?? [];
+    const key = displayLabel(a.app_name).toLowerCase();
+    const list = groups.get(key) ?? [];
     list.push(a);
-    byName.set(key, list);
+    groups.set(key, list);
   }
+
   const out = new Map<string, string>();
-  for (const group of byName.values()) {
+  for (const group of groups.values()) {
     if (group.length < 2) continue;
+
+    // 组内第一处出现差异的路径段索引（-1 = 无法区分，理论上不会发生）。
     const paths = group.map((a) => pathSegments(a.app_id));
     const maxLen = Math.max(...paths.map((p) => p.length));
-    let idx = -1;
+    let diffIdx = -1;
     for (let i = 0; i < maxLen; i++) {
-      const segs = new Set(paths.map((p) => p[i] ?? ""));
-      if (segs.size > 1) {
-        idx = i;
+      if (new Set(paths.map((p) => p[i] ?? "")).size > 1) {
+        diffIdx = i;
         break;
       }
     }
-    if (idx < 0) continue;
-    for (const a of group) {
-      const seg = pathSegments(a.app_id)[idx] ?? "";
-      if (seg) out.set(a.app_id, tailTruncate(seg));
+
+    // 标记 token：优先可执行文件名；组内同名则退回路径差异段。
+    const bases = group.map((a) => basename(a.app_id));
+    const tokens = bases.map((b, i) => {
+      const dupBase = bases.filter((x) => x === b).length > 1;
+      if (!dupBase) return b;
+      if (diffIdx >= 0) return paths[i][diffIdx] ?? "";
+      return b;
+    });
+
+    // 截断：先尾部截断；截断后若组内仍撞车（区分不出来），整组改中部省略保留首尾。
+    let final = tokens.map((t) => tailTruncate(t));
+    if (new Set(final).size !== final.length) {
+      final = tokens.map((t) => middleTruncate(t, MARKER_MAX));
     }
+    group.forEach((a, i) => {
+      if (final[i]) out.set(a.app_id, final[i]);
+    });
   }
   return out;
 }
@@ -338,6 +382,14 @@ export default function CategoryCabinet({
   // 避免每次父级渲染都给 FloatPanel 传一个新函数、触发不必要的重定位。
   const getFolderEl = useCallback((id: string) => folderRefs.current.get(id), []);
 
+  // 分类柜根的 ref + 上边界读取：悬停/单击弹层不得覆盖页面顶部工具条与批量分类区
+  // （二者都在分类柜根的上方），弹层翻转后最多上探到分类柜根的上缘。
+  const cabinetRef = useRef<HTMLDivElement | null>(null);
+  const getTopBoundary = useCallback(() => {
+    const el = cabinetRef.current;
+    return el ? el.getBoundingClientRect().top : 0;
+  }, []);
+
   // ── 侧效应：菜单定位 / 点击外部关闭 ─────────────────────────────────────────
 
   useLayoutEffect(() => {
@@ -586,7 +638,7 @@ export default function CategoryCabinet({
       onDragEnd={onDragEnd}
       onDragCancel={onDragCancel}
     >
-      <div className="cabinet">
+      <div ref={cabinetRef} className="cabinet">
         {/* 搜索框：与列表视图共用同一个 q，内容在切换视图时保留；此处就地过滤 */}
         <div className="cabinet-search">
           <Search size={13} className="cabinet-search-icon" />
@@ -699,6 +751,7 @@ export default function CategoryCabinet({
             matchedIds={matchedIds}
             markers={markers}
             getFolderEl={getFolderEl}
+            getTopBoundary={getTopBoundary}
             onClose={closeFloat}
             onEdit={onEdit}
             onArchive={onArchive}
@@ -806,14 +859,22 @@ export default function CategoryCabinet({
           )}
       </div>
 
-      {/* ── 拖拽预览 ── */}
-      <DragOverlay modifiers={[restrictToWindowEdges]} dropAnimation={null}>
-        {drag?.kind === "app" ? (
-          <AppDragPreview apps={dragApps} />
-        ) : drag?.kind === "folder" && dragFolder ? (
-          <FolderDragPreview cat={dragFolder} apps={appsByFolder.get(dragFolder.id) ?? []} />
-        ) : null}
-      </DragOverlay>
+      {/* ── 拖拽预览 ──
+          DragOverlay 内部 PositionedOverlay 用 position:fixed + 视口坐标定位，但本页
+          .page-layer 带 transform（换页过渡），会让 fixed 相对 .page-layer 而非视口，
+          造成拖拽卡片相对光标偏移。这里 portal 到 body，避开任何 transform/filter/
+          scroll 祖先，让 fixed 回归视口坐标；抓取点由「预览与源图标同尺寸 + top-left
+          对齐」自然保持，不做居中吸附。 */}
+      {createPortal(
+        <DragOverlay modifiers={[restrictToWindowEdges]} dropAnimation={null}>
+          {drag?.kind === "app" ? (
+            <AppDragPreview apps={dragApps} markers={markers} />
+          ) : drag?.kind === "folder" && dragFolder ? (
+            <FolderDragPreview cat={dragFolder} apps={appsByFolder.get(dragFolder.id) ?? []} />
+          ) : null}
+        </DragOverlay>,
+        document.body,
+      )}
     </DndContext>
   );
 }
@@ -855,7 +916,7 @@ function AppTile({
         onContextMenu={(e) => onContextMenu(e, app)}
       >
         <AppIcon bundleId={app.app_id} appName={app.app_name} size={30} neutralFallback />
-        <span className="cab-app-name">{app.app_name}</span>
+        <span className="cab-app-name">{displayLabel(app.app_name)}</span>
         {marker && <span className="cab-app-marker">{marker}</span>}
       </div>
     </Tooltip>
@@ -947,6 +1008,7 @@ function FloatPanel({
   matchedIds,
   markers,
   getFolderEl,
+  getTopBoundary,
   onClose,
   onEdit,
   onArchive,
@@ -960,6 +1022,8 @@ function FloatPanel({
   matchedIds: Set<string> | null;
   markers: Map<string, string>;
   getFolderEl: (id: string) => HTMLElement | undefined;
+  /** 弹层上探的上边界（视口 Y）：分类柜根上缘，避免覆盖工具条与批量分类区。 */
+  getTopBoundary: () => number;
   onClose: () => void;
   onEdit: (cat: CategoryRow) => void;
   onArchive: (cat: CategoryRow) => void;
@@ -968,9 +1032,13 @@ function FloatPanel({
 }) {
   const { setNodeRef } = useDroppable({ id: `float:${folder.id}` });
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
+  const [placed, setPlaced] = useState(false);
 
-  useLayoutEffect(() => {
+  // 基于触发它的文件夹方块的实际矩形定位（portal 到 body、视口坐标）。默认在方块
+  // 下方左对齐；下方不足翻转到上方，上探最多到分类柜根上缘（不覆盖工具条/批量区）；
+  // 左右不足向内夹紧。高度上限由 CSS max-height 60vh + 内部滚动兜住。
+  // 定位走命令式（直接改 style），滚动/尺寸变化时重定位不触发整棵子树重渲。
+  const place = useCallback(() => {
     const anchor = getFolderEl(folder.id);
     const panel = panelRef.current;
     if (!anchor || !panel) return;
@@ -978,15 +1046,34 @@ function FloatPanel({
     const fr = panel.getBoundingClientRect();
     const GAP = 8;
     const MARGIN = 8;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const minTop = Math.max(MARGIN, getTopBoundary());
     let left = r.left;
     let top = r.bottom + GAP;
-    if (top + fr.height > window.innerHeight - MARGIN) {
+    if (top + fr.height > vh - MARGIN) {
       top = r.top - GAP - fr.height;
-      if (top < MARGIN) top = MARGIN;
+      if (top < minTop) top = minTop;
     }
-    left = Math.max(MARGIN, Math.min(window.innerWidth - fr.width - MARGIN, left));
-    setPos({ left, top });
-  }, [folder.id, getFolderEl]);
+    left = Math.max(MARGIN, Math.min(vw - fr.width - MARGIN, left));
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    setPlaced(true);
+  }, [folder.id, getFolderEl, getTopBoundary]);
+
+  useLayoutEffect(() => {
+    place();
+  }, [place]);
+
+  // 页面滚动 / 窗口尺寸变化时重新定位：跟随文件夹方块，不停留在错误位置。
+  useEffect(() => {
+    window.addEventListener("scroll", place, { capture: true });
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, { capture: true });
+      window.removeEventListener("resize", place);
+    };
+  }, [place]);
 
   // 单击打开的浮层：点外部 / Esc 关闭，不随光标移出收回。
   useEffect(() => {
@@ -1014,9 +1101,9 @@ function FloatPanel({
       }}
       className={`cab-float is-${mode}`}
       style={{
-        left: pos?.left ?? 0,
-        top: pos?.top ?? 0,
-        visibility: pos ? "visible" : "hidden",
+        left: 0,
+        top: 0,
+        visibility: placed ? "visible" : "hidden",
       }}
     >
       <div className="cab-float-head">
@@ -1126,21 +1213,29 @@ function ArchivedFolder({
 
 // ── 拖拽预览 ──────────────────────────────────────────────────────────────────
 
-function AppDragPreview({ apps }: { apps: AppCategoryRow[] }) {
+function AppDragPreview({
+  apps,
+  markers,
+}: {
+  apps: AppCategoryRow[];
+  markers: Map<string, string>;
+}) {
+  const first = apps[0];
   const shown = apps.slice(0, 3);
   return (
-    <div className="cab-drag-overlay-apps">
-      <div className="cab-drag-overlay-stack">
+    <div className="cab-app cab-drag-preview">
+      <div className="cab-drag-preview-icons">
         {shown.map((a) => (
-          <div key={a.app_id} className="cab-drag-overlay-icon">
-            <AppIcon bundleId={a.app_id} appName={a.app_name} size={34} neutralFallback />
-          </div>
+          <span key={a.app_id} className="cab-drag-preview-icon">
+            <AppIcon bundleId={a.app_id} appName={a.app_name} size={30} neutralFallback />
+          </span>
         ))}
       </div>
-      <div className="cab-drag-overlay-meta">
-        <span className="cab-drag-overlay-label">{shown[0]?.app_name ?? ""}</span>
-        {apps.length > 1 && <span className="cab-drag-overlay-count">×{apps.length}</span>}
-      </div>
+      <span className="cab-app-name">{first ? displayLabel(first.app_name) : ""}</span>
+      {first && markers.get(first.app_id) && (
+        <span className="cab-app-marker">{markers.get(first.app_id)}</span>
+      )}
+      {apps.length > 1 && <span className="cab-drag-count">{apps.length}</span>}
     </div>
   );
 }
