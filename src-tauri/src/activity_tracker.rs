@@ -5,7 +5,7 @@ use rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
@@ -94,6 +94,49 @@ fn now_ms() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_millis() as i64
+}
+
+/// 未映射按键的全局累计（raw 值 → 次数）。输入线程累加，writer 线程定期
+/// drain 落库到 `unmapped_keys` 表。raw 值是 `format!("{:?}", key)` 的
+/// 平台原始键名（如 "VolumeUp"、"Unknown(179)"）。
+static UNMAPPED: OnceLock<Mutex<HashMap<String, u64>>> = OnceLock::new();
+
+fn unmapped_map() -> &'static Mutex<HashMap<String, u64>> {
+    UNMAPPED.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 清空未映射按键的内存累计（供清空命令调用，与 DB 清空保持一致）。
+pub fn clear_unmapped_memory() {
+    unmapped_map().lock().unwrap().clear();
+}
+
+/// 把内存里的未映射累计 drain 出来、累加进 `unmapped_keys` 表。
+/// 只在 writer 线程调用，避免与采样循环竞争同一个连接。
+fn flush_unmapped(conn: &Connection) {
+    let drained = {
+        let mut guard = unmapped_map().lock().unwrap();
+        std::mem::take(&mut *guard)
+    };
+    if drained.is_empty() {
+        return;
+    }
+    let flush_start = now_ms();
+    let mut stmt = match conn.prepare(
+        "INSERT INTO unmapped_keys (raw_value, count) VALUES (?1, ?2)
+         ON CONFLICT(raw_value) DO UPDATE SET count = count + excluded.count",
+    ) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("❌ [Writer] 准备 unmapped 写入失败: {:?}", e);
+            return;
+        }
+    };
+    for (raw, count) in drained {
+        if let Err(e) = stmt.execute(rusqlite::params![raw, count as i64]) {
+            eprintln!("❌ [Writer] unmapped 写入失败 {}: {:?}", raw, e);
+        }
+    }
+    println!("[Writer] 未映射按键已落库 | 耗时 {}ms", now_ms() - flush_start);
 }
 
 pub fn start_activity_tracking(
@@ -329,11 +372,11 @@ pub fn start_activity_tracking(
             let payload = match &event.event_type {
                 EventType::KeyPress(key) => Some(InputEventPayload {
                     event_type: "KeyPress".into(),
-                    code: format!("{:?}", key),
+                    code: key_code_payload(key),
                 }),
                 EventType::KeyRelease(key) => Some(InputEventPayload {
                     event_type: "KeyRelease".into(),
-                    code: format!("{:?}", key),
+                    code: key_code_payload(key),
                 }),
                 EventType::ButtonPress(btn) => Some(InputEventPayload {
                     event_type: "ButtonPress".into(),
@@ -406,17 +449,38 @@ pub fn start_activity_tracking(
     println!("✅ 活动追踪已启动（事件驱动结算 + 平台原生通知 + 300ms 轮询兜底）");
 }
 
+/// 实时事件 `input-event` 的 code 字段：能翻译就发 W3C code，翻译不了发
+/// 平台原始键名（未映射键的 raw 值）。前端键位测试页据此区分映射/未映射。
+fn key_code_payload(key: &rdev::Key) -> String {
+    crate::key_code::translate(key)
+        .map(|c| c.to_string())
+        .unwrap_or_else(|| format!("{:?}", key))
+}
+
 fn handle_input_event(event: &Event, counters: &Arc<Mutex<Counters>>) {
     let mut data = counters.lock().unwrap();
 
     match event.event_type {
         EventType::KeyPress(key) => {
-            let key_name = format!("{:?}", key);
-            // 调试日志：打印每个按键的原始键码格式（首次出现时）
-            if !data.key_presses.contains_key(&key_name) {
-                println!("🔑 新键码: {}", key_name);
+            match crate::key_code::translate(&key) {
+                Some(code) => {
+                    // 调试日志：打印每个新 code（首次出现时）
+                    if !data.key_presses.contains_key(code) {
+                        println!("🔑 新键码: {}", code);
+                    }
+                    *data.key_presses.entry(code.to_string()).or_insert(0) += 1;
+                }
+                None => {
+                    // 未映射：翻译失败（媒体键 / Fn / Unknown 等），按平台原始值
+                    // 归入未映射桶，绝不静默丢弃。
+                    let raw = format!("{:?}", key);
+                    let mut m = unmapped_map().lock().unwrap();
+                    if !m.contains_key(&raw) {
+                        println!("⚠️ 未映射键（不计入配列）: {}", raw);
+                    }
+                    *m.entry(raw).or_insert(0) += 1;
+                }
             }
-            *data.key_presses.entry(key_name).or_insert(0) += 1;
         }
         EventType::ButtonPress(button) => match button {
             rdev::Button::Left => data.left_clicks += 1,
@@ -486,11 +550,13 @@ fn run_writer_thread(db_path: std::path::PathBuf, rx: std::sync::mpsc::Receiver<
                 if !batch.is_empty() {
                     flush_batch(&conn, &mut batch);
                 }
+                flush_unmapped(&conn);
             }
             Err(RecvTimeoutError::Disconnected) => {
                 if !batch.is_empty() {
                     flush_batch(&conn, &mut batch);
                 }
+                flush_unmapped(&conn);
                 println!("[Writer] 采样端已关闭，writer 线程退出");
                 return;
             }

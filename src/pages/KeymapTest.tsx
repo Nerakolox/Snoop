@@ -1,89 +1,14 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { parseKLE, getLabelRdevCode, getDisplayLabel, type KLEKey, type ParsedLayout } from "../kleParser";
 import {
-  getSavedLayout,
-  saveLayout,
-  loadLayoutJSON,
-} from "../components/KLELayoutPicker";
-import { getAllLayouts } from "../layouts";
+  LAYOUT,
+  LAYOUT_MAX_X,
+  LAYOUT_MAX_Y,
+  displayLabel,
+  keyByCode,
+} from "../keyboardLayout";
 import KLEKeyboard from "../components/KLEKeyboard";
 import PageShell from "../components/PageShell";
-
-const DOM_TO_RDEV: Record<string, string> = {
-  Backquote: "BackQuote", Minus: "Minus", Equal: "Equal",
-  BracketLeft: "LeftBracket", BracketRight: "RightBracket",
-  Backslash: "BackSlash", Semicolon: "SemiColon", Quote: "Quote",
-  Comma: "Comma", Period: "Period", Slash: "Slash",
-  Backspace: "Backspace", Tab: "Tab", CapsLock: "CapsLock",
-  Enter: "Return", Space: "Space", Escape: "Escape",
-  ShiftLeft: "ShiftLeft", ShiftRight: "ShiftRight",
-  ControlLeft: "ControlLeft", ControlRight: "ControlRight",
-  AltLeft: "Alt", AltRight: "AltGr",
-  MetaLeft: "MetaLeft", MetaRight: "MetaRight",
-  ContextMenu: "Apps",
-  Insert: "Insert", Delete: "Delete", Home: "Home", End: "End",
-  PageUp: "PageUp", PageDown: "PageDown",
-  ArrowUp: "UpArrow", ArrowDown: "DownArrow",
-  ArrowLeft: "LeftArrow", ArrowRight: "RightArrow",
-  PrintScreen: "PrintScreen", ScrollLock: "ScrollLock", Pause: "Pause",
-  NumLock: "NumLock",
-  NumpadDivide: "KpDivide", NumpadMultiply: "KpMultiply",
-  NumpadSubtract: "KpMinus", NumpadAdd: "KpPlus",
-  NumpadEnter: "KpReturn", NumpadDecimal: "KpDecimal",
-  Numpad0: "Kp0", Numpad1: "Kp1", Numpad2: "Kp2", Numpad3: "Kp3",
-  Numpad4: "Kp4", Numpad5: "Kp5", Numpad6: "Kp6", Numpad7: "Kp7",
-  Numpad8: "Kp8", Numpad9: "Kp9",
-};
-
-function domCodeToRdev(code: string): string {
-  if (DOM_TO_RDEV[code]) return DOM_TO_RDEV[code];
-  if (/^Key[A-Z]$/.test(code)) return code;
-  if (/^Digit(\d)$/.test(code)) return `Num${code.slice(5)}`;
-  if (/^F\d{1,2}$/.test(code)) return code;
-  return code;
-}
-
-// Labels that appear twice (left+right) and need position-based disambiguation
-const PAIRED_LABELS: Record<string, [string, string]> = {
-  Shift: ["ShiftLeft", "ShiftRight"],
-  shift: ["ShiftLeft", "ShiftRight"],
-  Ctrl: ["ControlLeft", "ControlRight"],
-  control: ["ControlLeft", "ControlRight"],
-  Alt: ["Alt", "AltGr"],
-  alt: ["Alt", "AltGr"],
-  option: ["Alt", "AltGr"],
-};
-
-function buildRdevIndexMap(keys: KLEKey[]): Map<string, number[]> {
-  const map = new Map<string, number[]>();
-  const byLabel = new Map<string, { idx: number; x: number }[]>();
-  keys.forEach((k, idx) => {
-    const arr = byLabel.get(k.label) ?? [];
-    arr.push({ idx, x: k.x });
-    byLabel.set(k.label, arr);
-  });
-  byLabel.forEach((entries, label) => {
-    const pair = PAIRED_LABELS[label];
-    if (pair && entries.length >= 2) {
-      const sorted = [...entries].sort((a, b) => a.x - b.x);
-      const push = (code: string, idx: number) => {
-        const a = map.get(code) ?? []; a.push(idx); map.set(code, a);
-      };
-      push(pair[0], sorted[0].idx);
-      push(pair[1], sorted[sorted.length - 1].idx);
-    } else {
-      const rc = getLabelRdevCode(label);
-      if (rc !== undefined) {
-        entries.forEach(({ idx }) => {
-          const a = map.get(rc) ?? []; a.push(idx); map.set(rc, a);
-        });
-      }
-    }
-  });
-  return map;
-}
 
 type LogEntry = {
   ts: number;
@@ -97,56 +22,14 @@ type LogEntry = {
 const MAX_LOG = 30;
 
 export default function KeymapTest() {
-  const [layouts, setLayouts] = useState(() => getAllLayouts());
-  const KNOWN = useMemo(() => layouts.map((l) => l.id), [layouts]);
-  const NAME_MAP = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const l of layouts) m[l.id] = l.name;
-    return m;
-  }, [layouts]);
-  const [layoutId, setLayoutId] = useState(() => getSavedLayout());
-  const [layout, setLayout] = useState<ParsedLayout>({
-    keys: [],
-    maxX: 0,
-    maxY: 0,
-    unsupportedFeatures: [],
-  });
-  const kleKeys = layout.keys;
   const [pressedCodes, setPressedCodes] = useState<Set<string>>(new Set());
   const [log, setLog] = useState<LogEntry[]>([]);
-  const [pickerIdx, setPickerIdx] = useState(() => Math.max(0, KNOWN.indexOf(getSavedLayout())));
 
-  // 允许其他页面（Keyboard 页导入/删除自定义配列）后同步刷新
-  useEffect(() => {
-    const onStorage = () => setLayouts(getAllLayouts());
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
-
-  const kleKeysRef = useRef<KLEKey[]>([]);
-  kleKeysRef.current = kleKeys;
-
-  const rdevIndexMap = useMemo(() => buildRdevIndexMap(kleKeys), [kleKeys]);
-  const rdevIndexMapRef = useRef(rdevIndexMap);
-  rdevIndexMapRef.current = rdevIndexMap;
-
-  async function loadLayout(id: string) {
-    try {
-      const json = await loadLayoutJSON(id);
-      setLayout(parseKLE(json));
-    } catch (e) {
-      console.error(e);
-    }
-  }
-
-  useEffect(() => { loadLayout(layoutId); }, []);
-
+  // 前台 DOM 与后台 rdev 都归一化到 W3C `code`，这里只做「code → 配列」匹配。
   function handlePress(code: string, source: "dom" | "rdev", eventType: string) {
     setPressedCodes((prev) => new Set([...prev, code]));
-    const keys = kleKeysRef.current;
-    const indices = rdevIndexMapRef.current.get(code);
-    const matched = indices?.length ?? 0 > 0;
-    const matchedLabel = matched ? (getDisplayLabel(keys[indices![0]]?.label ?? "") || "Space") : null;
+    const key = keyByCode(code);
+    const matchedLabel = key ? displayLabel(key) : null;
     const isMouseBtn = eventType === "ButtonPress";
     setLog((prev) => [
       { ts: Date.now(), source, eventType, code, matchedLabel,
@@ -163,9 +46,9 @@ export default function KeymapTest() {
     const onDown = (e: KeyboardEvent) => {
       if (e.repeat) return;
       e.preventDefault();
-      handlePress(domCodeToRdev(e.code), "dom", "KeyPress");
+      handlePress(e.code, "dom", "KeyPress");
     };
-    const onUp = (e: KeyboardEvent) => { handleRelease(domCodeToRdev(e.code)); };
+    const onUp = (e: KeyboardEvent) => { handleRelease(e.code); };
     window.addEventListener("keydown", onDown);
     window.addEventListener("keyup", onUp);
     return () => {
@@ -191,15 +74,11 @@ export default function KeymapTest() {
   const pressedIndices = useMemo(() => {
     const set = new Set<number>();
     pressedCodes.forEach((code) => {
-      rdevIndexMap.get(code)?.forEach((idx) => set.add(idx));
+      const idx = LAYOUT.findIndex((k) => k.code === code);
+      if (idx !== -1) set.add(idx);
     });
     return set;
-  }, [pressedCodes, rdevIndexMap]);
-
-  function selectLayout(id: string) {
-    setLayoutId(id); saveLayout(id); loadLayout(id);
-    setPickerIdx(KNOWN.indexOf(id));
-  }
+  }, [pressedCodes]);
 
   function fmtTime(ts: number) {
     const d = new Date(ts);
@@ -213,32 +92,15 @@ export default function KeymapTest() {
         <div className="dev-header">
           <h2>键盘映射测试</h2>
           <span style={{ color: "var(--color-text-3)", fontSize: "var(--text-xs)" }}>
-            前台用 DOM 捕获，后台用 rdev 捕获
+            前台用 DOM 捕获，后台用 rdev 捕获，双方都归一化到 W3C code
           </span>
         </div>
       }
     >
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <span style={{ color: "var(--color-text-2)", fontSize: "var(--text-xs)" }}>配列</span>
-        <button className="kb-nav-btn" onClick={() => setPickerIdx(i => Math.max(0, i-1))} disabled={pickerIdx === 0}>
-          <ChevronLeft size={14} />
-        </button>
-        {KNOWN.map((id, i) => (
-          <button key={id} className={`kb-filter-btn${layoutId === id ? " is-active" : ""}`}
-            onClick={() => selectLayout(id)}
-            style={{ display: Math.abs(i - pickerIdx) <= 2 ? undefined : "none" }}>
-            {NAME_MAP[id] || id}
-          </button>
-        ))}
-        <button className="kb-nav-btn" onClick={() => setPickerIdx(i => Math.min(KNOWN.length-1, i+1))} disabled={pickerIdx >= KNOWN.length-1}>
-          <ChevronRight size={14} />
-        </button>
-      </div>
-
       <section className="panel" style={{ padding: "var(--space-4)", overflowX: "auto" }}>
         <div style={{ display: "flex", justifyContent: "center" }}>
-          <KLEKeyboard keys={kleKeys} keyCounts={{}} allCounts={[]} pressedIndices={pressedIndices} maxX={layout.maxX} maxY={layout.maxY} />
+          <KLEKeyboard keys={LAYOUT} keyCounts={{}} allCounts={[]} pressedIndices={pressedIndices} maxX={LAYOUT_MAX_X} maxY={LAYOUT_MAX_Y} />
         </div>
       </section>
 
@@ -262,14 +124,14 @@ export default function KeymapTest() {
               <span>{entry.code}</span>
               <span>
                 {entry.unmatched
-                  ? <span style={{ color: "var(--intensity-4)", fontWeight: 600 }}>未匹配: {entry.code}</span>
+                  ? <span style={{ color: "var(--intensity-4)", fontWeight: 600 }}>未映射: {entry.code}</span>
                   : entry.matchedLabel ?? "—"}
               </span>
             </div>
           ))}
         </div>
         <div style={{ marginTop: 8, fontSize: 11, color: "var(--color-text-3)", display: "grid", gridTemplateColumns: "90px 40px 90px 1fr 1fr", gap: 8, padding: "0 6px" }}>
-          <span>时间</span><span>来源</span><span>事件类型</span><span>rdev 键码</span><span>匹配键位</span>
+          <span>时间</span><span>来源</span><span>事件类型</span><span>W3C 键码</span><span>匹配键位</span>
         </div>
       </section>
       </div>

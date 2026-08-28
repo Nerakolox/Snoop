@@ -15,6 +15,7 @@ mod ai;
 mod app_classify;
 mod commands;
 mod db;
+mod key_code;
 mod platform;
 mod report;
 mod settings;
@@ -75,6 +76,8 @@ pub fn run() {
             commands::get_db_info,
             commands::get_accessibility_status,
             commands::clear_data,
+            commands::get_unmapped_keys,
+            commands::clear_unmapped_keys,
             commands::export_data,
             commands::get_recent_apps,
             commands::get_app_icon,

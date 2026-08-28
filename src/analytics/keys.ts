@@ -1,16 +1,16 @@
 /**
- * 按键分类 —— 把 rdev 上报的 key_code 归到不同区域。
+ * 按键分类 —— 把采集层写入的 W3C `code` 归到不同区域。
  *
- * rdev Key 通过 `format!("{:?}", key)` 序列化，形如 "KeyW"、"Num1"、"LeftControl"、
- * "Space"、"Return"、"Backspace"、"UpArrow" 等。分类表按此形状写，未匹配的走
- * 前缀兜底或落到 "other"。要增补新键位只改 KEY_REGIONS。
+ * 键身份已统一为 W3C UI Events `code`（"KeyW"、"Digit1"、"Numpad1"、"Enter"、
+ * "ArrowUp"、"Period"、"ShiftLeft" 等），分类表按此形状写，未匹配的走前缀兜底
+ * 或落到 "other"。要增补新键位只改 KEY_REGIONS。
  */
 
 import type { KeyRegion, KeyRegionStat } from "./types";
 import type { RawKeyDetail } from "../data/types";
 
 /**
- * 按 key_code 显式列举的区域归属。命中即取，找不到再走 fallback。
+ * 按 `code` 显式列举的区域归属。命中即取，找不到再走 fallback。
  * 顺序不重要 —— 是 Map 精确查表。
  */
 export const KEY_REGIONS: Record<string, KeyRegion> = {
@@ -22,15 +22,14 @@ export const KEY_REGIONS: Record<string, KeyRegion> = {
 
   // 空格 / 回车 / 退格 —— 单列一档，输入量占比通常极高
   Space: "space_enter",
-  Return: "space_enter",
   Enter: "space_enter",
   Backspace: "space_enter",
 
   // 编辑区（方向、Home/End、Page Up/Down、Delete、Insert、Tab）
-  UpArrow: "editing",
-  DownArrow: "editing",
-  LeftArrow: "editing",
-  RightArrow: "editing",
+  ArrowUp: "editing",
+  ArrowDown: "editing",
+  ArrowLeft: "editing",
+  ArrowRight: "editing",
   Home: "editing",
   End: "editing",
   PageUp: "editing",
@@ -40,70 +39,43 @@ export const KEY_REGIONS: Record<string, KeyRegion> = {
   Tab: "editing",
   Escape: "editing",
 
-  // 修饰键
-  LeftControl: "modifier",
-  RightControl: "modifier",
+  // 修饰键（左右各自独立成键）
   ControlLeft: "modifier",
   ControlRight: "modifier",
-  LeftShift: "modifier",
-  RightShift: "modifier",
   ShiftLeft: "modifier",
   ShiftRight: "modifier",
-  LeftAlt: "modifier",
-  RightAlt: "modifier",
-  Alt: "modifier",
-  AltGr: "modifier",
+  AltLeft: "modifier",
+  AltRight: "modifier",
   MetaLeft: "modifier",
   MetaRight: "modifier",
-  LeftMeta: "modifier",
-  RightMeta: "modifier",
   CapsLock: "modifier",
-  Function: "modifier",
 };
 
 /**
- * 前缀兜底 —— rdev 的字母键都是 KeyX 前缀、数字是 Num 前缀等。
+ * 前缀兜底 —— 字母键都是 KeyX 前缀、主区数字是 Digit 前缀、小键盘是 Numpad 前缀等。
  * 命中顺序按数组顺序，首个匹配即返回。
  */
 const PREFIX_RULES: { prefix: string; region: KeyRegion }[] = [
   { prefix: "Key", region: "letter" }, // KeyE、KeyF …
-  { prefix: "Num", region: "number" }, // Num1、Num2 …
+  { prefix: "Digit", region: "number" }, // Digit1、Digit2 …
   { prefix: "F", region: "editing" }, // F1..F12 归到编辑区
-  { prefix: "Kp", region: "number" }, // 数字小键盘：KpMinus/KpEnter…也算数字区
+  { prefix: "Numpad", region: "number" }, // 数字小键盘：NumpadEnter/NumpadAdd…也算数字区
 ];
 
 /** 标点/符号相关的具名键。这些不好用前缀识别，单独放这。 */
 const PUNCTUATION_KEYS = new Set([
   "Minus",
   "Equal",
-  "LeftBracket",
-  "RightBracket",
-  "BackSlash",
+  "BracketLeft",
+  "BracketRight",
   "Backslash",
-  "SemiColon",
   "Semicolon",
   "Quote",
   "Comma",
-  "Dot",
   "Period",
   "Slash",
-  "BackQuote",
-  "Grave",
+  "Backquote",
 ]);
-
-/**
- * 修饰键的左右合并组。KLE 配列里左右键帽共用同一个标签（如左右 Shift 都写
- * "Shift"），`kleParser.ts` 的 `getLabelRdevCode` 只能把标签映射到左侧 code，
- * 右侧物理键实际上报的 rdev code（`ShiftRight` 等）会在计数时被漏掉。
- * key 是 `getLabelRdevCode` 返回的主 code，value 含主 code 自身，取按键次数时
- * 按组求和即得左右合计。
- */
-export const MERGED_KEY_GROUPS: Record<string, string[]> = {
-  ShiftLeft: ["ShiftLeft", "ShiftRight"],
-  ControlLeft: ["ControlLeft", "ControlRight"],
-  Alt: ["Alt", "AltGr"],
-  MetaLeft: ["MetaLeft", "MetaRight"],
-};
 
 /**
  * 键鼠比 → 滑块位置 [0,1]。
@@ -121,7 +93,7 @@ export function ratioVerdict(ratio: number): "鼠标型" | "键盘型" | "均衡
   return ratio > 0.25 ? "鼠标型" : ratio < 0.08 ? "键盘型" : "均衡型";
 }
 
-/** 把一个 key_code 判给某个区域。 */
+/** 把一个 `code` 判给某个区域。 */
 export function classifyKeyCode(code: string): KeyRegion {
   if (KEY_REGIONS[code]) return KEY_REGIONS[code];
   if (PUNCTUATION_KEYS.has(code)) return "punctuation";
@@ -132,7 +104,7 @@ export function classifyKeyCode(code: string): KeyRegion {
 }
 
 /**
- * 聚合到"每区域一行"。details 里同一 key_code 若重复出现（跨桶未聚合场景），会自动求和。
+ * 聚合到"每区域一行"。details 里同一 `code` 若重复出现（跨桶未聚合场景），会自动求和。
  * @param topN 每个区域返回按次数排序的 top N，默认 5。
  */
 export function classifyKeys(

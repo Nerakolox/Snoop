@@ -4,28 +4,28 @@
 
 import { useMemo } from "react";
 import { intensityVar, bucketByPercentile } from "../../analytics";
-import { getDisplayLabel } from "../../kleParser";
+import { displayLabelByCode } from "../../keyboardLayout";
 
 type TopKeysPanelProps = {
-  /** KLE 键标签 → 按压次数（已按当前筛选聚合过） */
-  kleKeyCounts: Record<string, number>;
+  /** W3C code → 按压次数（已按当前筛选聚合过） */
+  keyCounts: Record<string, number>;
   /** 所有键的按压次数数组，用于分位数分档 */
   allKeyCounts: number[];
   title: string;
 };
 
 export default function TopKeysPanel({
-  kleKeyCounts,
+  keyCounts,
   allKeyCounts,
   title,
 }: TopKeysPanelProps) {
   const topKeys = useMemo(() => {
-    return Object.entries(kleKeyCounts)
+    return Object.entries(keyCounts)
       .filter(([, n]) => n > 0)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 6)
-      .map(([label, n]) => ({ label, n }));
-  }, [kleKeyCounts]);
+      .map(([code, n]) => ({ code, n }));
+  }, [keyCounts]);
 
   return (
     <div className="kb-aux-block">
@@ -39,10 +39,10 @@ export default function TopKeysPanel({
         {topKeys.map((k) => {
           const pct = topKeys[0] ? (k.n / topKeys[0].n) * 100 : 0;
           const level = bucketByPercentile(k.n, allKeyCounts);
-          const displayLabel = getDisplayLabel(k.label);
+          const name = displayLabelByCode(k.code);
           return (
-            <div key={k.label} className="topkey-row">
-              <div className="topkey-name">{displayLabel}</div>
+            <div key={k.code} className="topkey-row">
+              <div className="topkey-name">{name}</div>
               <div className="topkey-track">
                 <div
                   className="topkey-fill"

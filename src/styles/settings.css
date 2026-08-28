@@ -271,6 +271,12 @@
   max-width: 360px;
 }
 
+.setting-unmapped-empty {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
 .setting-ignore-tag {
   display: inline-flex;
   align-items: center;

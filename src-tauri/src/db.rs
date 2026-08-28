@@ -12,17 +12,18 @@ pub(crate) const ACTIVE_PREDICATE: &str = "(key_total > 0 OR mouse_left > 0 OR m
 
 pub struct Database {
     conn: Connection,
+    db_path: PathBuf,
 }
 
 impl Database {
     pub fn new(db_path: PathBuf) -> Result<Self> {
-        let conn = Connection::open(db_path)?;
+        let conn = Connection::open(&db_path)?;
 
         // WAL 模式是数据库级持久设置，只需在连接建立时执行一次；
         // 不要放在高频写入路径（如每次写桶）里重复调用。
         conn.pragma_update(None, "journal_mode", "WAL")?;
 
-        Ok(Database { conn })
+        Ok(Database { conn, db_path })
     }
 
     pub fn init_schema(&self) -> Result<()> {
@@ -57,6 +58,13 @@ impl Database {
 
             CREATE INDEX IF NOT EXISTS idx_bucket_id
             ON key_details(bucket_id);
+
+            -- 未映射按键：翻译不到 W3C code 的平台原始键（媒体键 / Fn / Unknown 等），
+            -- 按 raw 值累计计数，供设置页「未识别按键」展示（见 key_code.rs / 采集层）。
+            CREATE TABLE IF NOT EXISTS unmapped_keys (
+                raw_value TEXT PRIMARY KEY,
+                count     INTEGER NOT NULL
+            );
 
             CREATE TABLE IF NOT EXISTS heartbeats (
                 id        INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -178,6 +186,7 @@ impl Database {
         self.migrate_unique_index()?;
         self.migrate_category_seed()?;
         self.migrate_report_snapshot()?;
+        self.migrate_key_codes()?;
         Ok(())
     }
 
@@ -357,6 +366,114 @@ impl Database {
             )?;
             println!("✓ 已添加鼠标侧键字段 mouse_back, mouse_forward");
         }
+        Ok(())
+    }
+
+    /// 按键身份迁移：把历史 `key_details.key_code` 从旧印字/rdev Debug 名统一成 W3C `code`。
+    ///
+    /// 旧采集层写的是 `format!("{:?}", key)`（rdev Debug 名，如 "Num1" / "Dot" / "ShiftLeft"），
+    /// 新采集层写 W3C `code`（"Digit1" / "Period" / "ShiftLeft"）。两套都能落到同一张
+    /// `translate_debug_name` 表：恒等映射（"KeyA"→"KeyA"、"ShiftLeft"→"ShiftLeft"）不动，
+    /// 需要改名的（"Num1"→"Digit1"、"Dot"→"Period"、"Kp1"→"Numpad1" …）直接 UPDATE。
+    ///
+    /// 翻译失败（媒体键 / Fn / Unknown 等旧记录，它们本不该出现在配列里）不静默丢弃，
+    /// 而是按 raw 值合计归入 `unmapped_keys`，再从 key_details 删除，见【四】未映射兜底。
+    ///
+    /// 迁移不可逆：动手前先 `VACUUM INTO` 出一份 `.bak` 快照（同级目录）供用户回滚，
+    /// 再以标记位 `key_codes_migrated` 保证只跑一次。整个 UPDATE/DELETE 包在一个事务里，
+    /// 中途失败整体回滚、不落标记，下次启动重跑。
+    fn migrate_key_codes(&self) -> Result<()> {
+        use crate::key_code::translate_debug_name;
+
+        let migrated: bool = self
+            .conn
+            .prepare("SELECT 1 FROM app_meta WHERE key = 'key_codes_migrated'")?
+            .exists([])?;
+        if migrated {
+            return Ok(());
+        }
+
+        // 备份：先快照，再做不可逆改写。失败只告警不阻断（宁可无备份也要继续迁移，
+        // 否则老库永远停在旧身份、输入页对不上配列）。
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let stem = self
+            .db_path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "snoop".to_string());
+        let backup = self
+            .db_path
+            .with_file_name(format!("{stem}.pre-keycodes-{ts}.bak"));
+        let backup_sql = backup.to_string_lossy().replace('\'', "''");
+        if let Err(e) = self
+            .conn
+            .execute_batch(&format!("VACUUM INTO '{backup_sql}';"))
+        {
+            eprintln!("⚠️ 按键身份迁移前备份失败（继续迁移）：{e}");
+        }
+
+        let codes: Vec<String> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT DISTINCT key_code FROM key_details")?;
+            let rows = stmt.query_map([], |row| row.get::<_, String>(0))?;
+            rows.collect::<Result<Vec<_>, _>>()?
+        };
+
+        let mut renamed = 0usize;
+        let mut collected = 0usize;
+        self.conn.execute_batch("BEGIN;")?;
+        let result = (|| -> Result<()> {
+            for code in &codes {
+                match translate_debug_name(code.as_str()) {
+                    Some(new_code) if new_code != code.as_str() => {
+                        self.conn.execute(
+                            "UPDATE key_details SET key_code = ?1 WHERE key_code = ?2",
+                            rusqlite::params![new_code, code.as_str()],
+                        )?;
+                        renamed += 1;
+                    }
+                    Some(_) => {} // 恒等映射，已是新 code，无需动
+                    None => {
+                        let total: i64 = self.conn.query_row(
+                            "SELECT COALESCE(SUM(count), 0) FROM key_details WHERE key_code = ?1",
+                            [code.as_str()],
+                            |row| row.get(0),
+                        )?;
+                        self.conn.execute(
+                            "INSERT INTO unmapped_keys (raw_value, count) VALUES (?1, ?2)
+                             ON CONFLICT(raw_value) DO UPDATE SET count = count + excluded.count",
+                            rusqlite::params![code.as_str(), total],
+                        )?;
+                        self.conn
+                            .execute("DELETE FROM key_details WHERE key_code = ?1", [code.as_str()])?;
+                        collected += 1;
+                    }
+                }
+            }
+            self.conn.execute(
+                "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('key_codes_migrated', '1')",
+                [],
+            )?;
+            Ok(())
+        })();
+        match result {
+            Ok(()) => self.conn.execute_batch("COMMIT;")?,
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK;");
+                return Err(e);
+            }
+        }
+
+        println!(
+            "✓ 按键身份迁移完成：重命名 {} 个，归入未映射 {} 个（备份：{}）",
+            renamed,
+            collected,
+            backup.display()
+        );
         Ok(())
     }
 

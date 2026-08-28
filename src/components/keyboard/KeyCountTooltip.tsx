@@ -9,7 +9,7 @@ import { createPortal } from "react-dom";
 import { positionTooltip } from "../shared/tooltipPosition";
 
 export type KeyCountAnchor = {
-  /** 键帽标签（已 getDisplayLabel 处理） */
+  /** 键帽基准印字（LayoutKey.lower） */
   label: string;
   count: number;
   /** 光标 viewport 坐标 */

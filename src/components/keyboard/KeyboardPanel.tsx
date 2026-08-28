@@ -1,5 +1,5 @@
 /**
- * 键盘热力图面板 —— KLE 键盘渲染 + 光学缩放。
+ * 键盘热力图面板 —— 键盘渲染 + 光学缩放。
  * 1U 固定为 KEY_UNIT，实际倍率取「可用宽 / 高度预算 / MAX_SCALE」三者最小值：
  * 窄容器下缩小（缩到 MIN_SCALE 为止，再窄由 .kle-viewport 横向滚动），
  * 宽容器下放大（最多 MAX_SCALE，且不超过窗口高的 HEIGHT_BUDGET_RATIO）。
@@ -7,7 +7,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import KLEKeyboard from "../KLEKeyboard";
-import type { KLEKey } from "../../kleParser";
+import type { LayoutKey } from "../../keyboardLayout";
 import {
   HEIGHT_BUDGET_RATIO,
   KEY_UNIT,
@@ -17,8 +17,8 @@ import {
 } from "../../layouts/metrics";
 
 type KeyboardPanelProps = {
-  kleKeys: KLEKey[];
-  kleKeyCounts: Record<string, number>;
+  keys: LayoutKey[];
+  keyCounts: Record<string, number>;
   allKeyCounts: number[];
   maxX: number;
   maxY: number;
@@ -33,8 +33,8 @@ const SCALE_STEP = 0.01;
 const SCALE_EPSILON = 0.005;
 
 export default function KeyboardPanel({
-  kleKeys,
-  kleKeyCounts,
+  keys,
+  keyCounts,
   allKeyCounts,
   maxX,
   maxY,
@@ -101,8 +101,8 @@ export default function KeyboardPanel({
   return (
     <div className="kb-keyboard-section" ref={containerRef}>
       <KLEKeyboard
-        keys={kleKeys}
-        keyCounts={kleKeyCounts}
+        keys={keys}
+        keyCounts={keyCounts}
         allCounts={allKeyCounts}
         maxX={maxX}
         maxY={maxY}

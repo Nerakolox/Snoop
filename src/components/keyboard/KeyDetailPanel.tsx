@@ -13,28 +13,24 @@ import {
   type RawKeyHourBucket,
   type TimeRange,
 } from "../../data";
-import { getDisplayLabel } from "../../kleParser";
 import AppIcon from "../AppIcon";
 import Tooltip from "../shared/Tooltip";
 
 type KeyDetailPanelProps = {
-  /** KLE 键标签 */
-  label: string;
-  /** 该标签对应的 rdev key_code，查不到映射时为 null */
-  rdevCode: string | null;
-  /** 当前上下文（range × appId）下的总次数，已含左右合并 */
+  /** 该键的 W3C code（唯一身份），用于取分布 */
+  code: string;
+  /** 显示名（已由 displayLabel 处理，空格键等空印字键也会给出可读名） */
+  displayName: string;
+  /** 当前上下文（range × appId）下的总次数 */
   totalCount: number;
-  /** 是否是左右合并计数的修饰键 */
-  merged: boolean;
   range: TimeRange;
   appId: string | null;
 };
 
 export default function KeyDetailPanel({
-  label,
-  rdevCode,
+  code,
+  displayName,
   totalCount,
-  merged,
   range,
   appId,
 }: KeyDetailPanelProps) {
@@ -43,18 +39,13 @@ export default function KeyDetailPanel({
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!rdevCode) {
-      setHourly([]);
-      setByApp([]);
-      return;
-    }
     let cancelled = false;
     setLoading(true);
     (async () => {
       try {
         const [hourlyData, appData] = await Promise.all([
-          fetchKeyHourlyDistribution(rdevCode, range, appId ?? undefined),
-          fetchKeyAppDistribution(rdevCode, range),
+          fetchKeyHourlyDistribution(code, range, appId ?? undefined),
+          fetchKeyAppDistribution(code, range),
         ]);
         if (cancelled) return;
         setHourly(hourlyData);
@@ -68,7 +59,7 @@ export default function KeyDetailPanel({
     return () => {
       cancelled = true;
     };
-  }, [rdevCode, range.start_ms, range.end_ms, appId]);
+  }, [code, range.start_ms, range.end_ms, appId]);
 
   const hourCounts = useMemo(() => {
     const arr = new Array(24).fill(0);
@@ -85,12 +76,11 @@ export default function KeyDetailPanel({
     <div className="kb-keydetail">
       {/* ① 键名 + 总数 */}
       <div className="kb-keydetail-head">
-        <span className="kb-keydetail-key">{getDisplayLabel(label)}</span>
+        <span className="kb-keydetail-key">{displayName}</span>
         <span className="kb-keydetail-total">
           {totalCount.toLocaleString()}
           <span className="kb-keydetail-unit">次</span>
         </span>
-        {merged && <span className="kb-keydetail-note">左右合并计数</span>}
       </div>
 
       {/* ② 24 小时分布 */}

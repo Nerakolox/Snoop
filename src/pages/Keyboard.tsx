@@ -3,6 +3,9 @@
  * 版式主次：键盘热力图是唯一的主角（唯一有卡片外壳的区块，尽可能放大），
  * 上方一行指标条、下方分隔线以下的鼠标 / Top 按键都是注脚，视觉降一级。
  * 范围/App 筛选来自全局上下文，顶栏切换即自动重拉。
+ *
+ * 按键身份已统一为 W3C `code`：渲染用固定 ANSI 104 项目配列（keyboardLayout.ts），
+ * 统计桶按 code 匹配，不再走印字映射或左右合并。
  */
 
 import { useEffect, useMemo, useState } from "react";
@@ -14,29 +17,24 @@ import {
 } from "../data";
 import { toMs } from "../data/ranges";
 import {
-  MERGED_KEY_GROUPS,
   MOUSE_PIXELS_PER_METER,
   intensityVar,
   ratioVerdict,
   type Intensity,
 } from "../analytics";
 import {
-  parseKLE,
-  getDisplayLabel,
-  getLabelRdevCode,
-  type KLEKey,
-  type ParsedLayout,
-} from "../kleParser";
-import { getSavedLayout, loadLayoutJSON } from "../components/KLELayoutPicker";
-import { getLayoutById } from "../layouts";
+  LAYOUT,
+  LAYOUT_MAX_X,
+  LAYOUT_MAX_Y,
+  displayLabelByCode,
+  type LayoutKey,
+} from "../keyboardLayout";
 import TopKeysPanel from "../components/keyboard/TopKeysPanel";
 import MousePanel from "../components/keyboard/MousePanel";
 import KeyboardPanel from "../components/keyboard/KeyboardPanel";
 import KeyDetailPanel from "../components/keyboard/KeyDetailPanel";
 import { KeySelectionProvider } from "../components/keyboard/KeySelectionContext";
 import PageShell from "../components/PageShell";
-import { useTopBarTools } from "../components/topbar/TopBarToolsContext";
-import Tooltip from "../components/shared/Tooltip";
 import { adaptKind, useContextActions, useContextState, useToday } from "../store/context";
 import { anchorLabel } from "../utils/format";
 
@@ -59,71 +57,6 @@ export default function Keyboard() {
 
   const [loading, setLoading] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
-
-  // KLE 配列状态（从 localStorage 读取，默认 104 全尺寸；设置页可改，靠
-  // kle-layout-change 事件同步——配列选择器已移到设置页，本页只读展示+跳转）
-  const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
-  const [layout, setLayout] = useState<ParsedLayout>({
-    keys: [],
-    maxX: 0,
-    maxY: 0,
-    unsupportedFeatures: [],
-  });
-  const kleKeys = layout.keys;
-  const [kleLoading, setKleLoading] = useState(false);
-
-  // 加载 KLE 配列 JSON 并解析
-  const loadKLELayout = async (id: string) => {
-    setKleLoading(true);
-    try {
-      const kleJson = await loadLayoutJSON(id);
-      const parsed = parseKLE(kleJson);
-      setLayout(parsed);
-    } catch (e) {
-      console.error("Failed to load KLE layout:", e);
-    } finally {
-      setKleLoading(false);
-    }
-  };
-
-  // 初始加载配列
-  useEffect(() => {
-    loadKLELayout(layoutId);
-  }, []);
-
-  // 设置页切换配列时跨页同步
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const id = (e as CustomEvent<string>).detail;
-      setLayoutId(id);
-      loadKLELayout(id);
-    };
-    window.addEventListener("kle-layout-change", handler);
-    return () => window.removeEventListener("kle-layout-change", handler);
-  }, []);
-
-  const layoutName = getLayoutById(layoutId)?.name ?? layoutId;
-
-  useTopBarTools(
-    [
-      {
-        key: "layout",
-        node: (
-          <Tooltip content="前往设置页切换配列">
-            <button
-              type="button"
-              className="topbar__tool-btn"
-              data-tauri-drag-region="false"
-              onClick={() => actions.navigate({ page: "settings" })}
-            >
-              配列 · {layoutName}
-            </button>
-          </Tooltip>
-        ),
-      },
-    ],
-    [layoutName]
-  );
 
   // 全量桶（未筛选，鼠标面板/键鼠比要用来做分 App 对比）+ 按键明细（后端按 appId 过滤）
   const [allBuckets, setAllBuckets] = useState<RawBucket[]>([]);
@@ -187,7 +120,8 @@ export default function Keyboard() {
     return { keys, clicks, dist, ratio: keys > 0 ? clicks / keys : null };
   }, [filteredBuckets]);
 
-  // 构建 rdevCode → count 的映射（键盘热力）
+  // 构建 code → count 的映射（键盘热力）。左右 Shift/Ctrl/Alt 各自独立成键，
+  // 不再做左右合并——每个物理键直接读自己的 code。
   const keyCounts = useMemo(() => {
     const map: Record<string, number> = {};
     for (const kd of keyDetails) {
@@ -196,67 +130,18 @@ export default function Keyboard() {
     return map;
   }, [keyDetails]);
 
-  // 构建 KLE 键标签 → count 的映射（通过 rdevCode 匹配，MERGED_KEY_GROUPS 命中的
-  // 修饰键把左右两侧 rdev code 的计数合并求和，见 analytics/keys.ts 顶部注释）
-  const kleKeyCounts = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const key of kleKeys) {
-      const rdevCode = getLabelRdevCode(key.label);
-      if (rdevCode) {
-        const group = MERGED_KEY_GROUPS[rdevCode] ?? [rdevCode];
-        map[key.label] = group.reduce((sum, code) => sum + (keyCounts[code] ?? 0), 0);
-      }
-    }
-    return map;
-  }, [kleKeys, keyCounts]);
-
   // 提取所有键的按压次数数组，用于分位数分档
-  const allKeyCounts = useMemo(() => Object.values(kleKeyCounts), [kleKeyCounts]);
+  const allKeyCounts = useMemo(() => Object.values(keyCounts), [keyCounts]);
 
-  // 同 label 的多个键（左右 Shift/Ctrl/Alt/Meta）按 x 取最小者为可点击主键，
-  // 其余进 mergedIndices：不可点、count 已并入主键，仅在 hover 时提示"合并计数"。
-  const { mergedIndices, primaryIndexByLabel } = useMemo(() => {
-    const byLabel = new Map<string, number[]>();
-    kleKeys.forEach((key, index) => {
-      if (key.decal) return;
-      const arr = byLabel.get(key.label) ?? [];
-      arr.push(index);
-      byLabel.set(key.label, arr);
-    });
-    const merged = new Set<number>();
-    const primary = new Map<string, number>();
-    for (const [label, indices] of byLabel) {
-      if (indices.length <= 1) {
-        primary.set(label, indices[0]);
-        continue;
-      }
-      const sorted = [...indices].sort((a, b) => kleKeys[a].x - kleKeys[b].x);
-      primary.set(label, sorted[0]);
-      for (const idx of sorted.slice(1)) merged.add(idx);
-    }
-    return { mergedIndices: merged, primaryIndexByLabel: primary };
-  }, [kleKeys]);
-
-  const keyTitles = useMemo(() => {
-    const titles: Record<number, string> = {};
-    for (const idx of mergedIndices) titles[idx] = "与左侧同名键合并计数";
-    return titles;
-  }, [mergedIndices]);
-
-  const handleKeyClick = (index: number, key: KLEKey) => {
-    if (mergedIndices.has(index)) return;
-    actions.setSelectedKey(selectedKey === key.label ? null : key.label);
+  const handleKeyClick = (key: LayoutKey) => {
+    actions.setSelectedKey(selectedKey === key.code ? null : key.code);
   };
 
-  const selectedIndex = useMemo(
-    () => (selectedKey === null ? null : primaryIndexByLabel.get(selectedKey) ?? null),
-    [selectedKey, primaryIndexByLabel]
-  );
-
-  const selectedRdevCode = selectedKey !== null ? getLabelRdevCode(selectedKey) ?? null : null;
-  const selectedTotalCount = selectedKey !== null ? kleKeyCounts[selectedKey] ?? 0 : 0;
-  const selectedMerged =
-    selectedRdevCode !== null && (MERGED_KEY_GROUPS[selectedRdevCode]?.length ?? 0) > 1;
+  const selectedIndex = useMemo(() => {
+    if (selectedKey === null) return null;
+    const idx = LAYOUT.findIndex((k) => k.code === selectedKey);
+    return idx === -1 ? null : idx;
+  }, [selectedKey]);
 
   const isToday = viewKind === "day" && viewAnchor === today;
   const topPanelTitle =
@@ -307,62 +192,51 @@ export default function Keyboard() {
 
       {/* ② 主角：键盘热力图 + 色阶图例 + 选中键时就地展开的详情条 */}
       <section className="panel kb-hero">
-        {kleLoading ? (
-          <div className="kb-hero-placeholder">加载配列中…</div>
-        ) : kleKeys.length === 0 ? (
-          <div className="kb-hero-placeholder">配列加载失败</div>
-        ) : (
-          <>
-            {/* 遮罩只盖键盘，指标条与辅助区留在原位不闪 */}
-            <div className="kb-hero-stage">
-              {showLoading && (
-                <div className="kb-loading-overlay">
-                  <div className="kb-loading-spinner" />
-                </div>
-              )}
-              <KeySelectionProvider
-                value={{ onKeyClick: handleKeyClick, selectedIndex, mergedIndices, keyTitles }}
-              >
-                <KeyboardPanel
-                  kleKeys={kleKeys}
-                  kleKeyCounts={kleKeyCounts}
-                  allKeyCounts={allKeyCounts}
-                  maxX={layout.maxX}
-                  maxY={layout.maxY}
-                />
-              </KeySelectionProvider>
+        {/* 遮罩只盖键盘，指标条与辅助区留在原位不闪 */}
+        <div className="kb-hero-stage">
+          {showLoading && (
+            <div className="kb-loading-overlay">
+              <div className="kb-loading-spinner" />
             </div>
+          )}
+          <KeySelectionProvider value={{ onKeyClick: handleKeyClick, selectedIndex }}>
+            <KeyboardPanel
+              keys={LAYOUT}
+              keyCounts={keyCounts}
+              allKeyCounts={allKeyCounts}
+              maxX={LAYOUT_MAX_X}
+              maxY={LAYOUT_MAX_Y}
+            />
+          </KeySelectionProvider>
+        </div>
 
-            <div className="kb-hero-foot">
-              <div className="kb-legend" aria-label="按键次数色阶">
-                <span className="kb-legend-cap">少</span>
-                {LEGEND_LEVELS.map((level) => (
-                  <span
-                    key={level}
-                    className="kb-legend-swatch"
-                    style={{ background: intensityVar(level) }}
-                  />
-                ))}
-                <span className="kb-legend-cap">多</span>
-              </div>
-              <span className="kb-hero-hint">
-                {selectedKey === null
-                  ? "点任意键查看它的使用细节"
-                  : `已选 ${getDisplayLabel(selectedKey)} · 再点一次取消`}
-              </span>
-            </div>
-
-            {selectedKey !== null && (
-              <KeyDetailPanel
-                label={selectedKey}
-                rdevCode={selectedRdevCode}
-                totalCount={selectedTotalCount}
-                merged={selectedMerged}
-                range={range}
-                appId={appId}
+        <div className="kb-hero-foot">
+          <div className="kb-legend" aria-label="按键次数色阶">
+            <span className="kb-legend-cap">少</span>
+            {LEGEND_LEVELS.map((level) => (
+              <span
+                key={level}
+                className="kb-legend-swatch"
+                style={{ background: intensityVar(level) }}
               />
-            )}
-          </>
+            ))}
+            <span className="kb-legend-cap">多</span>
+          </div>
+          <span className="kb-hero-hint">
+            {selectedKey === null
+              ? "点任意键查看它的使用细节"
+              : `已选 ${displayLabelByCode(selectedKey)} · 再点一次取消`}
+          </span>
+        </div>
+
+        {selectedKey !== null && (
+          <KeyDetailPanel
+            code={selectedKey}
+            displayName={displayLabelByCode(selectedKey)}
+            totalCount={keyCounts[selectedKey] ?? 0}
+            range={range}
+            appId={appId}
+          />
         )}
       </section>
 
@@ -370,7 +244,7 @@ export default function Keyboard() {
       <section className="kb-aux">
         <MousePanel buckets={filteredBuckets} />
         <TopKeysPanel
-          kleKeyCounts={kleKeyCounts}
+          keyCounts={keyCounts}
           allKeyCounts={allKeyCounts}
           title={topPanelTitle}
         />

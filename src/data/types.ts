@@ -72,3 +72,9 @@ export type TimeRange = {
   start_ms: number;
   end_ms: number;
 };
+
+/** 采集层翻译不到 W3C code 的未识别按键（按平台原始键名累计，见设置页「未识别按键」）。 */
+export type UnmappedKey = {
+  raw_value: string;
+  count: number;
+};

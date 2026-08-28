@@ -677,3 +677,42 @@ pub fn get_hourly_heartbeats(
 
     rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
 }
+
+// ─── 未映射按键 ───────────────────────────────────────────────────────────────
+
+#[derive(Serialize)]
+pub struct UnmappedKey {
+    pub raw_value: String,
+    pub count: i64,
+}
+
+/// 列出采集层翻译失败、按平台原始键名累计的「未识别按键」（见【四】未映射兜底）。
+/// 这些键不在自有 104 键配列里（媒体键 / Fn / 厂商专用键等），只在此累计展示。
+#[tauri::command]
+pub fn get_unmapped_keys(state: State<'_, DbPath>) -> Result<Vec<UnmappedKey>, String> {
+    let conn = open(&state)?;
+    let mut stmt = conn
+        .prepare("SELECT raw_value, count FROM unmapped_keys ORDER BY count DESC")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(UnmappedKey {
+                raw_value: row.get(0)?,
+                count: row.get(1)?,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// 清空未识别按键记录：删库 + 清采集线程的内存累计（否则下一次 writer flush
+/// 又把内存里那批写回来）。返回清理前共删了多少条。
+#[tauri::command]
+pub fn clear_unmapped_keys(state: State<'_, DbPath>) -> Result<usize, String> {
+    let conn = open(&state)?;
+    let deleted = conn
+        .execute("DELETE FROM unmapped_keys", [])
+        .map_err(|e| e.to_string())?;
+    crate::activity_tracker::clear_unmapped_memory();
+    Ok(deleted)
+}

@@ -17,6 +17,8 @@ import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELa
 import { useAiEnabled } from "../ai/master";
 import { getAiConfig } from "../ai/client";
 import { useContextActions, useContextState } from "../store/context";
+import { fetchUnmappedKeys, clearUnmappedKeys } from "../data/client";
+import type { UnmappedKey } from "../data/types";
 
 type UpdateState =
   | { status: "idle" }
@@ -135,6 +137,7 @@ export default function Settings() {
   const actions = useContextActions();
   // AI 配置状态：只用于在开关开启时显示「已配置 · T2 / 未配置服务」一行状态。
   const [aiStatus, setAiStatus] = useState<{ configured: boolean; tier: string } | null>(null);
+  const [unmapped, setUnmapped] = useState<UnmappedKey[]>([]);
 
   function handleLayoutChange(id: string) {
     setLayoutId(id);
@@ -147,6 +150,7 @@ export default function Settings() {
     invoke<DbInfo>("get_db_info").then(setDbInfo).catch(console.error);
     invoke<string[]>("get_recent_apps").then(setRecentApps).catch(console.error);
     invoke<string>("get_app_version").then(setVersion).catch(console.error);
+    fetchUnmappedKeys().then(setUnmapped).catch(console.error);
     invoke<UpdateState>("get_update_state").then(setUpdateState).catch(console.error);
     // 以系统实际注册状态为准显示开关初始值，避免本地布尔和真实注册项漂移
     isAutostartEnabled().then(setAutostart).catch(console.error);
@@ -279,6 +283,15 @@ export default function Settings() {
       setClearMsg(`已清除 ${n} 条记录`);
       setConfirmClear(false);
       invoke<DbInfo>("get_db_info").then(setDbInfo);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function handleClearUnmapped() {
+    try {
+      await clearUnmappedKeys();
+      setUnmapped([]);
     } catch (e) {
       console.error(e);
     }
@@ -534,6 +547,41 @@ export default function Settings() {
             )}
           </div>
         </SettingRow>
+      </div>
+
+      <div className="settings-group">
+        <div className="settings-group-title">未识别按键</div>
+
+        <SettingRow
+          label="未识别按键"
+          desc="采集层翻译不到标准键位的按键（媒体键、Fn、厂商专用键等），不计入「输入」页配列，只在此累计"
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {unmapped.length > 0 && (
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-3)", fontVariantNumeric: "tabular-nums" }}>
+                共 {unmapped.reduce((s, u) => s + u.count, 0)} 次
+              </span>
+            )}
+            {unmapped.length > 0 && (
+              <button className="setting-btn" onClick={handleClearUnmapped}>
+                <Trash2 size={13} />
+                清除
+              </button>
+            )}
+          </div>
+        </SettingRow>
+
+        {unmapped.length === 0 ? (
+          <p className="setting-unmapped-empty">暂无未识别按键</p>
+        ) : (
+          <div className="setting-ignore-list">
+            {unmapped.map((u) => (
+              <span key={u.raw_value} className="setting-ignore-tag" title={u.raw_value}>
+                {u.raw_value} · {u.count}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="settings-group">

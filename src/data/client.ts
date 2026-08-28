@@ -16,6 +16,7 @@ import type {
   RawKeyDetail,
   RawKeyHourBucket,
   TimeRange,
+  UnmappedKey,
 } from "./types";
 
 // ---- 全量查询（兼容旧 Dev 页 & 快速排查） -----------------------------------
@@ -108,4 +109,14 @@ export function hasHeartbeatInRange(range: TimeRange): Promise<boolean> {
     startMs: range.start_ms,
     endMs: range.end_ms,
   });
+}
+
+// ---- 未映射按键（采集层翻译失败、按平台原始键名累计） --------------------------
+
+export function fetchUnmappedKeys(): Promise<UnmappedKey[]> {
+  return invoke<UnmappedKey[]>("get_unmapped_keys");
+}
+
+export function clearUnmappedKeys(): Promise<number> {
+  return invoke<number>("clear_unmapped_keys");
 }
