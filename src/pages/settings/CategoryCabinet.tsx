@@ -145,6 +145,20 @@ function transformToString(
   return `translate3d(${t.x}px, ${t.y}px, 0) scaleX(${t.scaleX}) scaleY(${t.scaleY})`;
 }
 
+/** 从 dnd-kit DragEnd 事件反推落点视口坐标：激活点 + 位移 ≈ 松手瞬间的指针位置。
+ *  dnd-kit 的 e.over 由 useEffect 异步更新，快速落点瞬间可能仍是旧值/空值，用它
+ *  做「新建分类」这类固定落点的命中判定会漏；直接用坐标做矩形命中更稳。 */
+function dropPointOf(e: DragEndEvent): { x: number; y: number } | null {
+  const a = e.activatorEvent as MouseEvent | null;
+  if (!a || typeof a.clientX !== "number" || typeof a.clientY !== "number") return null;
+  return { x: a.clientX + (e.delta?.x ?? 0), y: a.clientY + (e.delta?.y ?? 0) };
+}
+
+/** 视口坐标点是否落在某个矩形内（含边界）。 */
+function pointInRect(p: { x: number; y: number }, r: DOMRect): boolean {
+  return p.x >= r.left && p.x <= r.right && p.y >= r.top && p.y <= r.bottom;
+}
+
 /** 拖拽源：应用图标（归类）或文件夹方块本体（重排）。二者必须区分。 */
 type DragPayload = { kind: "app"; ids: string[] } | { kind: "folder"; id: string };
 
@@ -369,7 +383,8 @@ export default function CategoryCabinet({
   // ── 固定放置目标（待整理区 / 新建空位） ────────────────────────────────────
 
   const { setNodeRef: inboxRef } = useDroppable({ id: "inbox" });
-  const { setNodeRef: newSlotRef } = useDroppable({ id: "new-category" });
+  // node 用于落点坐标命中判定（见 onDragEnd），不依赖可能滞后的 e.over。
+  const { setNodeRef: newSlotRef, node: newSlotNode } = useDroppable({ id: "new-category" });
 
   // 文件夹方块 DOM 的稳定访问器（folderRefs 是 ref，读它的函数身份恒定），
   // 避免每次父级渲染都给 FloatPanel 传一个新函数、触发不必要的重定位。
@@ -461,14 +476,21 @@ export default function CategoryCabinet({
   function onDragEnd(e: DragEndEvent) {
     const d = dragRef.current;
     const overId = e.over ? String(e.over.id) : null;
+    // 「新建分类」是固定落点，优先用落点坐标做命中判定：e.over 由 useEffect 异步
+    // 更新，快速落点瞬间可能仍是空/旧值，坐标命中与 over 判定任一命中即视为落到
+    // 新建框，避免拖进新建框却不触发新建。
+    const point = dropPointOf(e);
+    const hitNewSlot = point !== null && newSlotNode.current !== null
+      ? pointInRect(point, newSlotNode.current.getBoundingClientRect())
+      : false;
     if (d?.kind === "app") {
       const list = (apps ?? []).filter((a) => d.ids.includes(a.app_id));
-      if (overId?.startsWith("folder:")) {
+      if (hitNewSlot || overId === "new-category") {
+        onCreateFromDrop(list);
+      } else if (overId?.startsWith("folder:")) {
         void commitMove(list, overId.slice(7));
       } else if (overId?.startsWith("float:")) {
         void commitMove(list, overId.slice(6));
-      } else if (overId === "new-category") {
-        onCreateFromDrop(list);
       } else if (overId === "inbox") {
         void commitMove(list, null);
       }
