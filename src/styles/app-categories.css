@@ -1179,3 +1179,142 @@
 .cabinet-archived-head svg.is-collapsed {
   transform: rotate(-90deg);
 }
+
+/* ── 分类柜拖拽（dnd-kit）与就地搜索 ── */
+
+/* 搜索：未命中的图标变暗但仍占位（就地过滤，不移除不重排） */
+.cab-app.is-dimmed {
+  opacity: 0.32;
+}
+
+/* 拖拽中的源图标：淡化保留占位，实际影像由 DragOverlay 呈现 */
+.cab-app.is-dragging {
+  opacity: 0.4;
+}
+
+/* 应用拖拽命中的文件夹：描边提示放置目标 */
+.cab-folder.is-over {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-accent-soft);
+}
+
+/* 搜索时文件夹上的命中数徽标（在数量之前，跟普通数量区分开） */
+.cab-folder-match {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 搜索无结果时的一行提示：网格保持原状 */
+.cabinet-no-results {
+  padding: var(--space-1) 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+/* ── 右键菜单子菜单（分类选择） ── */
+
+.cab-menu-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-3);
+}
+
+.cab-submenu {
+  position: fixed;
+  z-index: 100; /* 与其他弹层同层，见 topbar.css */
+  display: flex;
+  flex-direction: column;
+  min-width: 176px;
+  max-width: 240px;
+  padding: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+/* ── 拖拽预览（DragOverlay） ── */
+
+.cab-drag-overlay-apps {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.cab-drag-overlay-stack {
+  display: flex;
+}
+
+/* 多选时图标层叠：后续图标盖住前一张，数量由 ×N 徽标交代 */
+.cab-drag-overlay-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+}
+
+.cab-drag-overlay-icon + .cab-drag-overlay-icon {
+  margin-left: -22px;
+}
+
+.cab-drag-overlay-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.cab-drag-overlay-label {
+  font-size: var(--text-xs);
+  color: var(--color-text);
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cab-drag-overlay-count {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.cab-drag-overlay-folder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-md);
+}
+
+.cab-drag-overlay-folder-name {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.cab-drag-overlay-folder-count {
+  font-size: 11px;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
