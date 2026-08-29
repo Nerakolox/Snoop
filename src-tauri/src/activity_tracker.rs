@@ -36,6 +36,11 @@ const WRITER_BATCH_SIZE: usize = 20;
 const WRITER_FLUSH_INTERVAL_MS: u64 = 2000;
 // 心跳间隔：60 秒
 const HEARTBEAT_INTERVAL_MS: u64 = 60_000;
+// 长按判定阈值：一次「按下→抬起」按住超过该时长才算一次长按，计入独立长按统计。
+const LONG_PRESS_THRESHOLD_MS: i64 = 500;
+// 按下状态兜底阈值：某键超过该时长没有任何事件（疑似窗口失焦 / 系统休眠丢了抬起
+// 事件），强制清出按下集合，避免卡死导致该键后续完全不计数。
+const PRESS_STALE_MS: i64 = 30_000;
 
 /// 一份待落库的桶，由采样循环 send 给 writer 线程，采样循环本身不阻塞在 IO 上。
 struct PendingBucket {
@@ -56,6 +61,9 @@ struct Counters {
     mouse_forward: u32,
     mouse_distance: f64,
     scroll_amount: f64,
+    // 长按独立统计：与 key_presses / 鼠标点击次数分开存储，不混入总按键数。
+    long_press_count: u32,
+    long_press_duration_ms: i64,
     last_mouse_x: f64,
     last_mouse_y: f64,
 }
@@ -70,6 +78,8 @@ impl Counters {
         self.mouse_forward = 0;
         self.mouse_distance = 0.0;
         self.scroll_amount = 0.0;
+        self.long_press_count = 0;
+        self.long_press_duration_ms = 0;
         // 保留 last_mouse_x/y 用于下一个桶的距离计算
     }
 
@@ -367,6 +377,10 @@ pub fn start_activity_tracking(
             }
         }
 
+        // 按下状态集合：以物理键码为身份，跨事件维护「按下沿 / 自动重复」判定。
+        // 只在输入线程内被回调访问，无需加锁；30s 无事件兜底清卡死键（见 handle_input_event）。
+        let mut pressed: HashMap<String, PressState> = HashMap::new();
+
         let callback = move |event: Event| {
             // emit 实时事件供前端调试页使用
             let payload = match &event.event_type {
@@ -391,7 +405,7 @@ pub fn start_activity_tracking(
             if let Some(p) = payload {
                 let _ = app_handle_input.emit("input-event", p);
             }
-            handle_input_event(&event, &counters_input);
+            handle_input_event(&event, &counters_input, &mut pressed);
         };
 
         #[cfg(target_os = "windows")]
@@ -457,23 +471,91 @@ fn key_code_payload(key: &rdev::Key) -> String {
         .unwrap_or_else(|| format!("{:?}", key))
 }
 
-fn handle_input_event(event: &Event, counters: &Arc<Mutex<Counters>>) {
+/// 一次「按下」的跟踪状态。`pressed_at` 是物理按下时刻（用于算长按时长），`last_seen`
+/// 是该键最近一次事件时刻（press / auto-repeat 都刷新），用于兜底清掉卡死键。
+struct PressState {
+    pressed_at: i64,
+    last_seen: i64,
+}
+
+/// 按下沿判定：返回 true 表示这是一次新的物理按下（应计数），false 表示自动重复
+/// （同一次按下的后续补发，忽略）。无论返回什么，都会维护按下状态集合。
+fn is_press_edge(pressed: &mut HashMap<String, PressState>, id: &str, now: i64) -> bool {
+    match pressed.get_mut(id) {
+        Some(st) => {
+            st.last_seen = now;
+            false
+        }
+        None => {
+            pressed.insert(
+                id.to_string(),
+                PressState {
+                    pressed_at: now,
+                    last_seen: now,
+                },
+            );
+            true
+        }
+    }
+}
+
+/// 抬起处理：若该键仍在按下集合里，结算一次按住时长；按住超过阈值才计入长按统计。
+fn on_release(
+    pressed: &mut HashMap<String, PressState>,
+    id: &str,
+    now: i64,
+    counters: &mut Counters,
+) {
+    if let Some(st) = pressed.remove(id) {
+        let hold_ms = now - st.pressed_at;
+        if hold_ms >= LONG_PRESS_THRESHOLD_MS {
+            counters.long_press_count += 1;
+            counters.long_press_duration_ms += hold_ms;
+        }
+    }
+}
+
+/// 鼠标按键的按下状态身份，与按键 W3C code 分属不同命名空间，互不干扰。
+fn button_identity(button: rdev::Button) -> String {
+    match button {
+        rdev::Button::Left => "mouse:Left".to_string(),
+        rdev::Button::Right => "mouse:Right".to_string(),
+        rdev::Button::Middle => "mouse:Middle".to_string(),
+        rdev::Button::Unknown(code) => format!("mouse:Unknown({code})"),
+    }
+}
+
+fn handle_input_event(
+    event: &Event,
+    counters: &Arc<Mutex<Counters>>,
+    pressed: &mut HashMap<String, PressState>,
+) {
+    let now = now_ms();
+
+    // 兜底：把超过 PRESS_STALE_MS 没有任何事件、疑似丢失抬起事件的键清出集合，
+    // 避免卡在按下状态导致后续完全不计数。map 很小（同时按下的键通常个位数），
+    // 遍历开销可忽略。
+    pressed.retain(|_, st| now - st.last_seen <= PRESS_STALE_MS);
+
     let mut data = counters.lock().unwrap();
 
     match event.event_type {
-        EventType::KeyPress(key) => {
-            match crate::key_code::translate(&key) {
-                Some(code) => {
+        EventType::KeyPress(key) => match crate::key_code::translate(&key) {
+            Some(code) => {
+                if is_press_edge(pressed, code, now) {
                     // 调试日志：打印每个新 code（首次出现时）
                     if !data.key_presses.contains_key(code) {
                         println!("🔑 新键码: {}", code);
                     }
                     *data.key_presses.entry(code.to_string()).or_insert(0) += 1;
                 }
-                None => {
-                    // 未映射：翻译失败（媒体键 / Fn / Unknown 等），按平台原始值
-                    // 归入未映射桶，绝不静默丢弃。
-                    let raw = format!("{:?}", key);
+            }
+            None => {
+                // 未映射：翻译失败（媒体键 / Fn / Unknown 等），按平台原始值归入未映射
+                // 桶，绝不静默丢弃。同样按按下沿去重，否则长按媒体键会把 unmapped 刷爆。
+                let raw = format!("{:?}", key);
+                let id = format!("unmapped:{raw}");
+                if is_press_edge(pressed, &id, now) {
                     let mut m = unmapped_map().lock().unwrap();
                     if !m.contains_key(&raw) {
                         println!("⚠️ 未映射键（不计入配列）: {}", raw);
@@ -481,30 +563,45 @@ fn handle_input_event(event: &Event, counters: &Arc<Mutex<Counters>>) {
                     *m.entry(raw).or_insert(0) += 1;
                 }
             }
+        },
+        EventType::KeyRelease(key) => {
+            let id = crate::key_code::translate(&key)
+                .map(|c| c.to_string())
+                .unwrap_or_else(|| format!("unmapped:{}", format!("{:?}", key)));
+            on_release(pressed, &id, now, &mut data);
         }
-        EventType::ButtonPress(button) => match button {
-            rdev::Button::Left => data.left_clicks += 1,
-            rdev::Button::Right => data.right_clicks += 1,
-            rdev::Button::Middle => data.middle_clicks += 1,
-            rdev::Button::Unknown(code) => {
-                // Windows: 侧键通常是 Unknown(1) = 后退, Unknown(2) = 前进
-                // macOS/Linux 可能有不同编号，这里统一处理 1/2
-                match code {
-                    1 => {
-                        data.mouse_back += 1;
-                        println!("🖱️ 鼠标后退键 (Unknown(1))");
-                    }
-                    2 => {
-                        data.mouse_forward += 1;
-                        println!("🖱️ 鼠标前进键 (Unknown(2))");
-                    }
-                    _ => {
-                        // 其他未知按键也记录一下，方便调试
-                        println!("🖱️ 未知鼠标按键: Unknown({})", code);
+        EventType::ButtonPress(button) => {
+            let id = button_identity(button);
+            if is_press_edge(pressed, &id, now) {
+                match button {
+                    rdev::Button::Left => data.left_clicks += 1,
+                    rdev::Button::Right => data.right_clicks += 1,
+                    rdev::Button::Middle => data.middle_clicks += 1,
+                    rdev::Button::Unknown(code) => {
+                        // Windows: 侧键通常是 Unknown(1) = 后退, Unknown(2) = 前进
+                        // macOS/Linux 可能有不同编号，这里统一处理 1/2
+                        match code {
+                            1 => {
+                                data.mouse_back += 1;
+                                println!("🖱️ 鼠标后退键 (Unknown(1))");
+                            }
+                            2 => {
+                                data.mouse_forward += 1;
+                                println!("🖱️ 鼠标前进键 (Unknown(2))");
+                            }
+                            _ => {
+                                // 其他未知按键也记录一下，方便调试
+                                println!("🖱️ 未知鼠标按键: Unknown({})", code);
+                            }
+                        }
                     }
                 }
             }
-        },
+        }
+        EventType::ButtonRelease(button) => {
+            let id = button_identity(button);
+            on_release(pressed, &id, now, &mut data);
+        }
         EventType::MouseMove { x, y } => {
             if data.last_mouse_x != 0.0 || data.last_mouse_y != 0.0 {
                 let dx = (x - data.last_mouse_x).abs();
@@ -517,7 +614,6 @@ fn handle_input_event(event: &Event, counters: &Arc<Mutex<Counters>>) {
         EventType::Wheel { delta_x, delta_y } => {
             data.scroll_amount += delta_x.abs() as f64 + delta_y.abs() as f64;
         }
-        _ => {}
     }
 }
 
@@ -584,8 +680,9 @@ fn flush_batch(conn: &Connection, batch: &mut Vec<PendingBucket>) {
                 (bucket_start, duration_ms, app_name, app_bundle_id,
                  key_total, mouse_left, mouse_right, mouse_middle,
                  mouse_back, mouse_forward,
-                 mouse_move_dist, scroll_dist)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 mouse_move_dist, scroll_dist,
+                 long_press_count, long_press_duration_ms)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
                 rusqlite::params![
                     pending.bucket_start,
                     pending.duration_ms,
@@ -599,6 +696,8 @@ fn flush_batch(conn: &Connection, batch: &mut Vec<PendingBucket>) {
                     pending.data.mouse_forward,
                     pending.data.mouse_distance as i64,
                     pending.data.scroll_amount as i64,
+                    pending.data.long_press_count,
+                    pending.data.long_press_duration_ms,
                 ],
             )?;
 

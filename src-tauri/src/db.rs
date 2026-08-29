@@ -42,7 +42,9 @@ impl Database {
                 mouse_back      INTEGER NOT NULL DEFAULT 0,
                 mouse_forward   INTEGER NOT NULL DEFAULT 0,
                 mouse_move_dist INTEGER NOT NULL,
-                scroll_dist     INTEGER NOT NULL
+                scroll_dist     INTEGER NOT NULL,
+                long_press_count       INTEGER NOT NULL DEFAULT 0,
+                long_press_duration_ms INTEGER NOT NULL DEFAULT 0
             );
 
             CREATE INDEX IF NOT EXISTS idx_bucket_start
@@ -179,6 +181,7 @@ impl Database {
 
         self.migrate_duration_column()?;
         self.migrate_mouse_side_buttons()?;
+        self.migrate_long_press()?;
         self.migrate_snoop_bundle_id()?;
         // 必须在建唯一索引之前跑：存量库里已有重复行，索引创建会因
         // UNIQUE 冲突直接失败，导致老用户升级后启动崩溃。
@@ -365,6 +368,26 @@ impl Database {
                 ",
             )?;
             println!("✓ 已添加鼠标侧键字段 mouse_back, mouse_forward");
+        }
+        Ok(())
+    }
+
+    /// 给存量库的 `activity_buckets` 补上长按独立统计两列。
+    /// 长按与按键次数分开存储，不混入 `key_total`；历史桶的这两列恒为 0（见 tech-debt.md）。
+    fn migrate_long_press(&self) -> Result<()> {
+        let has_col: bool = self
+            .conn
+            .prepare("SELECT 1 FROM pragma_table_info('activity_buckets') WHERE name='long_press_count'")?
+            .exists([])?;
+
+        if !has_col {
+            self.conn.execute_batch(
+                "
+                ALTER TABLE activity_buckets ADD COLUMN long_press_count INTEGER NOT NULL DEFAULT 0;
+                ALTER TABLE activity_buckets ADD COLUMN long_press_duration_ms INTEGER NOT NULL DEFAULT 0;
+                ",
+            )?;
+            println!("✓ 已添加长按统计字段 long_press_count, long_press_duration_ms");
         }
         Ok(())
     }
