@@ -752,6 +752,123 @@
   color: var(--color-text-3);
 }
 
+/* ---- DOM 3D 视图（CSS perspective，无 WebGL）---- */
+
+/* 外容器：撑满 .kb-hero-stage，提供 perspective 上下文 */
+.kb3d-shell {
+  position: relative;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-block: var(--space-4);
+  user-select: none;
+  touch-action: none;
+}
+
+.kb3d-scene {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  overflow: visible;
+}
+
+/* 键盘底板：所有 keys 绝对定位于此 */
+.kb3d-board {
+  position: relative;
+  transform-style: preserve-3d;
+  transform-origin: center 40%;
+  will-change: transform;
+  transition: transform 0.05s linear;
+}
+
+/* 单键 */
+.kb3d-key {
+  position: absolute;
+  appearance: none;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface-2);
+  color: var(--color-text);
+  cursor: pointer;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-start;
+  padding: 3px 4px;
+  font: inherit;
+  transition: filter var(--dur-fast) var(--ease-smooth);
+}
+
+.kb3d-key:hover {
+  filter: brightness(1.12);
+  border-color: var(--color-accent);
+  z-index: 1;
+}
+
+.kb3d-key:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* 无数据（count = 0）*/
+.kb3d-key.is-empty {
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.45;
+}
+
+/* 选中态 */
+.kb3d-key.is-selected {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.kb3d-key-label {
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  color: inherit;
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+  mix-blend-mode: multiply;
+}
+
+[data-theme="dark"] .kb3d-key-label {
+  mix-blend-mode: screen;
+}
+
+/* 控制栏 */
+.kb3d-controls {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.kb3d-btn {
+  appearance: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 3px var(--space-3);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth);
+}
+
+.kb3d-btn:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-accent);
+  color: var(--color-text);
+}
+
 .kb-keydetail-block {
   min-width: 0;
   display: flex;

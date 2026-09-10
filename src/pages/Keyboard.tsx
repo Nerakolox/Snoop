@@ -23,15 +23,15 @@ import {
   type Intensity,
 } from "../analytics";
 import {
-  LAYOUT,
-  LAYOUT_MAX_X,
-  LAYOUT_MAX_Y,
+  getLayoutForId,
   displayLabelByCode,
   type LayoutKey,
 } from "../keyboardLayout";
+import { getSavedLayoutId } from "../layouts";
 import TopKeysPanel from "../components/keyboard/TopKeysPanel";
 import MousePanel from "../components/keyboard/MousePanel";
 import KeyboardPanel from "../components/keyboard/KeyboardPanel";
+import Keyboard3D from "../components/keyboard/Keyboard3D";
 import KeyDetailPanel from "../components/keyboard/KeyDetailPanel";
 import { KeySelectionProvider } from "../components/keyboard/KeySelectionContext";
 import PageShell from "../components/PageShell";
@@ -58,9 +58,41 @@ export default function Keyboard() {
   const [loading, setLoading] = useState(false);
   const [showLoading, setShowLoading] = useState(false);
 
+  const [renderMode, setRenderMode] = useState<"2d" | "3d">(
+    () => (localStorage.getItem("kb_render_mode") as "2d" | "3d") ?? "2d"
+  );
+  const [invertDragX, setInvertDragX] = useState(
+    () => localStorage.getItem("kb3d_invert_drag_x") === "true"
+  );
+  const [invertDragY, setInvertDragY] = useState(
+    () => localStorage.getItem("kb3d_invert_drag_y") === "true"
+  );
+  const [layoutId, setLayoutId] = useState(() => getSavedLayoutId());
+  const { keys: layoutKeys, maxX: layoutMaxX, maxY: layoutMaxY } = useMemo(
+    () => getLayoutForId(layoutId),
+    [layoutId]
+  );
+
   // 全量桶（未筛选，鼠标面板/键鼠比要用来做分 App 对比）+ 按键明细（后端按 appId 过滤）
   const [allBuckets, setAllBuckets] = useState<RawBucket[]>([]);
   const [keyDetails, setKeyDetails] = useState<RawKeyDetail[]>([]);
+
+  useEffect(() => {
+    const onMode = (e: Event) => setRenderMode((e as CustomEvent<"2d" | "3d">).detail);
+    const onInvX = (e: Event) => setInvertDragX((e as CustomEvent<boolean>).detail);
+    const onInvY = (e: Event) => setInvertDragY((e as CustomEvent<boolean>).detail);
+    const onLayout = (e: Event) => setLayoutId((e as CustomEvent<string>).detail);
+    window.addEventListener("kb-render-mode-change", onMode);
+    window.addEventListener("kb3d-invert-drag-x-change", onInvX);
+    window.addEventListener("kb3d-invert-drag-y-change", onInvY);
+    window.addEventListener("kle-layout-change", onLayout);
+    return () => {
+      window.removeEventListener("kb-render-mode-change", onMode);
+      window.removeEventListener("kb3d-invert-drag-x-change", onInvX);
+      window.removeEventListener("kb3d-invert-drag-y-change", onInvY);
+      window.removeEventListener("kle-layout-change", onLayout);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -139,9 +171,9 @@ export default function Keyboard() {
 
   const selectedIndex = useMemo(() => {
     if (selectedKey === null) return null;
-    const idx = LAYOUT.findIndex((k) => k.code === selectedKey);
+    const idx = layoutKeys.findIndex((k) => k.code === selectedKey);
     return idx === -1 ? null : idx;
-  }, [selectedKey]);
+  }, [selectedKey, layoutKeys]);
 
   const isToday = viewKind === "day" && viewAnchor === today;
   const topPanelTitle =
@@ -200,13 +232,25 @@ export default function Keyboard() {
             </div>
           )}
           <KeySelectionProvider value={{ onKeyClick: handleKeyClick, selectedIndex }}>
-            <KeyboardPanel
-              keys={LAYOUT}
-              keyCounts={keyCounts}
-              allKeyCounts={allKeyCounts}
-              maxX={LAYOUT_MAX_X}
-              maxY={LAYOUT_MAX_Y}
-            />
+            {renderMode === "3d" ? (
+              <Keyboard3D
+                keys={layoutKeys}
+                keyCounts={keyCounts}
+                allKeyCounts={allKeyCounts}
+                maxX={layoutMaxX}
+                maxY={layoutMaxY}
+                invertDragX={invertDragX}
+                invertDragY={invertDragY}
+              />
+            ) : (
+              <KeyboardPanel
+                keys={layoutKeys}
+                keyCounts={keyCounts}
+                allKeyCounts={allKeyCounts}
+                maxX={layoutMaxX}
+                maxY={layoutMaxY}
+              />
+            )}
           </KeySelectionProvider>
         </div>
 
