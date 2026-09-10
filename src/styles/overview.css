@@ -535,6 +535,7 @@
 .month-cell {
   appearance: none;
   border: none;
+  outline: none;
   padding: 0;
   cursor: pointer;
   width: 100%;
@@ -543,8 +544,23 @@
   transition: transform var(--dur-fast) var(--ease-smooth);
 }
 
+/* 周形态：固定高度横条，不用正方形 */
+.month-grid--week {
+  height: 28px;
+}
+
+.month-grid--week .month-cell {
+  aspect-ratio: unset;
+  height: 100%;
+}
+
 .month-cell:hover {
   transform: scale(1.05);
+}
+
+/* 鼠标点击后不留焦点环；键盘导航时仍保留 */
+.month-cell:focus:not(:focus-visible) {
+  outline: none;
 }
 
 .month-cell:hover,
@@ -571,8 +587,20 @@
   opacity: 0.45;
 }
 
-/* 今天：外圈品牌色环标记，不用填充色（填充色已让给活跃强度） */
+/* 今天/当前时段：格子正下方一颗小圆点，不与填充色争抢 */
 .month-cell--today {
-  box-shadow: 0 0 0 2px var(--color-accent);
+  position: relative;
+}
+
+.month-cell--today::after {
+  content: "";
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  translate: -50% 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--color-accent);
 }
 

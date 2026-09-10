@@ -735,15 +735,19 @@ export default function Overview() {
 
         {viewKind === "day" && (
           <>
-            <div className="hour-bars">
+            <div className="month-grid" style={{ gridTemplateColumns: "repeat(24, 1fr)" }}>
               {hourCells.map((cell) => {
                 const isNow = isTodayView && cell.hour === currentHour;
                 const cls =
-                  "hour-bar" +
-                  (cell.state === "idle" ? " hour-bar--idle" : "") +
-                  (cell.state === "no_data" ? " hour-bar--no-data" : "") +
-                  (cell.state === "future" ? " hour-bar--future" : "") +
-                  (isNow ? " hour-bar--now" : "");
+                  "month-cell" +
+                  (cell.state === "future"
+                    ? " month-cell--future"
+                    : cell.state === "idle"
+                      ? " month-cell--idle"
+                      : cell.state === "no_data"
+                        ? " month-cell--no-data"
+                        : "") +
+                  (isNow ? " month-cell--today" : "");
                 const style = cell.state === "has_data" ? { background: intensityVar(cell.intensity) } : undefined;
                 const tip =
                   cell.state === "has_data"
@@ -760,56 +764,52 @@ export default function Overview() {
                 );
               })}
             </div>
-            <div className="heat-scale">
-              <span className="heat-scale-tick heat-scale-tick--edge-start" style={{ gridColumn: 1 }}>
-                0
-              </span>
-              <span className="heat-scale-tick" style={{ gridColumn: 7 }}>
-                6
-              </span>
-              <span className="heat-scale-tick" style={{ gridColumn: 13 }}>
-                12
-              </span>
-              <span className="heat-scale-tick" style={{ gridColumn: 19 }}>
-                18
-              </span>
-              <span className="heat-scale-tick heat-scale-tick--edge-end" style={{ gridColumn: 24 }}>
-                24
-              </span>
+            <div className="month-ticks" style={{ gridTemplateColumns: "repeat(24, 1fr)" }}>
+              <span className="month-tick" style={{ gridColumn: 1 }}>0</span>
+              <span className="month-tick" style={{ gridColumn: 7 }}>6</span>
+              <span className="month-tick" style={{ gridColumn: 13 }}>12</span>
+              <span className="month-tick" style={{ gridColumn: 19 }}>18</span>
+              <span className="month-tick" style={{ gridColumn: 24 }}>24</span>
             </div>
+            {rhythmLegend}
           </>
         )}
 
         {viewKind === "week" && (
           <>
-            <div className="rhythm-week">
-              <div className="week-grid">
-                {dayCells.map((d) => {
-                  const cls =
-                    "week-cell" +
-                    (d.isDeep ? " is-deep" : "") +
-                    (d.idle ? " week-cell--idle" : d.hasData ? "" : " week-cell--no-data") +
-                    (d.isToday ? " week-cell--today" : "");
-                  const style = d.hasData ? { background: intensityVar(d.intensity) } : undefined;
-                  const tip = d.hasData
-                    ? `${weekdayLabelOf(d.dayMs)} · ${fmtDuration(d.foregroundMs)}`
+            <div className="month-grid month-grid--week" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
+              {dayCells.map((d) => {
+                const cls =
+                  "month-cell" +
+                  (d.future
+                    ? " month-cell--future"
+                    : d.idle
+                      ? " month-cell--idle"
+                      : d.hasData
+                        ? ""
+                        : " month-cell--no-data") +
+                  (d.isToday ? " month-cell--today" : "");
+                const style = d.hasData ? { background: intensityVar(d.intensity) } : undefined;
+                const tip = d.hasData
+                  ? `${weekdayLabelOf(d.dayMs)} · ${fmtDuration(d.foregroundMs)}`
+                  : d.future
+                    ? `${weekdayLabelOf(d.dayMs)} · 未到来`
                     : d.idle
                       ? `${weekdayLabelOf(d.dayMs)} · 无输入`
                       : `${weekdayLabelOf(d.dayMs)} · 无数据`;
-                  return (
-                    <Tooltip key={d.dayMs} content={tip}>
-                      <button type="button" className={cls} style={style} onClick={() => goToDay(d.dayMs)}>
-                        {d.label && <span className="week-cell-num">{d.label}</span>}
-                      </button>
-                    </Tooltip>
-                  );
-                })}
-              </div>
-              <div className="week-labels">
-                {dayCells.map((d) => (
-                  <span key={d.dayMs} className="week-label">{WEEKDAY_LABELS[mondayIndex(d.dayMs)]}</span>
-                ))}
-              </div>
+                return (
+                  <Tooltip key={d.dayMs} content={tip}>
+                    <button type="button" className={cls} style={style} onClick={() => goToDay(d.dayMs)} />
+                  </Tooltip>
+                );
+              })}
+            </div>
+            <div className="month-ticks" style={{ gridTemplateColumns: "repeat(7, 1fr)" }}>
+              {dayCells.map((d, i) => (
+                <span key={d.dayMs} className="month-tick" style={{ gridColumn: i + 1 }}>
+                  {WEEKDAY_LABELS[mondayIndex(d.dayMs)]}
+                </span>
+              ))}
             </div>
             {rhythmLegend}
           </>
