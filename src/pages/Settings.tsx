@@ -133,6 +133,15 @@ export default function Settings() {
   const [version, setVersion] = useState<string>("");
   const [updateState, setUpdateState] = useState<UpdateState>({ status: "idle" });
   const [layoutId, setLayoutId] = useState<string>(() => getSavedLayout());
+  const [renderMode, setRenderMode] = useState<"2d" | "3d">(
+    () => (localStorage.getItem("kb_render_mode") as "2d" | "3d") ?? "2d"
+  );
+  const [invertDragX, setInvertDragX] = useState(
+    () => localStorage.getItem("kb3d_invert_drag_x") === "true"
+  );
+  const [invertDragY, setInvertDragY] = useState(
+    () => localStorage.getItem("kb3d_invert_drag_y") === "true"
+  );
   const [aiEnabled, setAiEnabled] = useAiEnabled();
   const actions = useContextActions();
   // AI 配置状态：只用于在开关开启时显示「已配置 · T2 / 未配置服务」一行状态。
@@ -145,6 +154,23 @@ export default function Settings() {
     window.dispatchEvent(new CustomEvent("kle-layout-change", { detail: id }));
   }
 
+  function saveRenderMode(v: "2d" | "3d") {
+    setRenderMode(v);
+    localStorage.setItem("kb_render_mode", v);
+    window.dispatchEvent(new CustomEvent("kb-render-mode-change", { detail: v }));
+  }
+
+  function saveInvertDragX(v: boolean) {
+    setInvertDragX(v);
+    localStorage.setItem("kb3d_invert_drag_x", String(v));
+    window.dispatchEvent(new CustomEvent("kb3d-invert-drag-x-change", { detail: v }));
+  }
+
+  function saveInvertDragY(v: boolean) {
+    setInvertDragY(v);
+    localStorage.setItem("kb3d_invert_drag_y", String(v));
+    window.dispatchEvent(new CustomEvent("kb3d-invert-drag-y-change", { detail: v }));
+  }
 
   useEffect(() => {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
@@ -471,7 +497,27 @@ export default function Settings() {
           <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
         </SettingRow>
 
-        {/* 渲染模式切换暂时禁用，3D 视图存在已知问题待修复后重新开放 */}
+        <SettingRow label="渲染模式" desc="3D 模式目前存在已知问题，建议暂用平面">
+          <SegmentedControl<"2d" | "3d">
+            value={renderMode}
+            onChange={saveRenderMode}
+            options={[
+              { value: "2d", label: "平面" },
+              { value: "3d", label: "3D" },
+            ]}
+          />
+        </SettingRow>
+
+        {renderMode === "3d" && (
+          <>
+            <SettingRow label="翻转上下拖拽" desc="拖动键盘时，上下方向改为反转">
+              <Toggle checked={invertDragX} onChange={saveInvertDragX} />
+            </SettingRow>
+            <SettingRow label="翻转左右拖拽" desc="拖动键盘时，左右方向改为反转">
+              <Toggle checked={invertDragY} onChange={saveInvertDragY} />
+            </SettingRow>
+          </>
+        )}
       </div>
 
       <div className="settings-group">

@@ -43,7 +43,7 @@ type Props = {
   pressedIndices?: Set<number>;
   /** 翻转上下拖拽方向；true = 原始方向，false（默认）= 反转。 */
   invertDragX?: boolean;
-  /** 翻转左右拖拽方向；true = 原始方向，false（默认）= 反转。 */
+  /** 翻转左右拖拽方向；false（默认）= 跟随手指，true = 反转。 */
   invertDragY?: boolean;
 };
 
@@ -95,18 +95,6 @@ export default function Keyboard3D({
     const el = containerRef.current;
     if (!el) return;
 
-    const onPointerDown = (e: PointerEvent) => {
-      dragRef.current = {
-        active: true,
-        moved: false,
-        startX: e.clientX,
-        startY: e.clientY,
-        lastX: e.clientX,
-        lastY: e.clientY,
-      };
-      el.setPointerCapture(e.pointerId);
-    };
-
     const onPointerMove = (e: PointerEvent) => {
       const d = dragRef.current;
       if (!d.active) return;
@@ -123,7 +111,7 @@ export default function Keyboard3D({
       }
       if (d.moved) {
         const { invertDragX: ix, invertDragY: iy } = invertRef.current;
-        const signX = iy ? 1 : -1; // 左右拖动 → yaw
+        const signX = iy ? -1 : 1; // 左右拖动 → yaw
         const signY = ix ? 1 : -1; // 上下拖动 → tilt
         setYaw((prev) =>
           Math.max(-YAW_MAX, Math.min(YAW_MAX, prev + dx * signX * ROTATE_PER_PX))
@@ -137,6 +125,28 @@ export default function Keyboard3D({
     const onPointerUp = () => {
       dragRef.current.active = false;
       setIsDragging(false);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+
+    // 不用 setPointerCapture：捕获会把 pointerup 重定向到 shell，
+    // 导致 click 只派发到公共祖先，内层 button（重置视角 / 键帽）的 onClick 永不触发。
+    // 改为拖拽期间在 window 上听 move/up，指针移出面板也能继续转。
+    const onPointerDown = (e: PointerEvent) => {
+      // 控制栏上的按下不参与旋转，否则在按钮上拖完松手会「转了又被重置」
+      if ((e.target as HTMLElement | null)?.closest(".kb3d-controls")) return;
+      dragRef.current = {
+        active: true,
+        moved: false,
+        startX: e.clientX,
+        startY: e.clientY,
+        lastX: e.clientX,
+        lastY: e.clientY,
+      };
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", onPointerUp);
+      window.addEventListener("pointercancel", onPointerUp);
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -147,16 +157,13 @@ export default function Keyboard3D({
     };
 
     el.addEventListener("pointerdown", onPointerDown);
-    el.addEventListener("pointermove", onPointerMove);
-    el.addEventListener("pointerup", onPointerUp);
-    el.addEventListener("pointerleave", onPointerUp);
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => {
       el.removeEventListener("pointerdown", onPointerDown);
-      el.removeEventListener("pointermove", onPointerMove);
-      el.removeEventListener("pointerup", onPointerUp);
-      el.removeEventListener("pointerleave", onPointerUp);
       el.removeEventListener("wheel", onWheel);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
     };
   }, []);
 
