@@ -1,0 +1,12 @@
+# Snoop
+
+Snoop is a local-first Windows/macOS desktop tool that logs foreground app usage time, keyboard/mouse activity intensity, and per-key press-count heatmaps.
+
+Platforms: Windows 10/11, macOS 10.15+
+
+Privacy boundary: Snoop never records keystroke sequences, passwords, chat content, clipboard, screenshots, camera, or microphone input. Only aggregated key/mouse counts per short time bucket are stored, entirely on the local machine (SQLite). No data is uploaded to any server.
+
+Docs (Chinese): https://github.com/Nerakolox/Snoop/blob/main/README.md
+Docs (English): https://github.com/Nerakolox/Snoop/blob/main/README.en.md
+Releases: https://github.com/Nerakolox/Snoop/releases
+License: MIT — https://github.com/Nerakolox/Snoop/blob/main/LICENSE

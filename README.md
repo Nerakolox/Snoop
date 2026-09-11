@@ -1,8 +1,15 @@
 # Snoop
 
-> 一只叫 Snoop 的猫，盯着你的键盘鼠标，帮你把今天到底"做了什么、忙没忙、忙在哪"看清楚。
+[English](README.en.md) | 中文
+[![Release](https://img.shields.io/github/v/release/Nerakolox/Snoop)](https://github.com/Nerakolox/Snoop/releases)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-本地运行、开源、隐私安全的桌面键鼠活动记录工具。数据只落在本机 SQLite，永远不上传。
+**Local-first activity tracker for Windows/macOS.** 记录前台应用、使用时长、键鼠强度、按键次数热力图；不记录按键序列 / 密码 / 聊天原文 / 剪贴板 / 截屏。数据只在本机 SQLite，永远不上传。
+
+| 今日概览 | 时间线 | 键盘热力图 |
+| --- | --- | --- |
+| ![今日概览](docs/images/overview.png) | ![时间线](docs/images/timeline.png) | ![键盘热力图](docs/images/heatmap.png) |
 
 **支持平台**：Windows 10/11 · macOS 10.15+
 **品牌**：Feedra · 吉祥物是一只嘴不太好的猫
@@ -11,7 +18,7 @@
 
 ## 它是干什么的
 
-你每天在电脑前坐八九个小时，到底是真的在干活，还是切了三十次 App、刷了两个小时空转？Snoop 在后台悄悄记着，晚上给你一份复盘：
+你每天在电脑前坐八九个小时,到底是真的在干活，还是切了三十次 App、刷了两个小时空转？Snoop 在后台悄悄记着，晚上给你一份复盘：
 
 - **哪些 App 吃掉了你今天的时间**
 - **你什么时段最活跃、什么时段在装忙**
@@ -57,7 +64,7 @@ Snoop **只记录键鼠的频次和强度**。不记录：
 
 ## 下载安装
 
-前往 [Releases](../../releases) 下载对应平台的安装包：
+前往 [Releases](https://github.com/Nerakolox/Snoop/releases) 下载对应平台的安装包：
 
 - **Windows**：`Snoop_x.y.z_x64-setup.exe`，双击安装。SmartScreen 拦截时点「更多信息 → 仍要运行」。
 - **macOS Apple Silicon**：`Snoop_x.y.z_aarch64.dmg`
@@ -125,7 +132,5 @@ npm run tauri build     # 出安装包
 
 ## 品牌与许可
 
-- 品牌 · 版权：Feedra © 2026
+- 代码许可：[MIT](LICENSE)，版权 Feedra © 2026。
 - Snoop 这只猫的形象、名字、文案人格由本项目所有。技术代码开源，但请不要拿"Snoop"这个品牌和吉祥物做同类产品。
-
-正式许可条款见后续 `LICENSE` 文件（暂未落定）。
