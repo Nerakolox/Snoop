@@ -98,7 +98,8 @@ export default function KLEKeyboard({
             const hasDualLabel = key.upper !== "";
 
             const pressed = pressedIndices?.has(index);
-            const count = pressed ? 1 : (keyCounts[key.code] ?? 0);
+            // 自定义配列的键没有 code（legend→code 映射不在本次范围内），按 0 次/无数据处理
+            const count = pressed ? 1 : key.code ? (keyCounts[key.code] ?? 0) : 0;
             const level = pressed ? 4 : bucketByPercentile(count, allCounts);
 
             // 计算键位的像素位置和尺寸（扣除间隙）
@@ -152,7 +153,7 @@ export default function KLEKeyboard({
 
             return (
               <div
-                key={key.code}
+                key={key.code ?? `k${index}`}
                 className={`kle-key${selectedIndex === index ? " kle-key--selected" : ""}`}
                 style={keyStyle}
                 aria-label={`${readableLabel}, ${count} 次`}

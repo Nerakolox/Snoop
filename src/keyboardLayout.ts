@@ -1,21 +1,29 @@
 /**
- * 项目自有配列。每个键：code（身份）、x/y/w/h（几何，U）、lower/upper（印字）。
- * 目前内置 104（全尺寸）和 87（TKL，去掉数字小键盘）两种。
- * 自定义配列仍走 KLE 选择器（设置页预览），输入页热力图只用这里的格式。
+ * 项目自有配列。每个键：code（身份）、x/y/w/h（几何，U）、lower/upper（印字）、
+ * row（行序号，供 Cherry 行高分级用）。目前内置 104（全尺寸）和 87（TKL）两种。
+ *
+ * 自定义 KLE 配列（设置页导入）也从这里的 getLayoutForId 出，但没有可靠的
+ * legend → W3C code 映射，code 留空：不参与热力统计（按 0 次/无数据处理），
+ * 只提供形状 + 行高的真实渲染几何。
  */
 
 import raw104 from "./assets/layout/ansi-104.json";
 import raw87 from "./assets/layout/ansi-87.json";
 import { lookupTiers } from "./layouts/labels";
+import { getLayoutById, isCustomLayoutId } from "./layouts";
+import { parseKLE } from "./kleParser";
 
 export type LayoutKey = {
-  code: string;
+  /** W3C code（按键身份）；自定义配列的键没有可靠映射，留空。 */
+  code?: string;
   x: number;
   y: number;
   w: number;
   h: number;
   lower: string;
   upper: string;
+  /** 行序号（从上往下，0-based）；缺失时渲染层按 y 聚类兜底。 */
+  row?: number;
 };
 
 export const LAYOUT: LayoutKey[] = raw104 as LayoutKey[];
@@ -26,7 +34,26 @@ const LAYOUT_87: LayoutKey[] = raw87 as LayoutKey[];
 const LAYOUT_87_MAX_X = Math.max(...LAYOUT_87.map((k) => k.x + k.w));
 const LAYOUT_87_MAX_Y = Math.max(...LAYOUT_87.map((k) => k.y + k.h));
 
-/** 按配列 ID 返回对应键表和边界；未知 ID 回落到 104。 */
+/** 把自定义配列的原始 KLE JSON 转成渲染层键表（仅形状 + 行高，不含 code）。 */
+function buildCustomLayout(id: string): { keys: LayoutKey[]; maxX: number; maxY: number } | null {
+  const entry = getLayoutById(id);
+  if (!entry) return null;
+  const parsed = parseKLE(entry.data);
+  const keys: LayoutKey[] = parsed.keys
+    .filter((k) => !k.decal)
+    .map((k) => ({
+      x: k.x,
+      y: k.y,
+      w: k.w,
+      h: k.h,
+      lower: k.label,
+      upper: "",
+      row: k.row,
+    }));
+  return { keys, maxX: parsed.maxX, maxY: parsed.maxY };
+}
+
+/** 按配列 ID 返回对应键表和边界。自定义 ID 解析失败时才回落 104。 */
 export function getLayoutForId(id: string): {
   keys: LayoutKey[];
   maxX: number;
@@ -34,6 +61,10 @@ export function getLayoutForId(id: string): {
 } {
   if (id === "87") {
     return { keys: LAYOUT_87, maxX: LAYOUT_87_MAX_X, maxY: LAYOUT_87_MAX_Y };
+  }
+  if (isCustomLayoutId(id)) {
+    const custom = buildCustomLayout(id);
+    if (custom) return custom;
   }
   return { keys: LAYOUT, maxX: LAYOUT_MAX_X, maxY: LAYOUT_MAX_Y };
 }

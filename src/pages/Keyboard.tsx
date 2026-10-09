@@ -166,6 +166,8 @@ export default function Keyboard() {
   const allKeyCounts = useMemo(() => Object.values(keyCounts), [keyCounts]);
 
   const handleKeyClick = (key: LayoutKey) => {
+    // 自定义配列的键没有 code（legend→code 映射不在本次范围内），点击不下钻
+    if (!key.code) return;
     actions.setSelectedKey(selectedKey === key.code ? null : key.code);
   };
 
