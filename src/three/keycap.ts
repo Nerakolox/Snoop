@@ -83,32 +83,58 @@ export type RowProfile = {
 };
 
 /**
- * 配列 y → 行型。主键区自上而下：
- * - 功能键行与数字行同型（R1，最高、前倾最大）；
- * - 字母上排（Q）次之（R2）；home 行最低最平（R3）；
- * - 字母下排（Z）后仰（R4）；底行（空格）后仰更大（R5）。
- * 整体形成朝向手指的凹陷弧面。
+ * Cherry 原厂键帽高度：从最靠后/上排（远离使用者，如功能行/数字行）到最靠前/下排
+ * （空格行）单调递减、前倾角同向递减 —— 不是「两端高、home 行最低」的对称波浪。
  */
-const ROW_TYPE_BY_Y: Record<number, RowType> = {
-  0: "R1",
-  1.5: "R1",
-  2.5: "R2",
-  3.5: "R3",
-  4.5: "R4",
-  5.5: "R5",
-};
-
 export const ROW_PROFILES: Record<RowType, RowProfile> = {
-  R1: { height: 0.32, tiltDeg: 5, dish: 0.035, taper: 0.06 },
-  R2: { height: 0.29, tiltDeg: 2.5, dish: 0.035, taper: 0.06 },
-  R3: { height: 0.26, tiltDeg: 0, dish: 0.035, taper: 0.06 },
-  R4: { height: 0.29, tiltDeg: -2.5, dish: 0.035, taper: 0.06 },
-  R5: { height: 0.32, tiltDeg: -5, dish: 0.035, taper: 0.06 },
+  R1: { height: 0.34, tiltDeg: 7, dish: 0.035, taper: 0.06 },
+  R2: { height: 0.305, tiltDeg: 4, dish: 0.035, taper: 0.06 },
+  R3: { height: 0.27, tiltDeg: 1, dish: 0.035, taper: 0.06 },
+  R4: { height: 0.245, tiltDeg: -2, dish: 0.035, taper: 0.06 },
+  R5: { height: 0.22, tiltDeg: -4, dish: 0.035, taper: 0.06 },
 };
 
-/** 取一个键所属的行型（配列未覆盖的 y 一律落到 home 行型，不报错）。 */
-export function rowTypeOf(key: LayoutKey): RowType {
-  return ROW_TYPE_BY_Y[key.y] ?? "R3";
+const ROW_TYPES: RowType[] = ["R1", "R2", "R3", "R4", "R5"];
+
+/** 一个配列内「行序号 → 行型」的判定上下文，覆盖任意行数（不限 104/87 的固定 6 行）。 */
+export type RowContext = {
+  /** 取某个键在本配列里的行序号（从上往下，0-based）。 */
+  rowOf: (key: LayoutKey) => number;
+  /** 本配列总行数。 */
+  totalRows: number;
+};
+
+/**
+ * 按「本配列总行数」把行序号线性映射到 R1..R5 五档分级（夹取到端点）。
+ * 行数越多，分级越密；行数少于 5 的配列（如部分 60%）也能落到合理档位。
+ */
+export function rowTypeForIndex(rowIndex: number, totalRows: number): RowType {
+  if (totalRows <= 1) return "R3";
+  const t = rowIndex / (totalRows - 1);
+  const level = Math.round(t * (ROW_TYPES.length - 1));
+  return ROW_TYPES[Math.max(0, Math.min(ROW_TYPES.length - 1, level))];
+}
+
+/**
+ * 算出一个配列的行判定上下文：优先用键上的 `row` 字段；配列里任何键缺这个字段
+ * （旧数据 / 未跑过迁移），整体按 y 值聚类兜底，不因缺字段而炸。
+ */
+export function computeRowContext(keys: LayoutKey[]): RowContext {
+  if (keys.length > 0 && keys.every((k) => typeof k.row === "number")) {
+    const maxRow = keys.reduce((m, k) => Math.max(m, k.row as number), 0);
+    return { rowOf: (k) => k.row as number, totalRows: maxRow + 1 };
+  }
+  const ys = [...new Set(keys.map((k) => Math.round(k.y * 2) / 2))].sort((a, b) => a - b);
+  const indexByY = new Map(ys.map((y, i) => [y, i]));
+  return {
+    rowOf: (k) => indexByY.get(Math.round(k.y * 2) / 2) ?? 0,
+    totalRows: Math.max(1, ys.length),
+  };
+}
+
+/** 取一个键所属的行型，需先用 `computeRowContext(keys)` 算出上下文。 */
+export function rowTypeOf(key: LayoutKey, ctx: RowContext): RowType {
+  return rowTypeForIndex(ctx.rowOf(key), ctx.totalRows);
 }
 
 // ---------------------------------------------------------------------------

@@ -497,7 +497,7 @@ export default function Settings() {
           <KLELayoutPicker value={layoutId} onChange={handleLayoutChange} />
         </SettingRow>
 
-        <SettingRow label="渲染模式" desc="3D 模式目前存在已知问题，建议暂用平面">
+        <SettingRow label="渲染模式" desc="切换「输入」页键盘热力图的展示方式">
           <SegmentedControl<"2d" | "3d">
             value={renderMode}
             onChange={saveRenderMode}
