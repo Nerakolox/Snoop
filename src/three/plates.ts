@@ -63,7 +63,8 @@ type GlyphMetric = {
   /** 图集内 u 范围（只取墨迹的左右边界）。 */
   u0: number;
   u1: number;
-  /** 图集内 v 范围（只取墨迹的上下边界；v 已按平面 UV 的 y 向上换算好）。 */
+  /** 图集内 v 范围（只取墨迹的上下边界）。图集 flipY = false，v 向下增大，
+   *  所以 v0 对应墨迹底边、v1 对应墨迹顶边。 */
   v0: number;
   v1: number;
   /** 墨迹宽 / 墨迹高 —— 按它排宽度，字形不会被拉伸。 */
@@ -130,14 +131,15 @@ function buildGlyphAtlas(): { texture: CanvasTexture; metrics: Map<string, Glyph
       minY = 0;
       maxY = CELL_H - 1;
     }
-    // 墨高按像素行数算；v 用 1 - y/H 换算，因为图集 flipY = false（y 向下）。
+    // 墨高按像素行数算。图集 y 向下、flipY = false，所以 v 也向下增大：
+    // 墨迹底边 → v0，墨迹顶边 → v1，顶点着色器里再把平面 UV 映射过去。
     const inkH = maxY - minY + 1;
     const inkW = maxX - minX + 1;
     metrics.set(GLYPHS[i], {
       u0: (x0 + minX) / canvas.width,
       u1: (x0 + maxX + 1) / canvas.width,
-      v0: 1 - (maxY + 1) / CELL_H,
-      v1: 1 - minY / CELL_H,
+      v0: (maxY + 1) / CELL_H,
+      v1: minY / CELL_H,
       ratio: inkW / inkH,
     });
   }

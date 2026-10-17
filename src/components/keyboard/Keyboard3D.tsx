@@ -95,9 +95,9 @@ import { useKeySelection } from "./KeySelectionContext";
 // ---- 相机约束 ---------------------------------------------------------------
 const TILT_MIN = 0.012; // 最小俯仰（弧度，从正上方向下；略>0 避免 up 向量退化）
 const TILT_MAX = (65 * Math.PI) / 180; // 65° from vertical = 25° above horizontal
-const TILT_DEFAULT = (38 * Math.PI) / 180; // 默认三分之四视角：能同时看到顶面与前面
+const TILT_DEFAULT = (32 * Math.PI) / 180; // 默认三分之四视角：顶面为主、前壁压住画面下沿
 const YAW_MAX = (40 * Math.PI) / 180; // 水平 ±40°
-const FOV = 45; // 垂直视场角（度）
+const FOV = 38; // 垂直视场角（度）：比 45° 更接近产品图的压缩透视，铝壳厚度更足
 const FIT_MARGIN = 1.1; // 键盘占视口的余量系数
 // 容器高度按「配列 U 宽高比」再除以此系数：配列本身很扁（宽:高 ~3.5:1），
 // 直接照搬到 3D 画布会显得矮；相机 fit 逻辑按容器实际宽高比重算距离，
@@ -636,10 +636,9 @@ export default function Keyboard3D({
         res.plates.guides.setMatrixAt(i, _m);
 
         // 数字：沿牌面局部 X 逐字排布，整体往相机方向推一点点避免与牌面 z-fighting。
-        // billboard 姿态取自相机四元数，它的局部 +X 实际指向屏幕左侧，所以偏移取反，
-        // 字形才会按左→右的阅读顺序排列。
+        // boardGroup 的 billboard 姿态下，实例局部 +X 对应屏幕右侧，直接累加即读序。
         const glyphs = res.plates.layout(formatCount(count));
-        _axisX.set(-1, 0, 0).applyQuaternion(_billboard);
+        _axisX.set(1, 0, 0).applyQuaternion(_billboard);
         _axisZ.set(0, 0, 1).applyQuaternion(_billboard);
         const digitY = plateY + DIGIT_Y_OFFSET;
         for (const gl of glyphs) {
