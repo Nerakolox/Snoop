@@ -38,7 +38,7 @@ pub use macos::{configure_titlebar, get_frontmost_app, is_accessibility_trusted,
 #[cfg(target_os = "windows")]
 mod windows;
 #[cfg(target_os = "windows")]
-pub use windows::{get_frontmost_app, spawn_switch_observer};
+pub use windows::{get_frontmost_app, spawn_switch_observer, windows_build_number};
 
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 mod fallback;

@@ -122,7 +122,7 @@ pub fn run() {
             // Windows：关闭原生装饰，改用前端自绘 title bar；圆角/阴影交给系统组合器
             #[cfg(target_os = "windows")]
             {
-                use window_vibrancy::apply_acrylic;
+                use window_vibrancy::{apply_acrylic, apply_blur};
                 use windows::Win32::Foundation::HWND;
                 use windows::Win32::Graphics::Dwm::{
                     DwmSetWindowAttribute, DWMWA_BORDER_COLOR,
@@ -133,9 +133,20 @@ pub fn run() {
                 if let Some(window) = app.get_webview_window("main") {
                     let _ = window.set_decorations(false);
 
-                    // Acrylic：实时对桌面做模糊，与窗口 focus 状态解耦，切走切回不会掉色。
-                    // 传 None 让系统按主题决定色调；Win10 也吃这一套。
-                    let _ = apply_acrylic(&window, None);
+                    // 背景模糊：与窗口 focus 状态解耦，切走切回不会掉色。
+                    //
+                    // Win11 (build >= 22523) 上 apply_acrylic 走 DWMWA_SYSTEMBACKDROP_TYPE，
+                    // DWM 在 GPU 上合成，拖动窗口无额外开销。
+                    // Win10 上同一函数退化成 SetWindowCompositionAttribute 的
+                    // ACCENT_ENABLE_ACRYLICBLURBEHIND —— 每帧对整个窗口重新采样桌面，
+                    // 拖动窗口时缓存全失效，整窗变成慢动作。
+                    // 所以老系统改用 ACCENT_ENABLE_BLURBEHIND（没有噪声层的磨砂），
+                    // 视觉差异被 sidebar 的 0.8 染色盖住，拖拽恢复流畅。
+                    if platform::windows_build_number() >= 22523 {
+                        let _ = apply_acrylic(&window, None);
+                    } else {
+                        let _ = apply_blur(&window, None);
+                    }
 
                     // vibrancy 之后再关阴影
                     let _ = window.set_shadow(false);

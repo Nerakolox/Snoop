@@ -10,10 +10,12 @@ use windows::Win32::Foundation::{CloseHandle, HANDLE, HWND, LPARAM, WPARAM};
 use windows::Win32::Storage::FileSystem::{
     GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW,
 };
+use windows::Win32::System::SystemInformation::OSVERSIONINFOW;
 use windows::Win32::System::Threading::{
     OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32,
     PROCESS_QUERY_LIMITED_INFORMATION,
 };
+use windows::Wdk::System::SystemServices::RtlGetVersion;
 use windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use windows::Win32::UI::WindowsAndMessaging::{
     DispatchMessageW, GetForegroundWindow, GetMessageW, GetWindowThreadProcessId,
@@ -191,3 +193,21 @@ fn run_win_event_hook() {
 // LPARAM / WPARAM 仅用作签名占位，抑制未用警告
 #[allow(dead_code)]
 fn _keep_unused_types(_: LPARAM, _: WPARAM) {}
+
+/// 当前系统的 build 号（如 Win10 22H2 = 19045，Win11 23H2 = 22631）。
+///
+/// 用 `RtlGetVersion` 而不是 `GetVersionExW`：后者受 manifest 里的
+/// `supportedOS` 影响，在 Win10 上会撒谎报 6.2。
+/// 读不到时返回 0，调用方按最保守的分支处理。
+pub fn windows_build_number() -> u32 {
+    let mut info = OSVERSIONINFOW {
+        dwOSVersionInfoSize: std::mem::size_of::<OSVERSIONINFOW>() as u32,
+        ..Default::default()
+    };
+    // NTSTATUS >= 0 即 STATUS_SUCCESS
+    if unsafe { RtlGetVersion(&mut info) }.0 >= 0 {
+        info.dwBuildNumber
+    } else {
+        0
+    }
+}
