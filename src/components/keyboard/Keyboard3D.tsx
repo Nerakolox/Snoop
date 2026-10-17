@@ -50,6 +50,7 @@ import {
   MeshStandardMaterial,
   PCFSoftShadowMap,
   PerspectiveCamera,
+  PMREMGenerator,
   Quaternion,
   Raycaster,
   Scene,
@@ -58,7 +59,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import type { BufferGeometry, CanvasTexture } from "three";
+import type { BufferGeometry, CanvasTexture, Texture } from "three";
 import type { LayoutKey } from "../../keyboardLayout";
 import { displayLabel } from "../../keyboardLayout";
 import { bucketByPercentile } from "../../analytics";
@@ -85,6 +86,7 @@ import {
   stemWidth,
 } from "../../three/board";
 import { observeTheme, readThemeColors, type ThemeColors } from "../../three/tokens";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import KeyCountTooltip, { type KeyCountAnchor } from "./KeyCountTooltip";
 import { useKeySelection } from "./KeySelectionContext";
 
@@ -195,6 +197,9 @@ type GLResources = {
   markerMesh: InstancedMesh;
   markerGeometry: ReturnType<typeof buildMarkerGeometry>;
   markerMaterial: MeshStandardMaterial;
+  /** 室内环境贴图（PMREM 预滤波）：金属外壳的主要受光来源。 */
+  envTexture: Texture;
+  pmrem: PMREMGenerator;
 };
 
 export default function Keyboard3D({
@@ -279,6 +284,8 @@ export default function Keyboard3D({
     renderer.shadowMap.type = PCFSoftShadowMap;
 
     const scene = new Scene();
+    // 环境反射强度：RoomEnvironment 本身偏亮，压一档免得铝壳发灰、键帽发白。
+    scene.environmentIntensity = 0.6;
     const camera = new PerspectiveCamera(FOV, 1, 0.01, 1000);
 
     // 上下文丢失/恢复状态（effect 作用域内的 let，事件处理器闭包实时共享）
@@ -308,13 +315,13 @@ export default function Keyboard3D({
     const boardH = maxY + 2 * CASE_BEZEL;
 
     // ---- 场景灯光 --------------------------------------------------------------
-    // 不必随上下文重建：灯光没有 GPU 资源，只影响材质的受光计算。
-    // 暖色主光自左上打下，塑造键帽体积与凹槽阴影；冷色补光提亮背光侧面；
-    // 后方轮廓光把外壳边缘从背景里勾出来。
-    scene.add(new HemisphereLight(0xfff8f0, 0x3a3340, 0.55));
-    scene.add(new AmbientLight(0xffffff, 0.15));
+    // 环境图接管了大部分漫反射与环境照明，直射光只负责塑形与投影：
+    // 暖色主光自左上打下，塑键帽体积与凹槽阴影；冷色补光提亮背光侧面；
+    // 后方轮廓光把外壳边缘从背景里勾出来。半球光压到很低，只留一点天地色差。
+    scene.add(new HemisphereLight(0xfff8f0, 0x3a3340, 0.22));
+    scene.add(new AmbientLight(0xffffff, 0.04));
 
-    const keyLight = new DirectionalLight(LIGHT_KEY_COLOR, 1.6);
+    const keyLight = new DirectionalLight(LIGHT_KEY_COLOR, 1.9);
     keyLight.position.set(-6, 12, 8);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
@@ -335,11 +342,11 @@ export default function Keyboard3D({
     scene.add(keyLight);
     scene.add(keyLight.target);
 
-    const fillLight = new DirectionalLight(LIGHT_FILL_COLOR, 0.5);
+    const fillLight = new DirectionalLight(LIGHT_FILL_COLOR, 0.55);
     fillLight.position.set(9, 6, -7);
     scene.add(fillLight);
 
-    const rimLight = new DirectionalLight(0xffffff, 0.35);
+    const rimLight = new DirectionalLight(0xffffff, 0.7);
     rimLight.position.set(0, 4, -12);
     scene.add(rimLight);
 
@@ -434,6 +441,8 @@ export default function Keyboard3D({
         res.markerMesh.dispose();
         res.markerGeometry.dispose();
         res.markerMaterial.dispose();
+        res.envTexture.dispose();
+        res.pmrem.dispose();
       } catch {
         /* 上下文已丢失，dispose 可能抛错，忽略 */
       }
@@ -538,6 +547,13 @@ export default function Keyboard3D({
       markerMesh.renderOrder = 0;
       boardGroup.add(markerMesh);
 
+      // 环境反射：室内棚拍环境（三盏柔光箱 + 顶光）预滤波成 PMREM，挂在 scene 上。
+      // 金属材质的颜色几乎全部来自环境反射 —— 没有它，高 metalness 的铝壳会塌成
+      // 一块纯黑；有了它，侧壁/倒角上会滚过柔光箱的长条高光，才是铝件的样子。
+      const pmrem = new PMREMGenerator(renderer);
+      const envTexture = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = envTexture;
+
       resourcesRef.current = {
         groups,
         keycapMaterial: material,
@@ -557,6 +573,8 @@ export default function Keyboard3D({
         markerMesh,
         markerGeometry,
         markerMaterial,
+        envTexture,
+        pmrem,
       };
     };
     buildResources();
