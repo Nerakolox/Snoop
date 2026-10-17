@@ -40,7 +40,7 @@ import { KEY_PADDING, KEY_UNIT } from "../layouts/metrics";
 // ---------------------------------------------------------------------------
 
 /** 四角圆角系数（相对键宽）。 */
-const KEYCAP_CORNER_RADIUS = 0.11;
+const KEYCAP_CORNER_RADIUS = 0.13;
 /** 每个圆角 / 每一圈的弧线段数。 */
 const SIDE_SEGMENTS = 6;
 /** 顶面倒角段数：4 段已能读出圆弧，再多只是顶点开销。 */
@@ -70,14 +70,16 @@ export type RowProfile = {
 /**
  * Cherry 原厂键帽高度：从最靠后/上排（远离使用者）到最靠前/下排（空格行）
  * 单调递减、前倾角同向递减 —— 不是「两端高、home 行最低」的对称波浪。
- * 高度差合计约 0.195U（≈0.86mm @ 4.4mm/U），与实物的 R1/R5 落差吻合。
+ * 高度差合计约 0.21U（≈0.92mm @ 4.4mm/U），与实物的 R1/R5 落差吻合。
+ * 侧壁收窄压到 0.04：铝坨坨上装的是方形 PBT 键帽，侧壁笔直、顶面只轻微内收，
+ * 收得太狠会读成「塑料笔记本键」。
  */
 export const ROW_PROFILES: Record<RowType, RowProfile> = {
-  R1: { height: 0.30, tiltDeg: 7, dish: 0.028, taper: 0.055, fillet: 0.06 },
-  R2: { height: 0.285, tiltDeg: 4, dish: 0.028, taper: 0.055, fillet: 0.06 },
-  R3: { height: 0.265, tiltDeg: 1, dish: 0.028, taper: 0.055, fillet: 0.06 },
-  R4: { height: 0.25, tiltDeg: -2, dish: 0.028, taper: 0.055, fillet: 0.06 },
-  R5: { height: 0.235, tiltDeg: -4, dish: 0.028, taper: 0.055, fillet: 0.06 },
+  R1: { height: 0.335, tiltDeg: 7, dish: 0.026, taper: 0.04, fillet: 0.055 },
+  R2: { height: 0.32, tiltDeg: 4, dish: 0.026, taper: 0.04, fillet: 0.055 },
+  R3: { height: 0.295, tiltDeg: 1, dish: 0.026, taper: 0.04, fillet: 0.055 },
+  R4: { height: 0.275, tiltDeg: -2, dish: 0.026, taper: 0.04, fillet: 0.055 },
+  R5: { height: 0.26, tiltDeg: -4, dish: 0.026, taper: 0.04, fillet: 0.055 },
 };
 
 const ROW_TYPES: RowType[] = ["R1", "R2", "R3", "R4", "R5"];

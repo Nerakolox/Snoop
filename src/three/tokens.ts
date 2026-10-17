@@ -28,8 +28,8 @@ export type ThemeColors = {
   stem: Color;
 };
 
-/** 强度色阶回退值（与 tokens.css 浅色主题一致，仅用于 SSR/无 DOM 兜底）。 */
-const FALLBACK_INTENSITY = ["#E7E4DE", "#F3C88F", "#F0B77A", "#E68A3C", "#D1602C"];
+/** 3D 键帽色阶回退值（浅色主题）。3D 自成一套：0 档奶油白、上行琥珀。 */
+const FALLBACK_KEY = ["#E9E2D3", "#EBC389", "#E6A961", "#D98A43", "#C4632C"];
 
 function readVar(name: string, fallback: string): string {
   if (typeof document === "undefined") return fallback;
@@ -44,8 +44,10 @@ function luminance(c: Color): number {
 
 /** 读当前主题的键帽填充色 + 标签深/浅色。 */
 export function readThemeColors(): ThemeColors {
-  const intensity = FALLBACK_INTENSITY.map(
-    (fallback, lvl) => new Color(readVar(`--intensity-${lvl}`, fallback))
+  // 键帽填充优先读 3D 专用 --kb3d-key-*；旧主题 / 未定义时回落到 2D 强度阶，
+  // 保证任何主题下都有可用的五档颜色。
+  const intensity = FALLBACK_KEY.map((fallback, lvl) =>
+    new Color(readVar(`--kb3d-key-${lvl}`, readVar(`--intensity-${lvl}`, fallback)))
   );
   const text = new Color(readVar("--color-text", "#2A2730"));
   const bg = new Color(readVar("--color-bg", "#FAF8F5"));
