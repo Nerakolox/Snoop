@@ -6,7 +6,7 @@
  *   雕刻（高度 / 前倾后仰 / 柱面凹陷 / 侧壁收窄）全部烤进几何，实例矩阵只缩 XZ、不缩 Y。
  *   行型判定不依赖固定 y 值：按「该键在本配列里第几行 + 本配列总行数」映射，
  *   覆盖任意行数的配列（见 three/keycap.ts 的 computeRowContext/rowTypeOf）。
- * - 外壳 + 键位格 + 轴柱 + 标记用中性色 token（--kb3d-case/plate/stem），绝取暖色阶；
+ * - 外壳 + 键位格用中性色 token（--kb3d-case/plate），绝取暖色阶；
  *   整块键盘挂在 boardGroup 上绕 X 轴转 6° 打字倾角（前端低、后端高）。
  * - 真实光照：MeshStandardMaterial（PBR）+ 半球光/环境光/主光 + 两盏方向补光，
  *   ACES 色调映射 + PCFSoft 阴影。键帽立体感来自雕刻几何 + 解析法线 + 阴影，
@@ -15,9 +15,10 @@
  *   键帽抬起时能看到真实的键座凹陷，而不是贴在一块平面上。
  * - 相机自实现（不用 OrbitControls）：默认三分之四视角（俯仰 38°），
  *   俯仰限「俯视 → 与水平约 25°」、水平 ±40°，滚轮缩放限距，带「重置视角」。
- * - 高度编码开关（默认关、localStorage 持久化）：关=键帽落回键位格、保留行高差；
- *   开=键帽下方生成本周期计数归一化的「轴柱」顶起，上界取 95 分位，超过者顶到最高
- *   并在轴柱上打标记。
+ * - 高度编码开关（默认关、localStorage 持久化）：键帽永不离开键位格；计数改由
+ *   键帽正上方的悬浮数值牌表达（见 three/plates.ts）——牌子悬空高度 = 固定间距 +
+ *   √(计数/p95) 的抬升量，牌面直接写次数，超 95 分位换强调色描边并拉出引导线。
+ *   开/关与数据变化都带过渡动画，牌子本体随相机 billboard 朝向。
  * - 标签图集一次烘焙，实例化 UV 取样，主题切换只换标签深浅两个 uniform。
  * - 按需渲染：无常驻 rAF，仅在数据/主题/视角/悬浮/过渡动画变化时渲染一帧。
  *   页面隐藏/最小化时过渡动画循环完全停止。
@@ -75,16 +76,17 @@ import {
   rowTypeOf,
   type RowType,
 } from "../../three/keycap";
+import { buildCaseGeometry, buildDeckGeometry, CASE_BEZEL } from "../../three/board";
 import {
-  buildCaseGeometry,
-  buildDeckGeometry,
-  buildMarkerGeometry,
-  buildStemGeometry,
-  CASE_BEZEL,
-  DECK_FLOOR,
-  MARKER_RADIUS,
-  stemWidth,
-} from "../../three/board";
+  buildPlateResources,
+  DIGIT_HEIGHT,
+  formatCount,
+  GUIDE_WIDTH,
+  PLATE_GAP,
+  PLATE_HEIGHT,
+  PLATE_RISE,
+  PLATE_WIDTH,
+} from "../../three/plates";
 import { observeTheme, readThemeColors, type ThemeColors } from "../../three/tokens";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import KeyCountTooltip, { type KeyCountAnchor } from "./KeyCountTooltip";
@@ -109,9 +111,8 @@ const ZOOM_PER_PX = 0.0012; // 滚轮缩放灵敏度
 const DRAG_THRESHOLD_PX = 4; // 位移超过此值判定为拖拽（否则算点击）
 const TRANSITION_MS = 340; // 视角/高度过渡时长
 
-// ---- 整块键盘的打字倾角 / 高度编码 -----------------------------------------
+// ---- 整块键盘的打字倾角 / 数值牌 -------------------------------------------
 const TYPING_ANGLE = (6 * Math.PI) / 180; // 6° 打字倾角（绕 X，前端低后端高）
-const MAX_LIFT = 1.1; // 高度编码时轴柱最大抬升（U）
 
 // ---- 真实光照（PBR）---------------------------------------------------------
 const SHADOW_MAP_SIZE = 2048;
@@ -121,6 +122,9 @@ const LIGHT_FILL_COLOR = 0xb9c7ff;
 // ---- 悬浮高亮 -----------------------------------------------------------------
 const HOVER_LIFT = 0.06; // 悬浮键上浮量（U）
 const OUTLINE_SCALE = 1.08; // 描边壳外扩比例（XZ）
+
+/** 字形在牌面上的竖向偏移：字体基线落在牌面中线上，视觉居中。 */
+const DIGIT_Y_OFFSET = 0.004;
 
 const ACCENT_FALLBACK = "#7C5CFF";
 
@@ -191,12 +195,8 @@ type GLResources = {
   deckMesh: Mesh;
   deckGeometry: BufferGeometry;
   deckMaterial: MeshStandardMaterial;
-  stemMesh: InstancedMesh;
-  stemGeometry: ReturnType<typeof buildStemGeometry>;
-  stemMaterial: MeshStandardMaterial;
-  markerMesh: InstancedMesh;
-  markerGeometry: ReturnType<typeof buildMarkerGeometry>;
-  markerMaterial: MeshStandardMaterial;
+  /** 悬浮数值牌（牌子 / 引导线 / 数字）整组资源。 */
+  plates: ReturnType<typeof buildPlateResources>;
   /** 室内环境贴图（PMREM 预滤波）：金属外壳的主要受光来源。 */
   envTexture: Texture;
   pmrem: PMREMGenerator;
@@ -309,6 +309,11 @@ export default function Keyboard3D({
     }
     // 行判定上下文：优先读 key.row，缺失时整体按 y 聚类兜底（见 three/keycap.ts）
     const rowCtx = computeRowContext(keys);
+    // 每键键帽顶面高度（行型剖面高）：数值牌的悬空起点，键帽本身不动
+    const capTopY = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      capTopY[i] = ROW_PROFILES[rowTypeOf(keys[i], rowCtx)].height;
+    }
 
     // 整块键盘（外壳/键位格/键帽/轴柱/标记）的外形尺寸，用于相机 fit
     const boardW = maxX + 2 * CASE_BEZEL;
@@ -354,10 +359,12 @@ export default function Keyboard3D({
     const camRef: { current: CameraState } = { current: { radius: 1, yaw: 0, tilt: TILT_DEFAULT } };
     const camTargetRef: { current: CameraState | null } = { current: null };
     const userAdjustedRef: { current: boolean } = { current: false };
-    const liftRef = {
+    const riseRef = {
       current: new Float32Array(n),
       target: new Float32Array(n),
     };
+    // 数值牌整体可见度（0 → 1）：高度编码开关的淡入淡出，与抬升共用一条过渡动画
+    const plateMixRef = { current: 0, target: 0 };
     const p95Ref: { current: number } = { current: 0 }; // 当前周期 95 分位（高度编码上界）
     const hoverRef: { current: number | null } = { current: null };
     const selectedRef: { current: number | null } = { current: null };
@@ -435,12 +442,7 @@ export default function Keyboard3D({
         res.caseMaterial.dispose();
         res.deckMesh.geometry.dispose();
         res.deckMaterial.dispose();
-        res.stemMesh.dispose();
-        res.stemGeometry.dispose();
-        res.stemMaterial.dispose();
-        res.markerMesh.dispose();
-        res.markerGeometry.dispose();
-        res.markerMaterial.dispose();
+        res.plates.dispose();
         res.envTexture.dispose();
         res.pmrem.dispose();
       } catch {
@@ -519,33 +521,11 @@ export default function Keyboard3D({
       caseMesh.renderOrder = -3;
       boardGroup.add(caseMesh);
 
-      // 轴柱（高度编码把键帽顶起的中性柱体）与超 95 分位标记
-      const stemGeometry = buildStemGeometry();
-      const stemMaterial = new MeshStandardMaterial({
-        color: themeRef.current.stem,
-        roughness: 0.55,
-        metalness: 0.1,
-      });
-      const stemMesh = new InstancedMesh(stemGeometry, stemMaterial, n);
-      stemMesh.instanceMatrix.setUsage(DynamicDrawUsage);
-      stemMesh.castShadow = true;
-      stemMesh.receiveShadow = true;
-      stemMesh.renderOrder = -2;
-      boardGroup.add(stemMesh);
-
-      const markerGeometry = buildMarkerGeometry();
-      const accent = readAccent();
-      const markerMaterial = new MeshStandardMaterial({
-        color: accent,
-        emissive: accent,
-        emissiveIntensity: 0.55,
-        roughness: 0.35,
-        metalness: 0,
-      });
-      const markerMesh = new InstancedMesh(markerGeometry, markerMaterial, n);
-      markerMesh.instanceMatrix.setUsage(DynamicDrawUsage);
-      markerMesh.renderOrder = 0;
-      boardGroup.add(markerMesh);
+      // 悬浮数值牌：牌子 + 引导线 + 数字三套实例化网格，整组挂在 boardGroup 下，
+      // 随打字倾角一起转；牌面朝向由 writeMatrices 里的 billboard 姿态保证。
+      const plateRes = buildPlateResources(n);
+      plateRes.setAccent(readAccent());
+      boardGroup.add(plateRes.root);
 
       // 环境反射：室内棚拍环境（三盏柔光箱 + 顶光）预滤波成 PMREM，挂在 scene 上。
       // 金属材质的颜色几乎全部来自环境反射 —— 没有它，高 metalness 的铝壳会塌成
@@ -567,12 +547,7 @@ export default function Keyboard3D({
         deckMesh,
         deckGeometry,
         deckMaterial,
-        stemMesh,
-        stemGeometry,
-        stemMaterial,
-        markerMesh,
-        markerGeometry,
-        markerMaterial,
+        plates: plateRes,
         envTexture,
         pmrem,
       };
@@ -580,17 +555,39 @@ export default function Keyboard3D({
     buildResources();
 
     // ---- 矩阵 / 描边 / 渲染 ---------------------------------------------------
+    // 数值牌 billboard：牌子挂在 boardGroup 下，boardGroup 有 6° 打字倾角，
+    // 所以实例旋转要先把相机朝向换算到 boardGroup 局部空间（inverse(board) × camera）。
+    // 相机无 roll，牌的局部 +Y 在屏幕上仍是竖直的，引导线读起来就是一条垂线。
+    const _billboard = new Quaternion();
+    const _axisZ = new Vector3();
+    const _axisX = new Vector3();
+    const _negBoardQ = new Quaternion();
+    const updateBillboard = () => {
+      const res = resourcesRef.current;
+      if (!res) return;
+      _negBoardQ.copy(res.boardGroup.quaternion).invert();
+      _billboard.copy(_negBoardQ).multiply(camera.quaternion);
+    };
+
+    /** 一帧内每键只算一次：牌子可见度、悬空高度、牌底/键顶高度。 */
+    const plateHeightOf = (i: number): number => {
+      const hover = i === hoverRef.current ? HOVER_LIFT : 0;
+      // 牌中心 = 键帽顶面 + 悬浮 + 牌高一半 + √(计数/p95) 抬升
+      return capTopY[i] + hover + PLATE_GAP + PLATE_HEIGHT / 2 + riseRef.current[i] * plateMixRef.current;
+    };
+
     const writeMatrices = () => {
       const res = resourcesRef.current;
       if (!res) return;
-      const p95 = p95Ref.current;
+      const mix = plateMixRef.current;
+      updateBillboard();
 
-      // 键帽：XZ 缩放按键宽高，Y 恒为 1（雕刻已烤进几何），Y 位置 = 轴柱抬升 + 悬浮
+      // 键帽：XZ 缩放按键宽高，Y 恒为 1（雕刻已烤进几何），只留悬浮上浮
       for (const g of res.groups) {
         for (let j = 0; j < g.indices.length; j++) {
           const i = g.indices[j];
           const hover = i === hoverRef.current ? HOVER_LIFT : 0;
-          _pos.set(keyCenterX[i], liftRef.current[i] + hover, keyCenterZ[i]);
+          _pos.set(keyCenterX[i], hover, keyCenterZ[i]);
           _scale.set(keyScaleX[i], 1, keyScaleZ[i]);
           _m.compose(_pos, _q, _scale);
           g.mesh.setMatrixAt(j, _m);
@@ -598,44 +595,96 @@ export default function Keyboard3D({
         g.mesh.instanceMatrix.needsUpdate = true;
       }
 
-      // 轴柱：居中的中性柱体，从键位格凹槽底顶到抬升高度；抬升为 0 时全零缩放隐藏
-      const stem = res.stemMesh;
+      // 牌子 / 引导线 / 数字：都用同一组大小与姿态
+      const plateW = PLATE_WIDTH * mix;
+      const plateH = PLATE_HEIGHT * mix;
+      let digitCursor = 0;
       for (let i = 0; i < n; i++) {
-        const lift = liftRef.current[i];
-        const sw = stemWidth(keyScaleX[i], keyScaleZ[i]);
-        if (lift <= 0) {
+        const count = countOf(i);
+        const visible = mix > 0.001 && count > 0;
+        if (!visible) {
           _pos.set(0, 0, 0);
           _scale.set(0, 0, 0);
-        } else {
-          // 柱体底端埋进凹槽底之下，避免键帽抬起时在孔底看到一条缝
-          const base = DECK_FLOOR - 0.02;
-          const height = lift - base;
-          _pos.set(keyCenterX[i], base + height / 2, keyCenterZ[i]);
-          _scale.set(sw, height, sw);
+          _m.compose(_pos, _q, _scale);
+          res.plates.plates.setMatrixAt(i, _m);
+          res.plates.guides.setMatrixAt(i, _m);
+          continue;
         }
-        _m.compose(_pos, _q, _scale);
-        stem.setMatrixAt(i, _m);
-      }
-      stem.instanceMatrix.needsUpdate = true;
 
-      // 标记：高度编码开启且计数超过 95 分位 → 轴柱前端一个小球；否则全零缩放隐藏
-      const marker = res.markerMesh;
-      for (let i = 0; i < n; i++) {
-        const exceed = heightModeRef.current && p95 > 0 && countOf(i) > p95;
-        if (!exceed) {
+        const hover = i === hoverRef.current ? HOVER_LIFT : 0;
+        const plateY = plateHeightOf(i);
+
+        // 面板
+        _pos.set(keyCenterX[i], plateY, keyCenterZ[i]);
+        _scale.set(plateW, plateH, mix);
+        _m.compose(_pos, _billboard, _scale);
+        res.plates.plates.setMatrixAt(i, _m);
+
+        // 引导线：键帽顶面往上一点 → 牌底；靠键帽一端在着色器里淡出
+        const guideBottom = capTopY[i] + hover + 0.03;
+        const guideTop = plateY - plateH / 2;
+        const guideH = Math.max(0, guideTop - guideBottom);
+        if (guideH > 0.004) {
+          _pos.set(keyCenterX[i], guideBottom + guideH / 2, keyCenterZ[i]);
+          _scale.set(GUIDE_WIDTH * mix, guideH, mix);
+          _m.compose(_pos, _billboard, _scale);
+        } else {
           _pos.set(0, 0, 0);
           _scale.set(0, 0, 0);
-        } else {
-          const lift = liftRef.current[i];
-          const sw = stemWidth(keyScaleX[i], keyScaleZ[i]);
-          _pos.set(keyCenterX[i], lift - MARKER_RADIUS, keyCenterZ[i] + sw / 2 + MARKER_RADIUS * 0.3);
-          _scale.set(1, 1, 1);
+          _m.compose(_pos, _q, _scale);
         }
-        _m.compose(_pos, _q, _scale);
-        marker.setMatrixAt(i, _m);
+        res.plates.guides.setMatrixAt(i, _m);
+
+        // 数字：沿牌面局部 X 逐字排布，整体往相机方向推一点点避免与牌面 z-fighting。
+        // billboard 姿态取自相机四元数，它的局部 +X 实际指向屏幕左侧，所以偏移取反，
+        // 字形才会按左→右的阅读顺序排列。
+        const glyphs = res.plates.layout(formatCount(count));
+        _axisX.set(-1, 0, 0).applyQuaternion(_billboard);
+        _axisZ.set(0, 0, 1).applyQuaternion(_billboard);
+        const digitY = plateY + DIGIT_Y_OFFSET;
+        for (const gl of glyphs) {
+          if (digitCursor >= res.plates.digits.count) break;
+          _pos
+            .set(keyCenterX[i], digitY, keyCenterZ[i])
+            .addScaledVector(_axisX, gl.offset)
+            .addScaledVector(_axisZ, 0.004);
+          _q.copy(_billboard);
+          _scale.set(gl.width * mix, DIGIT_HEIGHT * mix, mix);
+          _m.compose(_pos, _q, _scale);
+          res.plates.digits.setMatrixAt(digitCursor, _m);
+          res.plates.digitUv.setXY(digitCursor, gl.u0, gl.u1);
+          res.plates.digitV.setXY(digitCursor, gl.v0, gl.v1);
+          digitCursor++;
+        }
       }
-      marker.instanceMatrix.needsUpdate = true;
+      res.plates.plates.count = n;
+      res.plates.guides.count = n;
+      res.plates.digits.count = digitCursor;
+      res.plates.plates.instanceMatrix.needsUpdate = true;
+      res.plates.guides.instanceMatrix.needsUpdate = true;
+      res.plates.digits.instanceMatrix.needsUpdate = true;
+      res.plates.digitUv.needsUpdate = true;
+      res.plates.plates.visible = mix > 0.001;
+      res.plates.guides.visible = mix > 0.001;
+      res.plates.digits.visible = mix > 0.001;
     };
+
+    /** 超 95 分位的键在面板/引导线上加强调。数据或高度开关变化时刷新一次即可。 */
+    const writeEmphasis = () => {
+      const res = resourcesRef.current;
+      if (!res) return;
+      const p95 = p95Ref.current;
+      const plateAttr = res.plates.plateEmphasis;
+      const guideAttr = res.plates.guideEmphasis;
+      for (let i = 0; i < n; i++) {
+        const on = heightModeRef.current && p95 > 0 && countOf(i) > p95 ? 1 : 0;
+        plateAttr.setX(i, on);
+        guideAttr.setX(i, on);
+      }
+      plateAttr.needsUpdate = true;
+      guideAttr.needsUpdate = true;
+    };
+
     const updateOutline = () => {
       const res = resourcesRef.current;
       if (!res) return;
@@ -647,7 +696,7 @@ export default function Keyboard3D({
         }
         g.outline.visible = true;
         const hover = idx === hoverRef.current ? HOVER_LIFT : 0;
-        _pos.set(keyCenterX[idx], liftRef.current[idx] + hover, keyCenterZ[idx]);
+        _pos.set(keyCenterX[idx], hover, keyCenterZ[idx]);
         // 只外扩 XZ、不抬高 Y：描边只在四周形成一圈，不从键帽顶上冒出来
         _scale.set(keyScaleX[idx] * OUTLINE_SCALE, 1, keyScaleZ[idx] * OUTLINE_SCALE);
         _m.compose(_pos, _q, _scale);
@@ -698,14 +747,11 @@ export default function Keyboard3D({
       res.outlineMaterial.color.copy(readAccent());
       res.caseMaterial.color.copy(themeRef.current.caseColor);
       res.deckMaterial.color.copy(themeRef.current.plate);
-      res.stemMaterial.color.copy(themeRef.current.stem);
-      const accent = readAccent();
-      res.markerMaterial.color.copy(accent);
-      res.markerMaterial.emissive.copy(accent);
+      res.plates.setAccent(readAccent());
       render();
     };
 
-    // ---- 轴柱抬升目标 ----------------------------------------------------------
+    // ---- 数值牌抬升目标 --------------------------------------------------------
     /** 当前周期非零计数的 95 分位（高度编码上界）。 */
     const computeP95 = (): number => {
       const arr: number[] = [];
@@ -717,8 +763,12 @@ export default function Keyboard3D({
       arr.sort((a, b) => a - b);
       return arr[Math.floor(arr.length * 0.95)];
     };
-    const computeTargetLift = (): Float32Array => {
+    /** 每键牌子的抬升量：√(计数/p95) 归一化 —— 平方根压缩了长尾，
+     *  高频键之间的小差异仍然拉开，而 1 次和 3 次不会一个贴顶一个贴地。
+     *  高度编码关闭时全部归零、牌子整体隐藏。 */
+    const computeTargetRise = (): Float32Array => {
       const arr = new Float32Array(n);
+      plateMixRef.target = heightModeRef.current ? 1 : 0;
       if (!heightModeRef.current) {
         p95Ref.current = 0;
         return arr;
@@ -729,12 +779,12 @@ export default function Keyboard3D({
       for (let i = 0; i < n; i++) {
         const c = countOf(i);
         if (c <= 0) continue;
-        arr[i] = Math.min(c / p95, 1) * MAX_LIFT;
+        arr[i] = Math.sqrt(Math.min(c / p95, 1)) * PLATE_RISE;
       }
       return arr;
     };
 
-    // ---- 过渡动画（轴柱 + 相机共用一条 rAF 循环） ------------------------------
+    // ---- 过渡动画（数值牌 + 相机共用一条 rAF 循环） ----------------------------
     const stopAnim = () => {
       if (animRef.current != null) {
         cancelAnimationFrame(animRef.current);
@@ -743,17 +793,20 @@ export default function Keyboard3D({
     };
     const startAnim = (duration: number) => {
       stopAnim();
-      const startLift = Float32Array.from(liftRef.current);
-      const targetLift = liftRef.target;
+      const startRise = Float32Array.from(riseRef.current);
+      const targetRise = riseRef.target;
+      const startMix = plateMixRef.current;
+      const targetMix = plateMixRef.target;
       const startCam = { ...camRef.current };
       const t0 = performance.now();
       const step = (now: number) => {
         const t = Math.min(1, (now - t0) / duration);
         const e = easeInOutCubic(t);
-        const cur = liftRef.current;
+        const cur = riseRef.current;
         for (let i = 0; i < n; i++) {
-          cur[i] = startLift[i] + (targetLift[i] - startLift[i]) * e;
+          cur[i] = startRise[i] + (targetRise[i] - startRise[i]) * e;
         }
+        plateMixRef.current = startMix + (targetMix - startMix) * e;
         // 相机目标每帧实时读取：用户拖拽/缩放会把它清空，此时立即放开相机
         const targetCam = camTargetRef.current;
         if (targetCam) {
@@ -766,7 +819,8 @@ export default function Keyboard3D({
           animRef.current = requestAnimationFrame(step);
         } else {
           animRef.current = null;
-          cur.set(targetLift);
+          cur.set(targetRise);
+          plateMixRef.current = targetMix;
           if (camTargetRef.current) {
             camRef.current = { ...camTargetRef.current };
             camTargetRef.current = null;
@@ -906,9 +960,10 @@ export default function Keyboard3D({
         disposeResources();
         buildResources();
         contextLost = false;
-        // camRef / liftRef / themeRef / heightMode 是 JS 态，天然保留：
-        // 相机角度、缩放、高度开关、轴柱抬升、颜色全数恢复，不重置为默认值。
+        // camRef / riseRef / plateMixRef / themeRef / heightMode 是 JS 态，天然保留：
+        // 相机角度、缩放、高度开关、牌子抬升与可见度、颜色全数恢复，不重置为默认值。
         applyTheme();
+        writeEmphasis();
         writeMatrices();
         setGlStatus("ok");
         render();
@@ -949,11 +1004,13 @@ export default function Keyboard3D({
     // ---- 控制器（供其它 effect 调用） -----------------------------------------
     const controller: Keyboard3DController = {
       updateData() {
-        liftRef.target = computeTargetLift();
+        riseRef.target = computeTargetRise();
         applyColors();
+        writeEmphasis();
         if (!heightModeRef.current) {
-          // 高度编码关闭：轴柱抬升恒 0，直接同步（避免无谓动画）
-          liftRef.current.set(liftRef.target);
+          // 高度编码关闭：牌子不可见，直接同步（避免无谓动画）
+          riseRef.current.set(riseRef.target);
+          plateMixRef.current = plateMixRef.target;
           render();
         } else {
           // 高度编码开启：数据变化时平滑过渡到新抬升
@@ -962,7 +1019,8 @@ export default function Keyboard3D({
       },
       applyTheme,
       setHeightMode() {
-        liftRef.target = computeTargetLift();
+        riseRef.target = computeTargetRise();
+        writeEmphasis();
         camTargetRef.current = null;
         startAnim(TRANSITION_MS);
       },
@@ -985,7 +1043,9 @@ export default function Keyboard3D({
     camera.aspect = initW / initH;
     camera.updateProjectionMatrix();
     camRef.current.radius = fitRadius(TILT_DEFAULT);
-    liftRef.current.set(computeTargetLift());
+    riseRef.current.set(computeTargetRise());
+    plateMixRef.current = plateMixRef.target;
+    writeEmphasis();
     applyColors();
     resourcesRef.current!.setTextColors(themeRef.current.darkText, themeRef.current.lightText);
     render();
@@ -1016,7 +1076,7 @@ export default function Keyboard3D({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 数据变化 → 重算颜色/轴柱
+  // 数据变化 → 重算颜色 / 数值牌
   useEffect(() => {
     ctrlRef.current?.updateData();
   }, [keyCounts, allKeyCounts, pressedIndices]);
@@ -1072,9 +1132,9 @@ export default function Keyboard3D({
         <button
           className={`kb3d-btn${heightMode ? " is-on" : ""}`}
           onClick={() => setHeightMode((v) => !v)}
-          title="用键帽高度编码击键次数"
+          title="在键帽上方显示每个键的击键次数"
         >
-          显示敲击次数高度
+          显示敲击次数
         </button>
       </div>
       {heightMode && heightLegend && (

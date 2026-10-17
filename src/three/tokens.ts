@@ -24,8 +24,6 @@ export type ThemeColors = {
   plate: Color;
   /** 外壳（四周边框 + 底座的中性色）。 */
   caseColor: Color;
-  /** 轴柱（高度编码时把键帽顶起的柱体中性色）。 */
-  stem: Color;
 };
 
 /** 3D 键帽色阶回退值（浅色主题）。3D 自成一套：0 档奶油白、上行琥珀。 */
@@ -55,8 +53,7 @@ export function readThemeColors(): ThemeColors {
   const lightText = luminance(text) <= luminance(bg) ? bg : text;
   const plate = new Color(readVar("--kb3d-plate", "#3B363F"));
   const caseColor = new Color(readVar("--kb3d-case", "#CCC7BE"));
-  const stem = new Color(readVar("--kb3d-stem", "#8C868F"));
-  return { intensity, darkText, lightText, plate, caseColor, stem };
+  return { intensity, darkText, lightText, plate, caseColor };
 }
 
 /** 监听 `data-theme` 属性变化（含系统主题切换），回调中重读 token。返回清理函数。 */

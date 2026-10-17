@@ -14,12 +14,7 @@
  * 坐标约定：键帽底面为 Y=0（向上为正），配列坐标以配列中心为原点。
  */
 
-import {
-  BoxGeometry,
-  BufferGeometry,
-  Float32BufferAttribute,
-  SphereGeometry,
-} from "three";
+import { BufferGeometry, Float32BufferAttribute } from "three";
 import type { LayoutKey } from "../keyboardLayout";
 import { KEY_GAP, KEY_UNIT } from "../layouts/metrics";
 import { fixWinding, roundedRectOutline } from "./keycap";
@@ -65,20 +60,6 @@ const DECK_SEG = 3;
 const CELL_CORNER = 0.005;
 /** 凹孔圆角半径（U）：跟键帽底缘圆角接近，四周缝宽看起来均匀。 */
 const HOLE_CORNER = 0.045;
-
-/** 轴柱宽度上限（U）：宽键也收成一个居中开关，不随键宽一起变粗。 */
-export const STEM_MAX_W = 0.28;
-/** 轴柱最小宽度（U）。 */
-export const STEM_MIN_W = 0.1;
-/** 轴柱宽度相对键帽较短边的比例：接近真实开关尺寸，抬起来才读得出是「柱」不是「块」。 */
-const STEM_WIDTH_RATIO = 0.24;
-/** 超 95 分位标记球的半径（U）。 */
-export const MARKER_RADIUS = 0.085;
-
-/** 轴柱宽度：按键帽较短边取比例并夹取，宽键封顶成居中开关状。 */
-export function stemWidth(scaleX: number, scaleZ: number): number {
-  return Math.max(STEM_MIN_W, Math.min(STEM_MAX_W, Math.min(scaleX, scaleZ) * STEM_WIDTH_RATIO));
-}
 
 function finish(positions: number[], normals: number[], indices: number[]): BufferGeometry {
   fixWinding(positions, normals, indices);
@@ -388,12 +369,4 @@ export function buildDeckGeometry(
   }
 
   return finish(positions, normals, indices);
-}
-export function buildStemGeometry(): BoxGeometry {
-  return new BoxGeometry(1, 1, 1);
-}
-
-/** 超 95 分位标记：小圆球（原点居中），放在轴柱顶端。 */
-export function buildMarkerGeometry(): SphereGeometry {
-  return new SphereGeometry(MARKER_RADIUS, 12, 12);
 }
