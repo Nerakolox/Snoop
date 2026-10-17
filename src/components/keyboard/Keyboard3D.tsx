@@ -6,15 +6,18 @@
  *   雕刻（高度 / 前倾后仰 / 柱面凹陷 / 侧壁收窄）全部烤进几何，实例矩阵只缩 XZ、不缩 Y。
  *   行型判定不依赖固定 y 值：按「该键在本配列里第几行 + 本配列总行数」映射，
  *   覆盖任意行数的配列（见 three/keycap.ts 的 computeRowContext/rowTypeOf）。
- * - 外壳 + 定位板 + 轴柱 + 标记用中性色 token（--kb3d-case/plate/stem），绝取暖色阶；
+ * - 外壳 + 键位格 + 轴柱 + 标记用中性色 token（--kb3d-case/plate/stem），绝取暖色阶；
  *   整块键盘挂在 boardGroup 上绕 X 轴转 6° 打字倾角（前端低、后端高）。
- * - MeshBasicMaterial 无光照：键帽立体感来自雕刻 + 键缝 + 固定比例侧面加深，同色键帽
- *   显示色严格一致，不接任何方向光/高光/法线贴图。外壳/定位板用顶点灰度 × 材质色。
- * - 相机自实现（不用 OrbitControls）：默认俯视，俯仰限「俯视 → 与水平约 25°」、
- *   水平 ±40°，滚轮缩放限距，带「重置视角」。
- * - 高度编码开关（默认关、localStorage 持久化）：关=键帽落回定位板、保留行高差；
+ * - 真实光照：MeshStandardMaterial（PBR）+ 半球光/环境光/主光 + 两盏方向补光，
+ *   ACES 色调映射 + PCFSoft 阴影。键帽立体感来自雕刻几何 + 解析法线 + 阴影，
+ *   外壳/键位格表面用 roughness 区分塑料与亚光材质，不再烘焙顶点灰度。
+ * - 键位格是一整片按配列凿孔的网格：键帽从孔里升起，孔壁与凹槽底接住落影，
+ *   键帽抬起时能看到真实的键座凹陷，而不是贴在一块平面上。
+ * - 相机自实现（不用 OrbitControls）：默认三分之四视角（俯仰 38°），
+ *   俯仰限「俯视 → 与水平约 25°」、水平 ±40°，滚轮缩放限距，带「重置视角」。
+ * - 高度编码开关（默认关、localStorage 持久化）：关=键帽落回键位格、保留行高差；
  *   开=键帽下方生成本周期计数归一化的「轴柱」顶起，上界取 95 分位，超过者顶到最高
- *   并在轴柱上打标记。开启且相机仍在默认俯视时自动过渡到 45°。
+ *   并在轴柱上打标记。
  * - 标签图集一次烘焙，实例化 UV 取样，主题切换只换标签深浅两个 uniform。
  * - 按需渲染：无常驻 rAF，仅在数据/主题/视角/悬浮/过渡动画变化时渲染一帧。
  *   页面隐藏/最小化时过渡动画循环完全停止。
@@ -32,14 +35,20 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  ACESFilmicToneMapping,
+  AmbientLight,
   Color,
+  DirectionalLight,
   DoubleSide,
   DynamicDrawUsage,
   Group,
+  HemisphereLight,
   InstancedMesh,
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  MeshStandardMaterial,
+  PCFSoftShadowMap,
   PerspectiveCamera,
   Quaternion,
   Raycaster,
@@ -67,14 +76,13 @@ import {
 } from "../../three/keycap";
 import {
   buildCaseGeometry,
+  buildDeckGeometry,
   buildMarkerGeometry,
-  buildPlateGeometry,
   buildStemGeometry,
   CASE_BEZEL,
+  DECK_FLOOR,
   MARKER_RADIUS,
-  PLATE_MARGIN,
-  STEM_MAX_W,
-  STEM_MIN_W,
+  stemWidth,
 } from "../../three/board";
 import { observeTheme, readThemeColors, type ThemeColors } from "../../three/tokens";
 import KeyCountTooltip, { type KeyCountAnchor } from "./KeyCountTooltip";
@@ -83,14 +91,14 @@ import { useKeySelection } from "./KeySelectionContext";
 // ---- 相机约束 ---------------------------------------------------------------
 const TILT_MIN = 0.012; // 最小俯仰（弧度，从正上方向下；略>0 避免 up 向量退化）
 const TILT_MAX = (65 * Math.PI) / 180; // 65° from vertical = 25° above horizontal
-const TILT_AUTO = (45 * Math.PI) / 180; // 开启高度编码时自动倾斜到的角度
+const TILT_DEFAULT = (38 * Math.PI) / 180; // 默认三分之四视角：能同时看到顶面与前面
 const YAW_MAX = (40 * Math.PI) / 180; // 水平 ±40°
 const FOV = 45; // 垂直视场角（度）
 const FIT_MARGIN = 1.1; // 键盘占视口的余量系数
 // 容器高度按「配列 U 宽高比」再除以此系数：配列本身很扁（宽:高 ~3.5:1），
 // 直接照搬到 3D 画布会显得矮；相机 fit 逻辑按容器实际宽高比重算距离，
 // 加高容器不会裁切或拉伸键盘，只是留出更多竖向空间看清俯仰视角。
-const CONTAINER_HEIGHT_BOOST = 1.35;
+const CONTAINER_HEIGHT_BOOST = 1.15;
 const RADIUS_MIN_FACTOR = 0.42; // 相对 fit 距离的最小缩放
 const RADIUS_MAX_FACTOR = 3.0; // 相对 fit 距离的最大缩放
 const ROTATE_YAW_PER_PX = 0.006; // 水平拖拽灵敏度（弧度/像素）
@@ -102,7 +110,11 @@ const TRANSITION_MS = 340; // 视角/高度过渡时长
 // ---- 整块键盘的打字倾角 / 高度编码 -----------------------------------------
 const TYPING_ANGLE = (6 * Math.PI) / 180; // 6° 打字倾角（绕 X，前端低后端高）
 const MAX_LIFT = 1.1; // 高度编码时轴柱最大抬升（U）
-const CASE_SINK = 0.004; // 外壳顶面相对定位板的下沉量，避免共面 z-fighting
+
+// ---- 真实光照（PBR）---------------------------------------------------------
+const SHADOW_MAP_SIZE = 2048;
+const LIGHT_KEY_COLOR = 0xfff3e6;
+const LIGHT_FILL_COLOR = 0xb9c7ff;
 
 // ---- 悬浮高亮 -----------------------------------------------------------------
 const HOVER_LIFT = 0.06; // 悬浮键上浮量（U）
@@ -148,7 +160,7 @@ type Props = {
 type Keyboard3DController = {
   updateData(): void;
   applyTheme(): void;
-  setHeightMode(on: boolean, wasOff: boolean): void;
+  setHeightMode(): void;
   setSelected(index: number | null): void;
   resetView(): void;
 };
@@ -166,23 +178,23 @@ type KeyGroup = {
 /** 可整体销毁再重建的 GL 资源（上下文恢复时用）。 */
 type GLResources = {
   groups: KeyGroup[];
-  keycapMaterial: MeshBasicMaterial;
+  keycapMaterial: MeshStandardMaterial;
   setTextColors: ReturnType<typeof buildKeycapMaterial>["setTextColors"];
   atlasTexture: CanvasTexture;
   outlineMaterial: MeshBasicMaterial;
   boardGroup: Group;
   caseMesh: Mesh;
   caseGeometry: BufferGeometry;
-  caseMaterial: MeshBasicMaterial;
-  plateMesh: Mesh;
-  plateGeometry: BufferGeometry;
-  plateMaterial: MeshBasicMaterial;
+  caseMaterial: MeshStandardMaterial;
+  deckMesh: Mesh;
+  deckGeometry: BufferGeometry;
+  deckMaterial: MeshStandardMaterial;
   stemMesh: InstancedMesh;
   stemGeometry: ReturnType<typeof buildStemGeometry>;
-  stemMaterial: MeshBasicMaterial;
+  stemMaterial: MeshStandardMaterial;
   markerMesh: InstancedMesh;
   markerGeometry: ReturnType<typeof buildMarkerGeometry>;
-  markerMaterial: MeshBasicMaterial;
+  markerMaterial: MeshStandardMaterial;
 };
 
 export default function Keyboard3D({
@@ -261,6 +273,10 @@ export default function Keyboard3D({
     renderer.setPixelRatio(dpr);
     renderer.outputColorSpace = SRGBColorSpace;
     renderer.setClearColor(0x000000, 0); // 透明背景，透出页面 token 底色
+    renderer.toneMapping = ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = PCFSoftShadowMap;
 
     const scene = new Scene();
     const camera = new PerspectiveCamera(FOV, 1, 0.01, 1000);
@@ -287,14 +303,48 @@ export default function Keyboard3D({
     // 行判定上下文：优先读 key.row，缺失时整体按 y 聚类兜底（见 three/keycap.ts）
     const rowCtx = computeRowContext(keys);
 
-    // 整块键盘（外壳/定位板/键帽/轴柱/标记）的外形尺寸，用于相机 fit
-    const plateW = maxX + 2 * PLATE_MARGIN;
-    const plateH = maxY + 2 * PLATE_MARGIN;
-    const boardW = plateW + 2 * CASE_BEZEL;
-    const boardH = plateH + 2 * CASE_BEZEL;
+    // 整块键盘（外壳/键位格/键帽/轴柱/标记）的外形尺寸，用于相机 fit
+    const boardW = maxX + 2 * CASE_BEZEL;
+    const boardH = maxY + 2 * CASE_BEZEL;
+
+    // ---- 场景灯光 --------------------------------------------------------------
+    // 不必随上下文重建：灯光没有 GPU 资源，只影响材质的受光计算。
+    // 暖色主光自左上打下，塑造键帽体积与凹槽阴影；冷色补光提亮背光侧面；
+    // 后方轮廓光把外壳边缘从背景里勾出来。
+    scene.add(new HemisphereLight(0xfff8f0, 0x3a3340, 0.55));
+    scene.add(new AmbientLight(0xffffff, 0.15));
+
+    const keyLight = new DirectionalLight(LIGHT_KEY_COLOR, 1.6);
+    keyLight.position.set(-6, 12, 8);
+    keyLight.castShadow = true;
+    keyLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
+    keyLight.shadow.bias = -0.0005;
+    keyLight.shadow.normalBias = 0.01;
+    {
+      // 阴影正交感光区只需覆盖键盘本身；留一点余量给抬起的键帽。
+      const span = Math.max(boardW, boardH) * 0.62 + 1;
+      const sc = keyLight.shadow.camera;
+      sc.left = -span;
+      sc.right = span;
+      sc.top = span;
+      sc.bottom = -span;
+      sc.near = 0.5;
+      sc.far = 40;
+      sc.updateProjectionMatrix();
+    }
+    scene.add(keyLight);
+    scene.add(keyLight.target);
+
+    const fillLight = new DirectionalLight(LIGHT_FILL_COLOR, 0.5);
+    fillLight.position.set(9, 6, -7);
+    scene.add(fillLight);
+
+    const rimLight = new DirectionalLight(0xffffff, 0.35);
+    rimLight.position.set(0, 4, -12);
+    scene.add(rimLight);
 
     const themeRef: { current: ThemeColors } = { current: readThemeColors() };
-    const camRef: { current: CameraState } = { current: { radius: 1, yaw: 0, tilt: TILT_MIN } };
+    const camRef: { current: CameraState } = { current: { radius: 1, yaw: 0, tilt: TILT_DEFAULT } };
     const camTargetRef: { current: CameraState | null } = { current: null };
     const userAdjustedRef: { current: boolean } = { current: false };
     const liftRef = {
@@ -336,13 +386,16 @@ export default function Keyboard3D({
     };
 
     // ---- 相机 ------------------------------------------------------------------
-    const fitRadius = () => {
+    /** 按当前俯仰估算 fit 距离：斜视时近端前缘离相机更近、远端后缘在屏幕上更高，
+     *  只按正投影算会把近端切掉，所以按俯仰补一点余量。 */
+    const fitRadius = (tilt: number = camRef.current.tilt) => {
       const w = container.clientWidth || 1;
       const h = container.clientHeight || 1;
       const aspect = w / h;
       const tan = Math.tan(((FOV * Math.PI) / 180) / 2);
-      const rY = (boardH * FIT_MARGIN) / (2 * tan);
-      const rX = (boardW * FIT_MARGIN) / (2 * tan * aspect);
+      const depth = (boardH / 2) * Math.sin(tilt);
+      const rX = (boardW * FIT_MARGIN) / (2 * tan * aspect) + depth * 0.5;
+      const rY = (boardH * Math.cos(tilt) * FIT_MARGIN) / (2 * tan);
       return Math.max(rY, rX);
     };
     const applyCamera = () => {
@@ -373,8 +426,8 @@ export default function Keyboard3D({
         res.outlineMaterial.dispose();
         res.caseMesh.geometry.dispose();
         res.caseMaterial.dispose();
-        res.plateMesh.geometry.dispose();
-        res.plateMaterial.dispose();
+        res.deckMesh.geometry.dispose();
+        res.deckMaterial.dispose();
         res.stemMesh.dispose();
         res.stemGeometry.dispose();
         res.stemMaterial.dispose();
@@ -387,7 +440,7 @@ export default function Keyboard3D({
       resourcesRef.current = null;
     };
 
-    /** 构建几何 + 图集 + 材质 + 行型网格 + 外壳/定位板/轴柱/标记（首次挂载与上下文恢复共用）。 */
+    /** 构建几何 + 图集 + 材质 + 行型网格 + 外壳/键位格/轴柱/标记（首次挂载与上下文恢复共用）。 */
     const buildResources = () => {
       const atlas = buildKeycapAtlas(keys, dpr);
       const { material, setTextColors } = buildKeycapMaterial(atlas.texture);
@@ -415,6 +468,8 @@ export default function Keyboard3D({
         applyAtlasUvAttributes(geometry, indices.map((gi) => atlas.cells[gi]));
         const mesh = new InstancedMesh(geometry, material, indices.length);
         mesh.instanceMatrix.setUsage(DynamicDrawUsage);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
         mesh.renderOrder = 0;
         boardGroup.add(mesh);
 
@@ -427,30 +482,57 @@ export default function Keyboard3D({
         groups.push({ rowType, indices, mesh, outline, geometry });
       }
 
-      // 外壳（四周边框 + 底座）与定位板（键缝露出的深中性表面）
-      const plateGeometry = buildPlateGeometry(plateW, plateH);
-      const plateMaterial = new MeshBasicMaterial({ vertexColors: true, color: themeRef.current.plate });
-      const plateMesh = new Mesh(plateGeometry, plateMaterial);
-      plateMesh.renderOrder = -3;
-      boardGroup.add(plateMesh);
+      // 键位格：整片键区凿孔成格，键帽从孔里升起；孔壁与凹槽底接住阴影。
+      // 材质读作阳极氧化铝（深色、金属度拉满、粗糙度中等偏低），不是塑料板。
+      const deckGeometry = buildDeckGeometry(keys, maxX, maxY);
+      const deckMaterial = new MeshStandardMaterial({
+        color: themeRef.current.plate,
+        roughness: 0.46,
+        metalness: 0.9,
+      });
+      const deckMesh = new Mesh(deckGeometry, deckMaterial);
+      deckMesh.receiveShadow = true;
+      deckMesh.castShadow = true;
+      deckMesh.renderOrder = -3;
+      boardGroup.add(deckMesh);
 
-      const caseGeometry = buildCaseGeometry(boardW, boardH);
-      const caseMaterial = new MeshBasicMaterial({ vertexColors: true, color: themeRef.current.caseColor });
+      // 外壳：底部实体 + 顶沿倒角 + 腔体，键位格嵌在腔体里。
+      // CNC 一体铝：金属度接近满值、粗糙度偏低但不到镜面，高光宽而柔。
+      const caseGeometry = buildCaseGeometry(boardW, boardH, maxX, maxY);
+      const caseMaterial = new MeshStandardMaterial({
+        color: themeRef.current.caseColor,
+        roughness: 0.38,
+        metalness: 0.92,
+      });
       const caseMesh = new Mesh(caseGeometry, caseMaterial);
-      caseMesh.position.y = -CASE_SINK;
+      caseMesh.receiveShadow = true;
+      caseMesh.castShadow = true;
       caseMesh.renderOrder = -3;
       boardGroup.add(caseMesh);
 
       // 轴柱（高度编码把键帽顶起的中性柱体）与超 95 分位标记
       const stemGeometry = buildStemGeometry();
-      const stemMaterial = new MeshBasicMaterial({ color: themeRef.current.stem });
+      const stemMaterial = new MeshStandardMaterial({
+        color: themeRef.current.stem,
+        roughness: 0.55,
+        metalness: 0.1,
+      });
       const stemMesh = new InstancedMesh(stemGeometry, stemMaterial, n);
       stemMesh.instanceMatrix.setUsage(DynamicDrawUsage);
+      stemMesh.castShadow = true;
+      stemMesh.receiveShadow = true;
       stemMesh.renderOrder = -2;
       boardGroup.add(stemMesh);
 
       const markerGeometry = buildMarkerGeometry();
-      const markerMaterial = new MeshBasicMaterial({ color: readAccent() });
+      const accent = readAccent();
+      const markerMaterial = new MeshStandardMaterial({
+        color: accent,
+        emissive: accent,
+        emissiveIntensity: 0.55,
+        roughness: 0.35,
+        metalness: 0,
+      });
       const markerMesh = new InstancedMesh(markerGeometry, markerMaterial, n);
       markerMesh.instanceMatrix.setUsage(DynamicDrawUsage);
       markerMesh.renderOrder = 0;
@@ -466,9 +548,9 @@ export default function Keyboard3D({
         caseMesh,
         caseGeometry,
         caseMaterial,
-        plateMesh,
-        plateGeometry,
-        plateMaterial,
+        deckMesh,
+        deckGeometry,
+        deckMaterial,
         stemMesh,
         stemGeometry,
         stemMaterial,
@@ -498,17 +580,20 @@ export default function Keyboard3D({
         g.mesh.instanceMatrix.needsUpdate = true;
       }
 
-      // 轴柱：居中的中性柱体，从定位板顶到抬升高度；抬升为 0 时全零缩放隐藏
+      // 轴柱：居中的中性柱体，从键位格凹槽底顶到抬升高度；抬升为 0 时全零缩放隐藏
       const stem = res.stemMesh;
       for (let i = 0; i < n; i++) {
         const lift = liftRef.current[i];
-        const sw = Math.max(STEM_MIN_W, Math.min(STEM_MAX_W, Math.min(keyScaleX[i], keyScaleZ[i]) * 0.5));
+        const sw = stemWidth(keyScaleX[i], keyScaleZ[i]);
         if (lift <= 0) {
           _pos.set(0, 0, 0);
           _scale.set(0, 0, 0);
         } else {
-          _pos.set(keyCenterX[i], lift / 2, keyCenterZ[i]);
-          _scale.set(sw, lift, sw);
+          // 柱体底端埋进凹槽底之下，避免键帽抬起时在孔底看到一条缝
+          const base = DECK_FLOOR - 0.02;
+          const height = lift - base;
+          _pos.set(keyCenterX[i], base + height / 2, keyCenterZ[i]);
+          _scale.set(sw, height, sw);
         }
         _m.compose(_pos, _q, _scale);
         stem.setMatrixAt(i, _m);
@@ -524,7 +609,7 @@ export default function Keyboard3D({
           _scale.set(0, 0, 0);
         } else {
           const lift = liftRef.current[i];
-          const sw = Math.max(STEM_MIN_W, Math.min(STEM_MAX_W, Math.min(keyScaleX[i], keyScaleZ[i]) * 0.5));
+          const sw = stemWidth(keyScaleX[i], keyScaleZ[i]);
           _pos.set(keyCenterX[i], lift - MARKER_RADIUS, keyCenterZ[i] + sw / 2 + MARKER_RADIUS * 0.3);
           _scale.set(1, 1, 1);
         }
@@ -594,9 +679,11 @@ export default function Keyboard3D({
       res.setTextColors(themeRef.current.darkText, themeRef.current.lightText);
       res.outlineMaterial.color.copy(readAccent());
       res.caseMaterial.color.copy(themeRef.current.caseColor);
-      res.plateMaterial.color.copy(themeRef.current.plate);
+      res.deckMaterial.color.copy(themeRef.current.plate);
       res.stemMaterial.color.copy(themeRef.current.stem);
-      res.markerMaterial.color.copy(readAccent());
+      const accent = readAccent();
+      res.markerMaterial.color.copy(accent);
+      res.markerMaterial.emissive.copy(accent);
       render();
     };
 
@@ -641,8 +728,6 @@ export default function Keyboard3D({
       const startLift = Float32Array.from(liftRef.current);
       const targetLift = liftRef.target;
       const startCam = { ...camRef.current };
-      const hasCamTarget = camTargetRef.current != null;
-      const targetCam = camTargetRef.current ?? startCam;
       const t0 = performance.now();
       const step = (now: number) => {
         const t = Math.min(1, (now - t0) / duration);
@@ -651,7 +736,9 @@ export default function Keyboard3D({
         for (let i = 0; i < n; i++) {
           cur[i] = startLift[i] + (targetLift[i] - startLift[i]) * e;
         }
-        if (hasCamTarget) {
+        // 相机目标每帧实时读取：用户拖拽/缩放会把它清空，此时立即放开相机
+        const targetCam = camTargetRef.current;
+        if (targetCam) {
           camRef.current.radius = startCam.radius + (targetCam.radius - startCam.radius) * e;
           camRef.current.yaw = startCam.yaw + (targetCam.yaw - startCam.yaw) * e;
           camRef.current.tilt = startCam.tilt + (targetCam.tilt - startCam.tilt) * e;
@@ -662,8 +749,8 @@ export default function Keyboard3D({
         } else {
           animRef.current = null;
           cur.set(targetLift);
-          if (hasCamTarget) {
-            camRef.current = { ...targetCam };
+          if (camTargetRef.current) {
+            camRef.current = { ...camTargetRef.current };
             camTargetRef.current = null;
           }
           render();
@@ -742,6 +829,7 @@ export default function Keyboard3D({
         }
         if (dragRef.moved) {
           userAdjustedRef.current = true;
+          camTargetRef.current = null; // 用户接管视角，取消未完成的过渡动画目标
           const { invertDragX: ix, invertDragY: iy } = dragInvertRef.current;
           // 默认（false）= 反转；true = 原始方向
           const signX = iy ? 1 : -1;
@@ -770,6 +858,7 @@ export default function Keyboard3D({
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       userAdjustedRef.current = true;
+      camTargetRef.current = null; // 缩放即接管视角，取消未完成的过渡动画目标
       const fit = fitRadius();
       const factor = Math.exp(e.deltaY * ZOOM_PER_PX);
       const next = Math.max(fit * RADIUS_MIN_FACTOR, Math.min(fit * RADIUS_MAX_FACTOR, camRef.current.radius * factor));
@@ -801,12 +890,7 @@ export default function Keyboard3D({
         contextLost = false;
         // camRef / liftRef / themeRef / heightMode 是 JS 态，天然保留：
         // 相机角度、缩放、高度开关、轴柱抬升、颜色全数恢复，不重置为默认值。
-        applyColors();
-        resourcesRef.current!.setTextColors(themeRef.current.darkText, themeRef.current.lightText);
-        resourcesRef.current!.caseMaterial.color.copy(themeRef.current.caseColor);
-        resourcesRef.current!.plateMaterial.color.copy(themeRef.current.plate);
-        resourcesRef.current!.stemMaterial.color.copy(themeRef.current.stem);
-        resourcesRef.current!.markerMaterial.color.copy(readAccent());
+        applyTheme();
         writeMatrices();
         setGlStatus("ok");
         render();
@@ -859,14 +943,9 @@ export default function Keyboard3D({
         }
       },
       applyTheme,
-      setHeightMode(on: boolean, wasOff: boolean) {
+      setHeightMode() {
         liftRef.target = computeTargetLift();
-        if (on && wasOff && !userAdjustedRef.current) {
-          // 从「关闭」切到「开启」，且相机仍在默认俯视 → 自动过渡到 45° 倾斜
-          camTargetRef.current = { radius: camRef.current.radius, yaw: camRef.current.yaw, tilt: TILT_AUTO };
-        } else {
-          camTargetRef.current = null;
-        }
+        camTargetRef.current = null;
         startAnim(TRANSITION_MS);
       },
       setSelected(index: number | null) {
@@ -875,7 +954,7 @@ export default function Keyboard3D({
       },
       resetView() {
         userAdjustedRef.current = false;
-        camTargetRef.current = { radius: fitRadius(), yaw: 0, tilt: TILT_MIN };
+        camTargetRef.current = { radius: fitRadius(TILT_DEFAULT), yaw: 0, tilt: TILT_DEFAULT };
         startAnim(TRANSITION_MS);
       },
     };
@@ -887,7 +966,7 @@ export default function Keyboard3D({
     renderer.setSize(initW, initH, false);
     camera.aspect = initW / initH;
     camera.updateProjectionMatrix();
-    camRef.current.radius = fitRadius();
+    camRef.current.radius = fitRadius(TILT_DEFAULT);
     liftRef.current.set(computeTargetLift());
     applyColors();
     resourcesRef.current!.setTextColors(themeRef.current.darkText, themeRef.current.lightText);
@@ -937,14 +1016,13 @@ export default function Keyboard3D({
       return;
     }
     if (prevHeightModeRef.current === heightMode) return;
-    const wasOff = prevHeightModeRef.current === false;
     prevHeightModeRef.current = heightMode;
     try {
       localStorage.setItem("kb3d_height", heightMode ? "1" : "0");
     } catch {
       /* 隐私模式等场景忽略 */
     }
-    ctrlRef.current?.setHeightMode(heightMode, wasOff);
+    ctrlRef.current?.setHeightMode();
   }, [heightMode]);
 
   // 选中态变化 → 刷新描边
@@ -970,7 +1048,7 @@ export default function Keyboard3D({
         </div>
       )}
       <div className="kb3d-controls">
-        <button className="kb3d-btn" onClick={resetView} title="回到默认俯视视角">
+        <button className="kb3d-btn" onClick={resetView} title="回到默认视角">
           重置视角
         </button>
         <button

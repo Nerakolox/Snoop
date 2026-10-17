@@ -1,33 +1,29 @@
 // @ts-nocheck
 /**
- * 键帽 3D 渲染核心：按 Cherry 原厂高度分行的键帽几何 + 印字图集 + 确定性无光照着色。
+ * 键帽 3D 几何 + 印字图集 + 受光材质。
  *
- * - 【二】几何：按「行型」生成键帽几何（一种行型一个 BufferGeometry），供该行型下
- *   的 `InstancedMesh` 复用；位置/宽高走实例矩阵，绝不逐键建 mesh。每个行型共享同一
- *   套雕刻参数（高度 / 顶面前倾后仰角 / 柱面碗状凹陷 / 侧壁收窄），集中定义在
- *   `ROW_PROFILES` 一张表里，不散落在几何构建代码中。
- * - 【一】着色：沿用 MeshBasicMaterial 无光照。顶面纯色平涂 + 极轻微固定径向明暗
- *   （只让碗状凹陷可见，对每个键完全相同）；侧面/底面在顶面色基础上按固定比例加深，
- *   比例是常量，对所有键、所有朝向一致，不随位置/朝向/相机变化。无平行光/点光/
- *   镜面高光/法线贴图。
- * - 【五】图集：把整张配列的印字一次性烘到一张 canvas（alpha 字形），`CanvasTexture`
- *   复用；标签颜色不在图集里（图集只存字形透明度），改由 shader 按键帽填充色明暗
- *   现算深/浅两种标签色，主题切换只需换两个 uniform。
+ * - 几何：按「行型」生成一份键帽几何（一种行型一个 BufferGeometry），供该行型下的
+ *   InstancedMesh 复用；位置/宽高走实例矩阵。每个键帽由四段构成：
+ *   竖直侧壁 → 顶部倒角圆环（fillet）→ 柱面凹陷的顶面，全部用解析法线，
+ *   倒角段法线连续过渡，受光后形成一圈柔和高光边 —— 这是键帽「有体积」的关键。
+ * - 材质：MeshStandardMaterial 真实受光（PBR）。立体感来自场景灯光 + 阴影，
+ *   不再烘焙顶点明暗；所有键帽颜色一致、朝向一致，光照下读出的明暗也一致。
+ * - 图集：整张配列的印字一次性烘到一张 canvas（alpha 字形），实例化 UV 取样；
+ *   标签颜色按键帽填充色明暗现算深/浅两档，主题切换只换两个 uniform。
+ * - 法线坐标系：键帽整体绕 X 轴倾斜时法线不随行型变化（行型的倾角已烤入几何）。
  *
- * 图集/几何每次挂载重建、卸载销毁（见 Keyboard3D）。文字测量与适配复用
- * `layouts/labels.ts`，绘制时把字号按 `PX_PER_U * dpr / KEY_UNIT` 放大，
- * 不改 labels 的测量坐标系。
+ * 文字测量与适配复用 `layouts/labels.ts`，绘制时把字号按
+ * `PX_PER_U * dpr / KEY_UNIT` 放大，不改 labels 的测量坐标系。
  */
 
 import {
   BufferGeometry,
   CanvasTexture,
   Color,
-  DoubleSide,
   Float32BufferAttribute,
   InstancedBufferAttribute,
   LinearFilter,
-  MeshBasicMaterial,
+  MeshStandardMaterial,
 } from "three";
 import type { LayoutKey } from "../keyboardLayout";
 import {
@@ -40,30 +36,17 @@ import {
 import { KEY_PADDING, KEY_UNIT } from "../layouts/metrics";
 
 // ---------------------------------------------------------------------------
-// 着色常量（确定性：常量，不随位置/朝向/视角变化）
-// ---------------------------------------------------------------------------
-
-/** 侧面相对顶面的固定加深比例。 */
-const SIDE_SHADE = 0.78;
-/** 底面相对顶面的固定加深比例。 */
-const BOTTOM_SHADE = 0.7;
-/** 顶面碗状凹陷的明暗强度：凹陷中心略暗、边缘最亮，让凹陷可见。 */
-const DISH_SHADE = 0.07;
-
-// ---------------------------------------------------------------------------
 // 几何常量
 // ---------------------------------------------------------------------------
 
-/** 四角圆角系数（相对键宽）。0.1 是轻微的圆角，键缝观感自然。 */
-const KEYCAP_CORNER_RADIUS = 0.1;
-/** 每个圆角的弧线段数。越大越圆，4 段已足够顺滑且顶点少。 */
-const SIDE_SEGMENTS = 4;
-/** 顶面同心环细分环数：柱面碗状凹陷需要比单一扇形更多的细分才能成形。 */
-const DISH_RINGS = 3;
-/** 图集每 U 的基础像素，乘以 dpr（上限 2）得到实际光栅分辨率。 */
-const PX_PER_U = 96;
-/** 与 labels.ts 的测量字体一致，保证适配结果和绘制宽度吻合。 */
-const FONT_FAMILY = `-apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", sans-serif`;
+/** 四角圆角系数（相对键宽）。 */
+const KEYCAP_CORNER_RADIUS = 0.11;
+/** 每个圆角 / 每一圈的弧线段数。 */
+const SIDE_SEGMENTS = 6;
+/** 顶面倒角段数：4 段已能读出圆弧，再多只是顶点开销。 */
+const FILLET_SEGMENTS = 4;
+/** 顶面同心环细分环数（柱面凹陷的成形精度）。 */
+const DISH_RINGS = 2;
 
 // ---------------------------------------------------------------------------
 // 行型参数表（Cherry 原厂高度雕刻，唯一真源，便于后续手感调整）
@@ -76,22 +59,25 @@ export type RowProfile = {
   height: number;
   /** 顶面前倾角（度）：正 = 向使用者前倾（前端低），负 = 后仰（前端高）。 */
   tiltDeg: number;
-  /** 柱面碗状凹陷深度（U），沿 X 轴（左右），中心最低。 */
+  /** 柱面碗状凹陷深度（U），沿 X 轴（左右），中心最低、两侧回平。 */
   dish: number;
   /** 侧壁向上收窄量（每边，相对键宽）。 */
   taper: number;
+  /** 顶部倒角半径（U）：侧壁到顶面的圆弧过渡，受光时形成一圈高光边。 */
+  fillet: number;
 };
 
 /**
- * Cherry 原厂键帽高度：从最靠后/上排（远离使用者，如功能行/数字行）到最靠前/下排
- * （空格行）单调递减、前倾角同向递减 —— 不是「两端高、home 行最低」的对称波浪。
+ * Cherry 原厂键帽高度：从最靠后/上排（远离使用者）到最靠前/下排（空格行）
+ * 单调递减、前倾角同向递减 —— 不是「两端高、home 行最低」的对称波浪。
+ * 高度差合计约 0.195U（≈0.86mm @ 4.4mm/U），与实物的 R1/R5 落差吻合。
  */
 export const ROW_PROFILES: Record<RowType, RowProfile> = {
-  R1: { height: 0.34, tiltDeg: 7, dish: 0.035, taper: 0.06 },
-  R2: { height: 0.305, tiltDeg: 4, dish: 0.035, taper: 0.06 },
-  R3: { height: 0.27, tiltDeg: 1, dish: 0.035, taper: 0.06 },
-  R4: { height: 0.245, tiltDeg: -2, dish: 0.035, taper: 0.06 },
-  R5: { height: 0.22, tiltDeg: -4, dish: 0.035, taper: 0.06 },
+  R1: { height: 0.30, tiltDeg: 7, dish: 0.028, taper: 0.055, fillet: 0.06 },
+  R2: { height: 0.285, tiltDeg: 4, dish: 0.028, taper: 0.055, fillet: 0.06 },
+  R3: { height: 0.265, tiltDeg: 1, dish: 0.028, taper: 0.055, fillet: 0.06 },
+  R4: { height: 0.25, tiltDeg: -2, dish: 0.028, taper: 0.055, fillet: 0.06 },
+  R5: { height: 0.235, tiltDeg: -4, dish: 0.028, taper: 0.055, fillet: 0.06 },
 };
 
 const ROW_TYPES: RowType[] = ["R1", "R2", "R3", "R4", "R5"];
@@ -163,124 +149,234 @@ export function roundedRectOutline(
   return new Float32Array(out);
 }
 
+/**
+ * 校正三角形绕序：每个三角形的几何法线（叉积）若与三个顶点的平均解析法线反向，
+ * 就交换后两个索引。环带索引是手写生成的，靠这一步统一到正面朝向，
+ * 材质才能用默认的 FrontSide（背面剔除）。
+ */
+export function fixWinding(
+  positions: number[],
+  normals: number[],
+  indices: number[]
+): void {
+  for (let t = 0; t < indices.length; t += 3) {
+    const a = indices[t];
+    const b = indices[t + 1];
+    const c = indices[t + 2];
+    const ax = positions[a * 3];
+    const ay = positions[a * 3 + 1];
+    const az = positions[a * 3 + 2];
+    const ux = positions[b * 3] - ax;
+    const uy = positions[b * 3 + 1] - ay;
+    const uz = positions[b * 3 + 2] - az;
+    const vx = positions[c * 3] - ax;
+    const vy = positions[c * 3 + 1] - ay;
+    const vz = positions[c * 3 + 2] - az;
+    const gx = uy * vz - uz * vy;
+    const gy = uz * vx - ux * vz;
+    const gz = ux * vy - uy * vx;
+    const nx = normals[a * 3] + normals[b * 3] + normals[c * 3];
+    const ny = normals[a * 3 + 1] + normals[b * 3 + 1] + normals[c * 3 + 1];
+    const nz = normals[a * 3 + 2] + normals[b * 3 + 2] + normals[c * 3 + 2];
+    if (gx * nx + gy * ny + gz * nz < 0) {
+      indices[t + 1] = c;
+      indices[t + 2] = b;
+    }
+  }
+}
+
 // ---------------------------------------------------------------------------
 // 键帽几何（单位坐标 X/Z ∈ [-0.5, 0.5]，Y ∈ [0, height]；雕刻已烤入几何，
 // 实例矩阵只缩放 XZ、不再缩放 Y）
 // ---------------------------------------------------------------------------
 
 /**
- * 构建某一行型的键帽几何。顶面是「前倾/后仰的斜平面」再减一个沿 X 的柱面凹陷，
- * 侧壁向上收窄（顶面轮廓小于底面轮廓），前壁与后壁高度差由倾角决定。
+ * 构建某一行型的键帽几何。纵向剖面（自下而上）：
+ *   底环 Y=0（完整尺寸）
+ *   → 侧壁（轻微向上收窄）
+ *   → 倒角圆环：一段 1/4 圆弧，法线从水平连续转到顶面法线
+ *   → 顶面：前倾/后仰的斜平面再减沿 X 的柱面凹陷
  * 顶面 UV 映到 [0,1]：u 随 X 左→右，v 随 Z 后→前（v=0 为远离用户的键帽上缘）。
  */
 export function buildKeycapGeometry(profile: RowProfile): BufferGeometry {
   const half = 0.5;
-  const topHalf = half - profile.taper;
+  const topHalf = Math.max(0.2, half - profile.taper);
   const topExtent = topHalf * 2;
   const tiltSlope = Math.tan((profile.tiltDeg * Math.PI) / 180);
+  const fillet = Math.min(profile.fillet, topHalf * 0.4);
+  const innerHalf = topHalf - fillet;
+  const innerExtent = innerHalf * 2;
   const cornerTop = KEYCAP_CORNER_RADIUS * topHalf;
   const cornerBot = KEYCAP_CORNER_RADIUS * half;
+  const cornerInner = Math.max(0.01, cornerTop - fillet);
 
-  const positions: number[] = [];
-  const uvs: number[] = [];
-  const isTop: number[] = [];
-  const shade: number[] = [];
-  const indices: number[] = [];
-
-  const push = (x: number, y: number, z: number, u: number, v: number, it: number, s: number) => {
-    positions.push(x, y, z);
-    uvs.push(u, v);
-    isTop.push(it);
-    shade.push(s);
+  // 顶面高度场：高度 − 倾角线性项 − 柱面凹陷（沿 X，中心最低，两侧回平）。
+  const crownY = (x: number, z: number) =>
+    profile.height - tiltSlope * z - profile.dish * (1 - (x / topHalf) * (x / topHalf));
+  // 顶面解析法线（未归一）：n = (∂y/∂x, 1, ∂y/∂z) 是朝上的，取 (dish 项, 1, −slope)。
+  const dishGrad = 2 * profile.dish;
+  const crownNormal = (x: number) => {
+    const nx = -(dishGrad * x) / (topHalf * topHalf);
+    const len = Math.hypot(nx, 1, tiltSlope);
+    return [nx / len, 1 / len, -tiltSlope / len];
   };
 
-  // 顶面 Y（单位坐标）：高度 − 前倾/后仰线性项 − 柱面凹陷（沿 X，中心最低）。
-  const topY = (x: number, z: number) =>
-    profile.height - tiltSlope * z - profile.dish * (1 - (x / topHalf) * (x / topHalf));
-  // 顶面明暗：凹陷中心（x=0）略暗、边缘最亮，每个键完全相同的固定调制。
-  const topShade = (x: number) => 1 - DISH_SHADE * (1 - (x / topHalf) * (x / topHalf));
-
   const botOutline = roundedRectOutline(half, half, cornerBot, SIDE_SEGMENTS);
-  const topOutline = roundedRectOutline(topHalf, topHalf, cornerTop, SIDE_SEGMENTS);
+  const wallOutline = roundedRectOutline(topHalf, topHalf, cornerTop, SIDE_SEGMENTS);
+  const innerOutline = roundedRectOutline(innerHalf, innerHalf, cornerInner, SIDE_SEGMENTS);
   const M = botOutline.length / 2;
 
-  // ---- 顶面（中心 + 同心环细分，让柱面凹陷成形） ---------------------------
-  const ringBase: number[] = [];
-  const ringSize: number[] = [];
-  // 环 0：中心点
-  {
-    const base = positions.length / 3;
-    push(0, topY(0, 0), 0, 0.5, 0.5, 1, topShade(0));
-    ringBase.push(base);
-    ringSize.push(1);
+  const positions: number[] = [];
+  const normals: number[] = [];
+  const uvs: number[] = [];
+  const isTop: number[] = [];
+  const indices: number[] = [];
+
+  const push = (
+    x: number,
+    y: number,
+    z: number,
+    nx: number,
+    ny: number,
+    nz: number,
+    u: number,
+    v: number,
+    it: number
+  ) => {
+    positions.push(x, y, z);
+    normals.push(nx, ny, nz);
+    uvs.push(u, v);
+    isTop.push(it);
+  };
+  // 通用环带连接：a（下环）→ b（上环）。所有环节点按逆时针排列，统一绕序。
+  const band = (aBase: number, bBase: number, count: number) => {
+    for (let i = 0; i < count; i++) {
+      const i2 = (i + 1) % count;
+      const a0 = aBase + i;
+      const a1 = aBase + i2;
+      const b0 = bBase + i;
+      const b1 = bBase + i2;
+      indices.push(a0, a1, b1, a0, b1, b0);
+    }
+  };
+
+  // ---- 底环（Y=0，法线朝下/外侧） -----------------------------------------
+  for (let i = 0; i < M; i++) {
+    const x = botOutline[i * 2];
+    const z = botOutline[i * 2 + 1];
+    const len = Math.hypot(x, z) || 1;
+    push(x, 0, z, x / len, 0, z / len, 0, 0, 0);
   }
-  for (let r = 1; r <= DISH_RINGS + 1; r++) {
-    const t = r / (DISH_RINGS + 1);
-    const outline =
-      r === DISH_RINGS + 1
-        ? topOutline
-        : roundedRectOutline(topHalf * t, topHalf * t, cornerTop * t, SIDE_SEGMENTS);
+
+  // ---- 侧壁（底环 → 倒角起点，法线朝外） -----------------------------------
+  const wallBase = positions.length / 3;
+  const wallNormal = (x: number, z: number) => {
+    // 侧壁在收窄时本身带内倾，法线略向上；内倾量小于倒角，按主方向近似即可。
+    const len = Math.hypot(x, z) || 1;
+    return [x / len, 0.08, z / len];
+  };
+  const wallTop: number[] = [];
+  for (let i = 0; i < M; i++) {
+    const x = wallOutline[i * 2];
+    const z = wallOutline[i * 2 + 1];
+    const y = crownY(x, z) - fillet;
+    wallTop.push(y);
+    const [nx, ny, nz] = wallNormal(x, z);
+    push(x, y, z, nx, ny, nz, 0, 0, 0);
+  }
+  // 侧壁底环顶点与底环位置相同但法线不同（侧壁法线水平），故另建一份。
+  const wallBotBase = positions.length / 3;
+  for (let i = 0; i < M; i++) {
+    const x = botOutline[i * 2];
+    const z = botOutline[i * 2 + 1];
+    const [nx, ny, nz] = wallNormal(x, z);
+    push(x, 0, z, nx, ny, nz, 0, 0, 0);
+  }
+  band(wallBotBase, wallBase, M);
+
+  // ---- 倒角圆环（wallBase → fillet 各段 → 顶面外环） ------------------------
+  // 每段：沿外法线向内 offset = fillet·(1−cosφ)，高度 + fillet·sinφ；
+  // 法线 = 外法线·cosφ + up·sinφ，与侧壁、顶面无缝相接。
+  let prevBase = wallBase;
+  for (let k = 1; k <= FILLET_SEGMENTS; k++) {
+    const phi = (Math.PI / 2) * (k / FILLET_SEGMENTS);
+    const c = Math.cos(phi);
+    const s = Math.sin(phi);
+    const curBase = positions.length / 3;
+    const isLast = k === FILLET_SEGMENTS;
+    for (let i = 0; i < M; i++) {
+      const ox = wallOutline[i * 2];
+      const oz = wallOutline[i * 2 + 1];
+      const len = Math.hypot(ox, oz) || 1;
+      const ex = ox / len;
+      const ez = oz / len;
+      const off = fillet * (1 - c);
+      const x = ox - ex * off;
+      const z = oz - ez * off;
+      const yBase = isLast ? crownY(x, z) : wallTop[i] + fillet * s;
+      const [cnx, cny, cnz] = crownNormal(x);
+      const nx = ex * c * 1 + cnx * s;
+      const ny = cny * s;
+      const nz = ez * c * 1 + cnz * s;
+      const nl = Math.hypot(nx, ny, nz) || 1;
+      const u = isLast ? (x + innerHalf) / innerExtent : 0;
+      const v = isLast ? (z + innerHalf) / innerExtent : 0;
+      push(x, yBase, z, nx / nl, ny / nl, nz / nl, u, v, isLast ? 1 : 0);
+    }
+    band(prevBase, curBase, M);
+    prevBase = curBase;
+  }
+  const topEdgeBase = prevBase;
+
+  // ---- 顶面（外环 → 同心环 → 中心点），UV 铺满 [0,1] ----------------------
+  const ringBase: number[] = [topEdgeBase];
+  const ringSize: number[] = [M];
+  for (let r = 1; r <= DISH_RINGS; r++) {
+    const t = 1 - r / (DISH_RINGS + 1);
+    const outline = roundedRectOutline(innerHalf * t, innerHalf * t, cornerInner * t, SIDE_SEGMENTS);
     const base = positions.length / 3;
     for (let i = 0; i < M; i++) {
       const x = outline[i * 2];
       const z = outline[i * 2 + 1];
-      push(x, topY(x, z), z, (x + topHalf) / topExtent, (z + topHalf) / topExtent, 1, topShade(x));
+      const [nx, ny, nz] = crownNormal(x);
+      push(x, crownY(x, z), z, nx, ny, nz, (x + innerHalf) / innerExtent, (z + innerHalf) / innerExtent, 1);
     }
     ringBase.push(base);
     ringSize.push(M);
   }
+  const centerBase = positions.length / 3;
+  {
+    const [nx, ny, nz] = crownNormal(0);
+    push(0, crownY(0, 0), 0, nx, ny, nz, 0.5, 0.5, 1);
+  }
+  // 环 → 环
   for (let r = 1; r < ringBase.length; r++) {
-    const a = ringBase[r - 1];
-    const aN = ringSize[r - 1];
-    const b = ringBase[r];
-    const bN = ringSize[r];
-    if (aN === 1) {
-      for (let i = 0; i < bN; i++) {
-        indices.push(a, b + i, b + ((i + 1) % bN));
-      }
-    } else {
-      for (let i = 0; i < bN; i++) {
-        const a0 = a + i;
-        const a1 = a + ((i + 1) % bN);
-        const b0 = b + i;
-        const b1 = b + ((i + 1) % bN);
-        indices.push(a0, a1, b1, a0, b1, b0);
-      }
-    }
+    band(ringBase[r - 1], ringBase[r], M);
   }
-
-  // ---- 底面 cap（isTop=0，均匀 BOTTOM_SHADE） -----------------------------
-  const botBase = positions.length / 3;
-  push(0, 0, 0, 0, 0, 0, BOTTOM_SHADE);
-  for (let i = 0; i < M; i++) {
-    push(botOutline[i * 2], 0, botOutline[i * 2 + 1], 0, 0, 0, BOTTOM_SHADE);
-  }
-  for (let i = 0; i < M; i++) {
-    indices.push(botBase, botBase + 1 + i, botBase + 1 + ((i + 1) % M));
-  }
-
-  // ---- 侧面（上边缘复用顶面边缘环、下边缘取底轮廓，均匀 SIDE_SHADE） -------
-  const sideBase = positions.length / 3;
-  for (let i = 0; i < M; i++) {
-    const x = topOutline[i * 2];
-    const z = topOutline[i * 2 + 1];
-    push(x, topY(x, z), z, 0, 0, 0, SIDE_SHADE);
-    push(botOutline[i * 2], 0, botOutline[i * 2 + 1], 0, 0, 0, SIDE_SHADE);
-  }
+  // 最内环 → 中心点
+  const lastBase = ringBase[ringBase.length - 1];
   for (let i = 0; i < M; i++) {
     const i2 = (i + 1) % M;
-    const t0 = sideBase + i * 2;
-    const b0 = sideBase + i * 2 + 1;
-    const t1 = sideBase + i2 * 2;
-    const b1 = sideBase + i2 * 2 + 1;
-    indices.push(t0, t1, b1, t0, b1, b0);
+    indices.push(lastBase + i, lastBase + i2, centerBase);
   }
+
+  // ---- 底面 cap（法线朝下，反向绕序） --------------------------------------
+  const capBase = positions.length / 3;
+  push(0, 0, 0, 0, -1, 0, 0, 0, 0);
+  for (let i = 0; i < M; i++) {
+    push(botOutline[i * 2], 0, botOutline[i * 2 + 1], 0, -1, 0, 0, 0, 0);
+  }
+  for (let i = 0; i < M; i++) {
+    indices.push(capBase, capBase + 1 + ((i + 1) % M), capBase + 1 + i);
+  }
+
+  fixWinding(positions, normals, indices);
 
   const geo = new BufferGeometry();
   geo.setAttribute("position", new Float32BufferAttribute(positions, 3));
+  geo.setAttribute("normal", new Float32BufferAttribute(normals, 3));
   geo.setAttribute("uv", new Float32BufferAttribute(uvs, 2));
   geo.setAttribute("aIsTop", new Float32BufferAttribute(isTop, 1));
-  geo.setAttribute("aShade", new Float32BufferAttribute(shade, 1));
   geo.setIndex(indices);
   return geo;
 }
@@ -296,6 +392,11 @@ export type KeycapAtlas = {
   /** 与传入 keys 同序，每键一个图集单元（UV 偏移 + 缩放）。 */
   cells: AtlasCell[];
 };
+
+/** 图集每 U 的基础像素，乘以 dpr（上限 2）得到实际光栅分辨率。 */
+const PX_PER_U = 96;
+/** 与 labels.ts 的测量字体一致，保证适配结果和绘制宽度吻合。 */
+const FONT_FAMILY = `-apple-system, BlinkMacSystemFont, "SF Pro", "PingFang SC", sans-serif`;
 
 function tiersFor(raw: string): LabelTiers {
   return lookupTiers(raw) ?? { full: raw, abbr: raw };
@@ -424,22 +525,19 @@ export function applyAtlasUvAttributes(geometry: BufferGeometry, cells: AtlasCel
 }
 
 // ---------------------------------------------------------------------------
-// 无光照实例化着色器（MeshBasicMaterial + onBeforeCompile）
+// 受光材质（MeshStandardMaterial + onBeforeCompile 注入印字）
 // ---------------------------------------------------------------------------
 
 const VERT_PRELUDE = /* glsl */ `
 attribute float aIsTop;
-attribute float aShade;
 attribute vec2 aUvOffset;
 attribute vec2 aUvScale;
 varying float vIsTop;
-varying float vShade;
 varying vec2 vTopUv;
 `;
 
 const VERT_MAIN = /* glsl */ `
 vIsTop = aIsTop;
-vShade = aShade;
 vTopUv = aUvOffset + uv * aUvScale;
 `;
 
@@ -448,32 +546,40 @@ uniform sampler2D uAtlas;
 uniform vec3 uTextDark;
 uniform vec3 uTextLight;
 varying float vIsTop;
-varying float vShade;
 varying vec2 vTopUv;
 `;
 
-const FRAG_COLOR = /* glsl */ `
-// 确定性着色：只按固定比例的 aShade 压暗（顶面近 1 + 轻微径向、侧面/底面固定比例），
-// 不做任何方向性明暗，不随相机角度变化
-diffuseColor.rgb *= vShade;
-// 顶面叠印字：图集只存字形 alpha，颜色按当前填充色明暗取深/浅两档
-float glyph = vIsTop * texture2D( uAtlas, vTopUv ).a;
-float lum = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
-vec3 textColor = mix( uTextDark, uTextLight, step( 0.5, lum ) );
-diffuseColor.rgb = mix( diffuseColor.rgb, textColor, glyph );
+/**
+ * 在实例色（instanceColor）与材质色都合成进 diffuseColor 之后、进入光照之前
+ * 叠印字：图集只存字形 alpha，颜色按当前填充色明暗取深/浅两档，
+ * 这样印字跟着键帽一起受光，而不是浮在受光结果之上。
+ */
+const FRAG_LABEL = /* glsl */ `
+{
+  float glyph = vIsTop * texture2D( uAtlas, vTopUv ).a;
+  if ( glyph > 0.001 ) {
+    float lum = dot( diffuseColor.rgb, vec3( 0.299, 0.587, 0.114 ) );
+    // 浅色键帽（lum ≥ 0.5）用深字，深色键帽用浅字
+    vec3 textColor = mix( uTextLight, uTextDark, step( 0.5, lum ) );
+    diffuseColor.rgb = mix( diffuseColor.rgb, textColor, glyph );
+  }
+}
 `;
 
 export type KeycapMaterialHandle = {
-  material: MeshBasicMaterial;
+  material: MeshStandardMaterial;
   /** 主题切换后更新标签深浅色（就地改 uniform 引用，无需重编译）。 */
   setTextColors: (dark: Color, light: Color) => void;
 };
 
-/** 构建无光照键帽材质，注入实例化图集取样与标签着色。 */
+/** 构建受光键帽材质：PBT 质感的哑光塑料（粗糙度高、不反金属光）。 */
 export function buildKeycapMaterial(atlas: CanvasTexture): KeycapMaterialHandle {
   const darkText = new Color("#2A2730");
   const lightText = new Color("#FFFFFF");
-  const material = new MeshBasicMaterial({ side: DoubleSide });
+  const material = new MeshStandardMaterial({
+    roughness: 0.62,
+    metalness: 0,
+  });
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uAtlas = { value: atlas };
@@ -484,9 +590,11 @@ export function buildKeycapMaterial(atlas: CanvasTexture): KeycapMaterialHandle 
       .replace("#include <common>", VERT_PRELUDE + "\n#include <common>")
       .replace("#include <begin_vertex>", VERT_MAIN + "\n#include <begin_vertex>");
 
+    // 注入点在 color_fragment 之后：此时 diffuseColor 已乘上材质色与实例色，
+    // 但还没进光照 —— 印字是 albedo，跟着键帽一起被照亮，而不是浮在受光结果上。
     shader.fragmentShader = shader.fragmentShader
       .replace("#include <common>", FRAG_PRELUDE + "\n#include <common>")
-      .replace("#include <color_fragment>", "#include <color_fragment>\n" + FRAG_COLOR);
+      .replace("#include <color_fragment>", "#include <color_fragment>\n" + FRAG_LABEL);
   };
 
   return {
