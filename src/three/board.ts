@@ -30,7 +30,7 @@ export const CASE_CORNER = 0.12;
 /** 外壳顶沿高度（U）：略高于键位格顶面，形成一圈低矮的托边。 */
 export const CASE_TOP = 0.03;
 /** 顶沿倒角宽度（U）：外壁向内收拢的那圈 45° 斜面，受光成一条细亮线。 */
-export const CASE_CHAMFER = 0.035;
+export const CASE_CHAMFER = 0.004;
 /** 上下壳分模线的位置（U，自键帽底面往下）。 */
 const CASE_SEAM_Y = -0.1;
 /** 分模线凹槽的纵向高度（U）。 */

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>KB3D Preview</title>
+<script>
+const p = new URLSearchParams(location.search);
+const theme = p.get('theme') === 'light' ? 'light' : 'dark';
+document.documentElement.setAttribute('data-theme', theme);
+document.documentElement.style.background = theme === 'light' ? '#f0eeea' : '#111217';
+</script>
+<style>
+html, body { margin: 0; padding: 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="/src/kb3d-preview.tsx"></script>
+</body>
+</html>

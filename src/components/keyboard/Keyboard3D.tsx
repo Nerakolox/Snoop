@@ -515,9 +515,9 @@ export default function Keyboard3D({
       const caseGeometry = buildCaseGeometry(boardW, boardH, maxX, maxY);
       const caseMaterial = new MeshStandardMaterial({
         color: themeRef.current.caseColor,
-        roughness: 0.32,
-        metalness: 0.95,
-        // 近黑铝壳：极低粗糙度让倒角/棱边上的高光线更锐利，与 PBT 键帽的哑光面区分开
+        roughness: 0.22,
+        metalness: 0.88,
+        // 电泳银铝壳：高金属度低粗糙度，阳极氧化处理质感，高光宽而柔
       });
       const caseMesh = new Mesh(caseGeometry, caseMaterial);
       caseMesh.receiveShadow = true;
