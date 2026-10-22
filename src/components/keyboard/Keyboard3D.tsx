@@ -320,14 +320,15 @@ export default function Keyboard3D({
     const boardH = maxY + 2 * CASE_BEZEL;
 
     // ---- 场景灯光 --------------------------------------------------------------
-    // 环境图接管了大部分漫反射与环境照明，直射光只负责塑形与投影：
-    // 暖色主光自左上打下，塑键帽体积与凹槽阴影；冷色补光提亮背光侧面；
-    // 后方轮廓光把外壳边缘从背景里勾出来。半球光压到很低，只留一点天地色差。
-    scene.add(new HemisphereLight(0xfff8f0, 0x3a3340, 0.22));
-    scene.add(new AmbientLight(0xffffff, 0.04));
+    // 主光强、补光弱，强化立体感：参考实物顶面受光充分，侧壁落影深，棱边高光锐。
+    // 半球光仅补最低限度的天地色差，不足以削平阴影。
+    scene.add(new HemisphereLight(0xfff8f0, 0x1a1520, 0.14));
+    scene.add(new AmbientLight(0xffffff, 0.03));
 
-    const keyLight = new DirectionalLight(LIGHT_KEY_COLOR, 1.9);
-    keyLight.position.set(-6, 12, 8);
+    // 主光：左上 45° 俯射，暖白色，产品图典型角度；强度提高以让顶面"发光"、
+    // 凹槽落下足够深的阴影
+    const keyLight = new DirectionalLight(LIGHT_KEY_COLOR, 2.6);
+    keyLight.position.set(-5, 14, 7);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
     keyLight.shadow.bias = -0.0005;
@@ -347,12 +348,13 @@ export default function Keyboard3D({
     scene.add(keyLight);
     scene.add(keyLight.target);
 
-    const fillLight = new DirectionalLight(LIGHT_FILL_COLOR, 0.55);
-    fillLight.position.set(9, 6, -7);
+    const fillLight = new DirectionalLight(LIGHT_FILL_COLOR, 0.28);
+    fillLight.position.set(9, 5, -6);
     scene.add(fillLight);
 
-    const rimLight = new DirectionalLight(0xffffff, 0.7);
-    rimLight.position.set(0, 4, -12);
+    // 轮廓光压暗：参考图背面几乎无补光，靠暗边把外壳从背景里剪出来
+    const rimLight = new DirectionalLight(0xffffff, 0.3);
+    rimLight.position.set(0, 3, -14);
     scene.add(rimLight);
 
     const themeRef: { current: ThemeColors } = { current: readThemeColors() };
@@ -498,8 +500,9 @@ export default function Keyboard3D({
       const deckGeometry = buildDeckGeometry(keys, maxX, maxY);
       const deckMaterial = new MeshStandardMaterial({
         color: themeRef.current.plate,
-        roughness: 0.46,
-        metalness: 0.9,
+        roughness: 0.55,
+        metalness: 0.85,
+        // 定位板极暗，阴影打在近黑底上才能让键缝读成真实的凹槽
       });
       const deckMesh = new Mesh(deckGeometry, deckMaterial);
       deckMesh.receiveShadow = true;
@@ -512,8 +515,9 @@ export default function Keyboard3D({
       const caseGeometry = buildCaseGeometry(boardW, boardH, maxX, maxY);
       const caseMaterial = new MeshStandardMaterial({
         color: themeRef.current.caseColor,
-        roughness: 0.38,
-        metalness: 0.92,
+        roughness: 0.32,
+        metalness: 0.95,
+        // 近黑铝壳：极低粗糙度让倒角/棱边上的高光线更锐利，与 PBT 键帽的哑光面区分开
       });
       const caseMesh = new Mesh(caseGeometry, caseMaterial);
       caseMesh.receiveShadow = true;

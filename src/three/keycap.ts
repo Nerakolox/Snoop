@@ -75,11 +75,14 @@ export type RowProfile = {
  * 收得太狠会读成「塑料笔记本键」。
  */
 export const ROW_PROFILES: Record<RowType, RowProfile> = {
-  R1: { height: 0.335, tiltDeg: 7, dish: 0.026, taper: 0.04, fillet: 0.055 },
-  R2: { height: 0.32, tiltDeg: 4, dish: 0.026, taper: 0.04, fillet: 0.055 },
-  R3: { height: 0.295, tiltDeg: 1, dish: 0.026, taper: 0.04, fillet: 0.055 },
-  R4: { height: 0.275, tiltDeg: -2, dish: 0.026, taper: 0.04, fillet: 0.055 },
-  R5: { height: 0.26, tiltDeg: -4, dish: 0.026, taper: 0.04, fillet: 0.055 },
+  // 参考实物高度差：R1 ≈ 14mm、R5 ≈ 10mm（以 KEY_UNIT=44mm 折算 U）。
+  // taper 进一步收紧以强化侧壁可见度（仍在方形 PBT 的合理范围内）；
+  // fillet 略减，让顶面到侧壁的棱边更硬朗——铝坨坨上的 PBT 不是笔记本键帽。
+  R1: { height: 0.395, tiltDeg: 7,  dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R2: { height: 0.365, tiltDeg: 4,  dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R3: { height: 0.335, tiltDeg: 1,  dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R4: { height: 0.305, tiltDeg: -2, dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R5: { height: 0.275, tiltDeg: -4, dish: 0.026, taper: 0.055, fillet: 0.045 },
 };
 
 const ROW_TYPES: RowType[] = ["R1", "R2", "R3", "R4", "R5"];
