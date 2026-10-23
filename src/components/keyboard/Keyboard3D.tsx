@@ -120,7 +120,7 @@ const LIGHT_FILL_COLOR = 0xe8eaec;
 
 // ---- 悬浮高亮 -----------------------------------------------------------------
 const HOVER_LIFT = 0.06; // 悬浮键上浮量（U）
-const OUTLINE_SCALE = 1.08; // 描边壳外扩比例（XZ）
+const OUTLINE_PAD = 0.04; // 描边壳每边外扩量（U）；绝对量，宽键不随宽度放大
 
 /** 字形在牌面上的竖向偏移：字体基线落在牌面中线上，视觉居中。 */
 const DIGIT_Y_OFFSET = 0.004;
@@ -297,14 +297,15 @@ export default function Keyboard3D({
     const n = keys.length;
     const keyCenterX = new Float32Array(n);
     const keyCenterZ = new Float32Array(n);
-    const keyScaleX = new Float32Array(n);
-    const keyScaleZ = new Float32Array(n);
+    const keyWidth = new Float32Array(n);
+    const keyDepth = new Float32Array(n);
     for (let i = 0; i < n; i++) {
       const k = keys[i];
       keyCenterX[i] = k.x + k.w / 2 - maxX / 2;
       keyCenterZ[i] = k.y + k.h / 2 - maxY / 2;
-      keyScaleX[i] = k.w - gapU;
-      keyScaleZ[i] = k.h - gapU;
+      // 真实键帽尺寸（U，已扣键缝）：几何按它生成，实例矩阵不再缩放
+      keyWidth[i] = k.w - gapU;
+      keyDepth[i] = k.h - gapU;
     }
     // 行判定上下文：优先读 key.row，缺失时整体按 y 聚类兜底（见 three/keycap.ts）
     const rowCtx = computeRowContext(keys);
@@ -465,17 +466,24 @@ export default function Keyboard3D({
       boardGroup.rotation.x = TYPING_ANGLE;
       scene.add(boardGroup);
 
-      // 键帽按行型分组 → 每行型一个 InstancedMesh + 一个描边壳
-      const byRow = new Map<RowType, number[]>();
+      // 键帽按「行型 + 真实宽度」分组 → 每组一个 InstancedMesh + 一个描边壳。
+      // 宽度烤进几何，实例矩阵 X 恒为 1：宽键的锥度、圆角、倒角保持与 1U 同尺寸。
+      const byRow = new Map<
+        string,
+        { rowType: RowType; widthU: number; depthU: number; indices: number[] }
+      >();
       keys.forEach((k, i) => {
         const rt = rowTypeOf(k, rowCtx);
-        const list = byRow.get(rt);
-        if (list) list.push(i);
-        else byRow.set(rt, [i]);
+        const widthU = k.w - gapU;
+        const depthU = k.h - gapU;
+        const id = `${rt}|${widthU.toFixed(3)}|${depthU.toFixed(3)}`;
+        const entry = byRow.get(id);
+        if (entry) entry.indices.push(i);
+        else byRow.set(id, { rowType: rt, widthU, depthU, indices: [i] });
       });
       const groups: KeyGroup[] = [];
-      for (const [rowType, indices] of byRow) {
-        const geometry = buildKeycapGeometry(ROW_PROFILES[rowType]);
+      for (const { rowType, widthU, depthU, indices } of byRow.values()) {
+        const geometry = buildKeycapGeometry(ROW_PROFILES[rowType], widthU, depthU);
         applyAtlasUvAttributes(geometry, indices.map((gi) => atlas.cells[gi]));
         const mesh = new InstancedMesh(geometry, material, indices.length);
         mesh.instanceMatrix.setUsage(DynamicDrawUsage);
@@ -584,13 +592,16 @@ export default function Keyboard3D({
       const mix = plateMixRef.current;
       updateBillboard();
 
-      // 键帽：XZ 缩放按键宽高，Y 恒为 1（雕刻已烤进几何），只留悬浮上浮
+      // 键帽：宽深已烤进几何，实例矩阵不缩放（只留悬浮上浮）。
+      // _q 会被下面的数值牌循环改成 billboard 姿态，键帽必须显式归零，
+      // 否则从第二帧起键帽会带上相机朝向的旋转。
+      _q.identity();
       for (const g of res.groups) {
         for (let j = 0; j < g.indices.length; j++) {
           const i = g.indices[j];
           const hover = i === hoverRef.current ? HOVER_LIFT : 0;
           _pos.set(keyCenterX[i], hover, keyCenterZ[i]);
-          _scale.set(keyScaleX[i], 1, keyScaleZ[i]);
+          _scale.set(1, 1, 1);
           _m.compose(_pos, _q, _scale);
           g.mesh.setMatrixAt(j, _m);
         }
@@ -690,6 +701,7 @@ export default function Keyboard3D({
       const res = resourcesRef.current;
       if (!res) return;
       const idx = hoverRef.current ?? selectedRef.current;
+      _q.identity(); // 同键帽：不带入数值牌留下的 billboard 姿态
       for (const g of res.groups) {
         if (idx == null || !g.indices.includes(idx)) {
           g.outline.visible = false;
@@ -698,8 +710,11 @@ export default function Keyboard3D({
         g.outline.visible = true;
         const hover = idx === hoverRef.current ? HOVER_LIFT : 0;
         _pos.set(keyCenterX[idx], hover, keyCenterZ[idx]);
-        // 只外扩 XZ、不抬高 Y：描边只在四周形成一圈，不从键帽顶上冒出来
-        _scale.set(keyScaleX[idx] * OUTLINE_SCALE, 1, keyScaleZ[idx] * OUTLINE_SCALE);
+        // 只外扩 XZ、不抬高 Y：描边只在四周形成一圈，不从键帽顶上冒出来。
+        // 外扩量按绝对 U 折算成缩放比，宽键的描边厚度才和 1U 一致。
+        const ow = keyWidth[idx];
+        const od = keyDepth[idx];
+        _scale.set((ow + 2 * OUTLINE_PAD) / ow, 1, (od + 2 * OUTLINE_PAD) / od);
         _m.compose(_pos, _q, _scale);
         g.outline.setMatrixAt(0, _m);
         g.outline.instanceMatrix.needsUpdate = true;

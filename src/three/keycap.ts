@@ -68,21 +68,24 @@ export type RowProfile = {
 };
 
 /**
- * Cherry 原厂键帽高度：从最靠后/上排（远离使用者）到最靠前/下排（空格行）
- * 单调递减、前倾角同向递减 —— 不是「两端高、home 行最低」的对称波浪。
- * 高度差合计约 0.21U（≈0.92mm @ 4.4mm/U），与实物的 R1/R5 落差吻合。
- * 侧壁收窄压到 0.04：铝坨坨上装的是方形 PBT 键帽，侧壁笔直、顶面只轻微内收，
- * 收得太狠会读成「塑料笔记本键」。
+ * Cherry Profile 键帽高度（Keychron 厂商参考，非原厂公差规范）。
+ * 高度不是单调递减：R3（Home 行）是最低点，R4（底排含空格）比 R3 高，
+ * R1（数字/Fn 排）最高 —— 呈前低中低、两端翘起的轮廓。
+ *
+ * 高度单位：U（1U = 19.05mm 键中心距）
+ *   R1 = 9.81mm / 19.05 ≈ 0.515U
+ *   R2 = 7.85mm / 19.05 ≈ 0.412U
+ *   R3 = 7.22mm / 19.05 ≈ 0.379U  ← 全键盘最低排
+ *   R4 = 8.59mm / 19.05 ≈ 0.451U  ← 比 R3 高，空格键所在排
+ *
+ * 倾角：正 = 键帽向使用者前倾（前端低）；R4 近水平，R1 前倾最大。
  */
 export const ROW_PROFILES: Record<RowType, RowProfile> = {
-  // 参考实物高度差：R1 ≈ 14mm、R5 ≈ 10mm（以 KEY_UNIT=44mm 折算 U）。
-  // taper 进一步收紧以强化侧壁可见度（仍在方形 PBT 的合理范围内）；
-  // fillet 略减，让顶面到侧壁的棱边更硬朗——铝坨坨上的 PBT 不是笔记本键帽。
-  R1: { height: 0.395, tiltDeg: 7,  dish: 0.026, taper: 0.055, fillet: 0.045 },
-  R2: { height: 0.365, tiltDeg: 4,  dish: 0.026, taper: 0.055, fillet: 0.045 },
-  R3: { height: 0.335, tiltDeg: 1,  dish: 0.026, taper: 0.055, fillet: 0.045 },
-  R4: { height: 0.305, tiltDeg: -2, dish: 0.026, taper: 0.055, fillet: 0.045 },
-  R5: { height: 0.275, tiltDeg: -4, dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R1: { height: 0.515, tiltDeg: 8,  dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R2: { height: 0.412, tiltDeg: 6,  dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R3: { height: 0.379, tiltDeg: 3,  dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R4: { height: 0.451, tiltDeg: 0,  dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R5: { height: 0.451, tiltDeg: 0,  dish: 0.026, taper: 0.055, fillet: 0.045 },
 };
 
 const ROW_TYPES: RowType[] = ["R1", "R2", "R3", "R4", "R5"];
@@ -96,11 +99,20 @@ export type RowContext = {
 };
 
 /**
- * 按「本配列总行数」把行序号线性映射到 R1..R5 五档分级（夹取到端点）。
- * 行数越多，分级越密；行数少于 5 的配列（如部分 60%）也能落到合理档位。
+ * 按「本配列总行数」把行序号映射到 Cherry 行型。
+ *
+ * 6 排是标准配列，直接按 Cherry 规格映射：R1 / R1 / R2 / R3 / R4 / R4
+ * （数字排与 Fn 排共用 R1，底排与空格排共用 R4）—— 不能线性均分，
+ * 否则空格行会落到 R5 被压塌。
+ *
+ * 其余行数仍走线性映射（夹取到端点），保证 60%/40% 等配列也有合理档位。
  */
 export function rowTypeForIndex(rowIndex: number, totalRows: number): RowType {
   if (totalRows <= 1) return "R3";
+  if (totalRows === 6) {
+    const sixRow: RowType[] = ["R1", "R1", "R2", "R3", "R4", "R4"];
+    return sixRow[Math.max(0, Math.min(5, rowIndex))];
+  }
   const t = rowIndex / (totalRows - 1);
   const level = Math.round(t * (ROW_TYPES.length - 1));
   return ROW_TYPES[Math.max(0, Math.min(ROW_TYPES.length - 1, level))];
@@ -202,33 +214,40 @@ export function fixWinding(
  *   → 倒角圆环：一段 1/4 圆弧，法线从水平连续转到顶面法线
  *   → 顶面：前倾/后仰的斜平面再减沿 X 的柱面凹陷
  * 顶面 UV 映到 [0,1]：u 随 X 左→右，v 随 Z 后→前（v=0 为远离用户的键帽上缘）。
+ *
+ * `widthU` 是键帽的真实宽度（U）：宽键按此宽度直接生成几何，**不靠实例矩阵沿 X
+ * 等比拉伸**。锥度、四角圆角、顶部倒角都是绝对量（U），所以 6.25U 空格的侧壁厚度、
+ * 转角圆角与 1U 完全一致，只有顶面沿 X 变长 —— 等比拉伸会把圆角抻成椭圆、锥度放大
+ * 六倍，读起来就是「一块被拉长的塑料片」。
  */
-export function buildKeycapGeometry(profile: RowProfile): BufferGeometry {
-  const half = 0.5;
-  const topHalf = Math.max(0.2, half - profile.taper);
-  const topExtent = topHalf * 2;
+export function buildKeycapGeometry(profile: RowProfile, widthU = 1, depthU = 1): BufferGeometry {
+  const halfW = Math.max(0.55, widthU) / 2;
+  const halfZ = Math.max(0.55, depthU) / 2;
+  const topHalfW = Math.max(0.2, halfW - profile.taper);
+  const topHalfZ = Math.max(0.2, halfZ - profile.taper);
   const tiltSlope = Math.tan((profile.tiltDeg * Math.PI) / 180);
-  const fillet = Math.min(profile.fillet, topHalf * 0.4);
-  const innerHalf = topHalf - fillet;
-  const innerExtent = innerHalf * 2;
-  const cornerTop = KEYCAP_CORNER_RADIUS * topHalf;
-  const cornerBot = KEYCAP_CORNER_RADIUS * half;
+  const fillet = Math.min(profile.fillet, Math.min(topHalfW, topHalfZ) * 0.4);
+  const innerHalfW = topHalfW - fillet;
+  const innerHalfZ = topHalfZ - fillet;
+  const innerExtentW = innerHalfW * 2;
+  const innerExtentZ = innerHalfZ * 2;
+  const cornerTop = KEYCAP_CORNER_RADIUS * topHalfZ;
+  const cornerBot = KEYCAP_CORNER_RADIUS * halfZ;
   const cornerInner = Math.max(0.01, cornerTop - fillet);
 
   // 顶面高度场：高度 − 倾角线性项 − 柱面凹陷（沿 X，中心最低，两侧回平）。
   const crownY = (x: number, z: number) =>
-    profile.height - tiltSlope * z - profile.dish * (1 - (x / topHalf) * (x / topHalf));
+    profile.height - tiltSlope * z - profile.dish * (1 - (x / topHalfW) * (x / topHalfW));
   // 顶面解析法线（未归一）：n = (∂y/∂x, 1, ∂y/∂z) 是朝上的，取 (dish 项, 1, −slope)。
   const dishGrad = 2 * profile.dish;
   const crownNormal = (x: number) => {
-    const nx = -(dishGrad * x) / (topHalf * topHalf);
+    const nx = -(dishGrad * x) / (topHalfW * topHalfW);
     const len = Math.hypot(nx, 1, tiltSlope);
     return [nx / len, 1 / len, -tiltSlope / len];
   };
 
-  const botOutline = roundedRectOutline(half, half, cornerBot, SIDE_SEGMENTS);
-  const wallOutline = roundedRectOutline(topHalf, topHalf, cornerTop, SIDE_SEGMENTS);
-  const innerOutline = roundedRectOutline(innerHalf, innerHalf, cornerInner, SIDE_SEGMENTS);
+  const botOutline = roundedRectOutline(halfW, halfZ, cornerBot, SIDE_SEGMENTS);
+  const wallOutline = roundedRectOutline(topHalfW, topHalfZ, cornerTop, SIDE_SEGMENTS);
   const M = botOutline.length / 2;
 
   const positions: number[] = [];
@@ -324,8 +343,8 @@ export function buildKeycapGeometry(profile: RowProfile): BufferGeometry {
       const ny = cny * s;
       const nz = ez * c * 1 + cnz * s;
       const nl = Math.hypot(nx, ny, nz) || 1;
-      const u = isLast ? (x + innerHalf) / innerExtent : 0;
-      const v = isLast ? (z + innerHalf) / innerExtent : 0;
+      const u = isLast ? (x + innerHalfW) / innerExtentW : 0;
+      const v = isLast ? (z + innerHalfZ) / innerExtentZ : 0;
       push(x, yBase, z, nx / nl, ny / nl, nz / nl, u, v, isLast ? 1 : 0);
     }
     band(prevBase, curBase, M);
@@ -338,13 +357,28 @@ export function buildKeycapGeometry(profile: RowProfile): BufferGeometry {
   const ringSize: number[] = [M];
   for (let r = 1; r <= DISH_RINGS; r++) {
     const t = 1 - r / (DISH_RINGS + 1);
-    const outline = roundedRectOutline(innerHalf * t, innerHalf * t, cornerInner * t, SIDE_SEGMENTS);
+    const outline = roundedRectOutline(
+      innerHalfW * t,
+      innerHalfZ * t,
+      cornerInner * t,
+      SIDE_SEGMENTS
+    );
     const base = positions.length / 3;
     for (let i = 0; i < M; i++) {
       const x = outline[i * 2];
       const z = outline[i * 2 + 1];
       const [nx, ny, nz] = crownNormal(x);
-      push(x, crownY(x, z), z, nx, ny, nz, (x + innerHalf) / innerExtent, (z + innerHalf) / innerExtent, 1);
+      push(
+        x,
+        crownY(x, z),
+        z,
+        nx,
+        ny,
+        nz,
+        (x + innerHalfW) / innerExtentW,
+        (z + innerHalfZ) / innerExtentZ,
+        1
+      );
     }
     ringBase.push(base);
     ringSize.push(M);
