@@ -116,8 +116,7 @@ const TYPING_ANGLE = (6 * Math.PI) / 180; // 6° 打字倾角（绕 X，前端�
 
 // ---- 真实光照（PBR）---------------------------------------------------------
 const SHADOW_MAP_SIZE = 2048;
-const LIGHT_KEY_COLOR = 0xfff3e6;
-const LIGHT_FILL_COLOR = 0xb9c7ff;
+const LIGHT_FILL_COLOR = 0xe8eaec;
 
 // ---- 悬浮高亮 -----------------------------------------------------------------
 const HOVER_LIFT = 0.06; // 悬浮键上浮量（U）
@@ -284,8 +283,8 @@ export default function Keyboard3D({
     renderer.shadowMap.type = PCFSoftShadowMap;
 
     const scene = new Scene();
-    // 环境反射强度：RoomEnvironment 本身偏亮，压一档免得铝壳发灰、键帽发白。
-    scene.environmentIntensity = 0.6;
+    // 环境反射强度：哑光银不需要强反射，压低避免整体发亮
+    scene.environmentIntensity = 0.25;
     const camera = new PerspectiveCamera(FOV, 1, 0.01, 1000);
 
     // 上下文丢失/恢复状态（effect 作用域内的 let，事件处理器闭包实时共享）
@@ -322,12 +321,11 @@ export default function Keyboard3D({
     // ---- 场景灯光 --------------------------------------------------------------
     // 主光强、补光弱，强化立体感：参考实物顶面受光充分，侧壁落影深，棱边高光锐。
     // 半球光仅补最低限度的天地色差，不足以削平阴影。
-    scene.add(new HemisphereLight(0xfff8f0, 0x1a1520, 0.14));
-    scene.add(new AmbientLight(0xffffff, 0.03));
+    scene.add(new HemisphereLight(0xffffff, 0xd0d2d6, 0.5));
+    scene.add(new AmbientLight(0xffffff, 0.25));
 
-    // 主光：左上 45° 俯射，暖白色，产品图典型角度；强度提高以让顶面"发光"、
-    // 凹槽落下足够深的阴影
-    const keyLight = new DirectionalLight(LIGHT_KEY_COLOR, 2.6);
+    // 主光：左上 45° 俯射，中性白，哑光银壳光照柔和均匀；强度适中不产生镜面高光
+    const keyLight = new DirectionalLight(0xffffff, 1.4);
     keyLight.position.set(-5, 14, 7);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(SHADOW_MAP_SIZE, SHADOW_MAP_SIZE);
@@ -500,9 +498,9 @@ export default function Keyboard3D({
       const deckGeometry = buildDeckGeometry(keys, maxX, maxY);
       const deckMaterial = new MeshStandardMaterial({
         color: themeRef.current.plate,
-        roughness: 0.55,
-        metalness: 0.85,
-        // 定位板极暗，阴影打在近黑底上才能让键缝读成真实的凹槽
+        roughness: 0.72,
+        metalness: 0.55,
+        // 哑光银定位板：与外壳同材质感，视觉连贯
       });
       const deckMesh = new Mesh(deckGeometry, deckMaterial);
       deckMesh.receiveShadow = true;
@@ -515,9 +513,9 @@ export default function Keyboard3D({
       const caseGeometry = buildCaseGeometry(boardW, boardH, maxX, maxY);
       const caseMaterial = new MeshStandardMaterial({
         color: themeRef.current.caseColor,
-        roughness: 0.22,
-        metalness: 0.88,
-        // 电泳银铝壳：高金属度低粗糙度，阳极氧化处理质感，高光宽而柔
+        roughness: 0.68,
+        metalness: 0.55,
+        // 哑光银铝壳：与定位板同参数，外壳 + 定位板视为一体连贯面
       });
       const caseMesh = new Mesh(caseGeometry, caseMaterial);
       caseMesh.receiveShadow = true;
