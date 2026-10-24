@@ -351,10 +351,7 @@
 }
 
 .setting-ignore-suggestions {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  min-width: 260px;
+  position: fixed;
   max-height: 240px;
   overflow-y: auto;
   list-style: none;

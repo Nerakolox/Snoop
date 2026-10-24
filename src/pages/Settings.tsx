@@ -128,6 +128,7 @@ export default function Settings() {
   const [newApp, setNewApp] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
   const ignoreComboRef = useRef<HTMLDivElement>(null);
+  const ignoreInputRef = useRef<HTMLInputElement>(null);
   const [recentApps, setRecentApps] = useState<string[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearMsg, setClearMsg] = useState("");
@@ -494,55 +495,60 @@ export default function Settings() {
             </div>
           )}
           <div className="setting-ignore-add" ref={ignoreComboRef}>
-            <div className="setting-ignore-combo">
-              <input
-                type="text"
-                className="setting-ignore-input"
-                placeholder="App 名或 bundle id"
-                value={newApp}
-                onChange={(e) => { setNewApp(e.target.value); setShowSuggestions(true); }}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={(e) => {
-                  // 点击下拉项时 blur 先于 mousedown，用 relatedTarget 判断
-                  if (!ignoreComboRef.current?.contains(e.relatedTarget as Node)) {
-                    setShowSuggestions(false);
-                  }
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { addIgnore(newApp); }
-                  else if (e.key === "Escape") { setShowSuggestions(false); }
-                }}
-                autoComplete="off"
-              />
-              {showSuggestions && (() => {
-                const q = newApp.trim().toLowerCase();
-                const suggestions = recentApps
-                  .filter((a) => !settings.ignore_list.includes(a))
-                  .filter((a) => !q || appDisplayName(a).toLowerCase().includes(q) || a.toLowerCase().includes(q))
-                  .slice(0, 8);
-                if (suggestions.length === 0) return null;
-                return (
-                  <ul className="setting-ignore-suggestions" role="listbox">
-                    {suggestions.map((a) => (
-                      <li
-                        key={a}
-                        className="setting-ignore-suggestion-item"
-                        role="option"
-                        tabIndex={-1}
-                        title={a}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          addIgnore(a);
-                        }}
-                      >
-                        <span className="setting-ignore-suggestion-name">{appDisplayName(a)}</span>
-                        <span className="setting-ignore-suggestion-id">{a}</span>
-                      </li>
-                    ))}
-                  </ul>
-                );
-              })()}
-            </div>
+            <input
+              ref={ignoreInputRef}
+              type="text"
+              className="setting-ignore-input"
+              placeholder="App 名或 bundle id"
+              value={newApp}
+              onChange={(e) => { setNewApp(e.target.value); setShowSuggestions(true); }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={(e) => {
+                if (!ignoreComboRef.current?.contains(e.relatedTarget as Node)) {
+                  setShowSuggestions(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") { addIgnore(newApp); }
+                else if (e.key === "Escape") { setShowSuggestions(false); }
+              }}
+              autoComplete="off"
+            />
+            {showSuggestions && (() => {
+              const q = newApp.trim().toLowerCase();
+              const suggestions = recentApps
+                .filter((a) => !settings.ignore_list.includes(a))
+                .filter((a) => !q || appDisplayName(a).toLowerCase().includes(q) || a.toLowerCase().includes(q))
+                .slice(0, 8);
+              if (suggestions.length === 0) return null;
+              const rect = ignoreInputRef.current?.getBoundingClientRect();
+              if (!rect) return null;
+              return createPortal(
+                <ul
+                  className="setting-ignore-suggestions"
+                  role="listbox"
+                  style={{ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 260) }}
+                >
+                  {suggestions.map((a) => (
+                    <li
+                      key={a}
+                      className="setting-ignore-suggestion-item"
+                      role="option"
+                      tabIndex={-1}
+                      title={a}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        addIgnore(a);
+                      }}
+                    >
+                      <span className="setting-ignore-suggestion-name">{appDisplayName(a)}</span>
+                      <span className="setting-ignore-suggestion-id">{a}</span>
+                    </li>
+                  ))}
+                </ul>,
+                document.body,
+              );
+            })()}
             <button className="setting-ignore-btn" onClick={() => addIgnore(newApp)}>
               <Plus size={13} />
             </button>
