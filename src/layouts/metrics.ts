@@ -9,6 +9,13 @@ export const KEY_UNIT = 44;
 /** 键帽相对其 U 格子的收缩量（即键间视觉间隙）。 */
 export const KEY_GAP = 5;
 
+/**
+ * 3D 键帽的键缝（px 设计单位），按 Cherry 规格由节距与底宽推出：
+ * 19.05mm 节距 − 18.0mm 底宽 = 1.05mm 缝，折算 1.05 / 19.05 × KEY_UNIT。
+ * 2D 平面图沿用 KEY_GAP 的 5px（那是平面表达的视觉留白，不是实物尺寸）。
+ */
+export const KEY_GAP_3D = (KEY_UNIT * 1.05) / 19.05;
+
 /** 缩放下限：低于此值不再缩，改为横向滚动。 */
 export const MIN_SCALE = 0.55;
 

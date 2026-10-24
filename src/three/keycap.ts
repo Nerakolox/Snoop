@@ -81,11 +81,11 @@ export type RowProfile = {
  * 倾角：正 = 键帽向使用者前倾（前端低）；R4 近水平，R1 前倾最大。
  */
 export const ROW_PROFILES: Record<RowType, RowProfile> = {
-  R1: { height: 0.515, tiltDeg: 8,  dish: 0.026, taper: 0.055, fillet: 0.045 },
-  R2: { height: 0.412, tiltDeg: 6,  dish: 0.026, taper: 0.055, fillet: 0.045 },
-  R3: { height: 0.379, tiltDeg: 3,  dish: 0.026, taper: 0.055, fillet: 0.045 },
-  R4: { height: 0.451, tiltDeg: 0,  dish: 0.026, taper: 0.055, fillet: 0.045 },
-  R5: { height: 0.451, tiltDeg: 0,  dish: 0.026, taper: 0.055, fillet: 0.045 },
+  R1: { height: 0.515, tiltDeg: 8,  dish: 0.026, taper: 0.02, fillet: 0.07 },
+  R2: { height: 0.412, tiltDeg: 6,  dish: 0.026, taper: 0.02, fillet: 0.07 },
+  R3: { height: 0.379, tiltDeg: 3,  dish: 0.026, taper: 0.02, fillet: 0.07 },
+  R4: { height: 0.451, tiltDeg: 0,  dish: 0.026, taper: 0.02, fillet: 0.07 },
+  R5: { height: 0.451, tiltDeg: 0,  dish: 0.026, taper: 0.02, fillet: 0.07 },
 };
 
 const ROW_TYPES: RowType[] = ["R1", "R2", "R3", "R4", "R5"];
@@ -611,13 +611,17 @@ export type KeycapMaterialHandle = {
   setTextColors: (dark: Color, light: Color) => void;
 };
 
-/** 构建受光键帽材质：PBT 质感的哑光塑料（粗糙度高、不反金属光）。 */
+/** 构建受光键帽材质：PBT 质感的哑光塑料（粗糙度高、不反金属光）。
+ *  PBT 的观感是「细颗粒哑光」：高光被打散成一大片很弱的漫反射，没有 ABS 打油后
+ *  那种窄而亮的高光条。所以 roughness 拉到接近全漫反射（0.88），并压低环境反射
+ *  （envMapIntensity 0.5）—— 保留一点天空光的体积感，但不让它读成塑料膜反光。 */
 export function buildKeycapMaterial(atlas: CanvasTexture): KeycapMaterialHandle {
   const darkText = new Color("#2A2730");
   const lightText = new Color("#FFFFFF");
   const material = new MeshStandardMaterial({
-    roughness: 0.62,
+    roughness: 0.88,
     metalness: 0,
+    envMapIntensity: 0.5,
   });
 
   material.onBeforeCompile = (shader) => {

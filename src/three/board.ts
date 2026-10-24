@@ -16,7 +16,7 @@
 
 import { BufferGeometry, Float32BufferAttribute } from "three";
 import type { LayoutKey } from "../keyboardLayout";
-import { KEY_GAP, KEY_UNIT } from "../layouts/metrics";
+import { KEY_GAP_3D, KEY_UNIT } from "../layouts/metrics";
 import { fixWinding, roundedRectOutline } from "./keycap";
 
 // ---- 尺寸常量（U，1U ≈ 一个键宽） -----------------------------------------
@@ -50,8 +50,12 @@ export const DECK_TOP = 0.012;
 export const DECK_FLOOR = -0.063;
 /** 键位格底面高度（U）：藏在外壳腔体里，只用来封闭格子。 */
 const DECK_BOTTOM = -0.12;
-/** 键帽足迹四周的缝宽（U，每边）。 */
-const DECK_CLEARANCE = 0.022;
+/** 键帽足迹四周的缝宽（U，每边）。
+ *  键帽底宽已是 18mm（1.05mm 键缝），孔再外扩必须收着：原先 1.05mm 缝里孔每边吃掉
+ *  0.022U（0.42mm），两孔之间只剩 0.1mm 的板面，网格细得发黑且容易与相邻孔穿模。
+ *  0.010U（≈0.19mm）留出约 0.67mm 的键位筋 —— 真实键盘上定位板孔与键帽之间就是
+ *  这一圈肉眼看不太出的细缝。 */
+const DECK_CLEARANCE = 0.010;
 /** 孔口斜切宽度（U）：受光时在孔沿形成一圈细高光。 */
 const DECK_CHAMFER = 0.012;
 /** 键位格的圆角弧线段数（每格顶点数 = 4 × (2 × seg + 1)）。 */
@@ -231,7 +235,7 @@ export function buildDeckGeometry(
   maxX: number,
   maxY: number
 ): BufferGeometry {
-  const gapU = KEY_GAP / KEY_UNIT;
+  const gapU = KEY_GAP_3D / KEY_UNIT;
   const positions: number[] = [];
   const normals: number[] = [];
   const indices: number[] = [];
