@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -47,6 +47,13 @@ function formatBytes(b: number) {
   if (b < 1024) return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(2)} MB`;
+}
+
+/** 从 bundle id / exe 路径提取可读名称：取最后一段去掉扩展名，首字母大写。 */
+function appDisplayName(id: string): string {
+  const seg = id.replace(/\\/g, "/").split("/").pop() ?? id;
+  const name = seg.replace(/\.[^.]+$/, "");
+  return name.length > 0 ? name.charAt(0).toUpperCase() + name.slice(1) : id;
 }
 
 function SettingRow({
@@ -119,6 +126,8 @@ export default function Settings() {
   const [showDevConfirm, setShowDevConfirm] = useState(false);
   const [dbInfo, setDbInfo] = useState<DbInfo | null>(null);
   const [newApp, setNewApp] = useState("");
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const ignoreComboRef = useRef<HTMLDivElement>(null);
   const [recentApps, setRecentApps] = useState<string[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearMsg, setClearMsg] = useState("");
@@ -284,6 +293,7 @@ export default function Settings() {
     if (!trimmed || settings.ignore_list.includes(trimmed)) return;
     saveSettings({ ignore_list: [...settings.ignore_list, trimmed] });
     setNewApp("");
+    setShowSuggestions(false);
   }
 
   function removeIgnore(app: string) {
@@ -461,33 +471,83 @@ export default function Settings() {
         </SettingRow>
 
         <SettingRow label="忽略名单" desc="列表内的 App 不被记录">
-          <div className="setting-ignore-list">
-            {settings.ignore_list.map((app) => (
-              <span key={app} className="setting-ignore-tag">
-                {app}
-                <button className="setting-ignore-remove" onClick={() => removeIgnore(app)}>
-                  <X size={11} />
-                </button>
-              </span>
-            ))}
-            <div className="setting-ignore-add">
+          {settings.ignore_list.length > 0 && (
+            <span className="setting-ignore-count">{settings.ignore_list.length} 个</span>
+          )}
+        </SettingRow>
+        <div className="setting-ignore-body">
+          {settings.ignore_list.length > 0 && (
+            <div className="setting-ignore-list">
+              {settings.ignore_list.map((app) => (
+                <span key={app} className="setting-ignore-tag">
+                  {app}
+                  <button
+                    className="setting-ignore-remove"
+                    onClick={() => removeIgnore(app)}
+                    aria-label={`移除 ${app}`}
+                    title={`移除 ${app}`}
+                  >
+                    <X size={11} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="setting-ignore-add" ref={ignoreComboRef}>
+            <div className="setting-ignore-combo">
               <input
+                type="text"
                 className="setting-ignore-input"
                 placeholder="App 名或 bundle id"
                 value={newApp}
-                onChange={(e) => setNewApp(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && addIgnore(newApp)}
-                list="recent-apps"
+                onChange={(e) => { setNewApp(e.target.value); setShowSuggestions(true); }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={(e) => {
+                  // 点击下拉项时 blur 先于 mousedown，用 relatedTarget 判断
+                  if (!ignoreComboRef.current?.contains(e.relatedTarget as Node)) {
+                    setShowSuggestions(false);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { addIgnore(newApp); }
+                  else if (e.key === "Escape") { setShowSuggestions(false); }
+                }}
+                autoComplete="off"
               />
-              <datalist id="recent-apps">
-                {recentApps.map((a) => <option key={a} value={a} />)}
-              </datalist>
-              <button className="setting-ignore-btn" onClick={() => addIgnore(newApp)}>
-                <Plus size={13} />
-              </button>
+              {showSuggestions && (() => {
+                const q = newApp.trim().toLowerCase();
+                const suggestions = recentApps
+                  .filter((a) => !settings.ignore_list.includes(a))
+                  .filter((a) => !q || appDisplayName(a).toLowerCase().includes(q) || a.toLowerCase().includes(q))
+                  .slice(0, 8);
+                if (suggestions.length === 0) return null;
+                return (
+                  <ul className="setting-ignore-suggestions" role="listbox">
+                    {suggestions.map((a) => (
+                      <li
+                        key={a}
+                        className="setting-ignore-suggestion-item"
+                        role="option"
+                        tabIndex={-1}
+                        title={a}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          addIgnore(a);
+                        }}
+                      >
+                        <span className="setting-ignore-suggestion-name">{appDisplayName(a)}</span>
+                        <span className="setting-ignore-suggestion-id">{a}</span>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
             </div>
+            <button className="setting-ignore-btn" onClick={() => addIgnore(newApp)}>
+              <Plus size={13} />
+            </button>
           </div>
-        </SettingRow>
+        </div>
       </div>
 
       <div className="settings-group">

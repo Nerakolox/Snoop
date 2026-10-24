@@ -268,13 +268,43 @@
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
-  max-width: 360px;
+}
+
+/* settings-group 内不被 SettingRow 包裹的直接子级（tags 展示区、空态提示）对齐 setting-row */
+.settings-group > .setting-ignore-list,
+.settings-group > .setting-unmapped-empty {
+  padding: var(--space-3) var(--space-6) var(--space-4);
 }
 
 .setting-unmapped-empty {
-  margin: var(--space-2) 0 0;
   font-size: var(--text-xs);
   color: var(--color-text-3);
+}
+
+/* 忽略名单展开体：tags 区 + 添加输入行，独立全宽，在 SettingRow 下方 */
+.setting-ignore-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-6) var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.setting-ignore-body .setting-ignore-list {
+  padding: 0;
+}
+
+.setting-ignore-body .setting-ignore-add {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-top: var(--space-1);
+}
+
+.setting-ignore-count {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .setting-ignore-tag {
@@ -313,6 +343,56 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+/* 自定义下拉：input 包一个相对定位容器，ul 绝对定位在其正下方 */
+.setting-ignore-combo {
+  position: relative;
+}
+
+.setting-ignore-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 260px;
+  max-height: 240px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: var(--space-1) 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  z-index: 100;
+}
+
+.setting-ignore-suggestion-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+}
+
+.setting-ignore-suggestion-item:hover {
+  background: var(--color-surface-2);
+}
+
+.setting-ignore-suggestion-name {
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.setting-ignore-suggestion-id {
+  font-size: 11px;
+  color: var(--color-text-3);
+  font-family: ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 240px;
 }
 
 .setting-ignore-input {
