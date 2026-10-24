@@ -1,21 +1,30 @@
 /**
- * 报告摘要 —— 展开报告时的「为屏幕重排的紧凑摘要」。
+ * 报告摘要 —— 展开报告时的紧凑摘要（双栏：左摘要 + 右 190px 海报缩略图）。
  *
- * 与海报(<ReportCard>)并存：海报只出现在右栏缩略图 / 灯箱 / 导出三处，
- * 摘要是另一套布局，专为日常翻看而设计（目标一屏内看完），不复用海报版式。
- * 右栏缩略图把 1000px 海报 scale(0.19) 缩到 ~190px，底部白渐变示意「还有更多」，
- * 点击打开灯箱（灯箱 / 导出见 Lightbox.tsx / ExportDialog.tsx）。
- *
- * 摘要内容按报型各表：日 = 24h 形状 + 近 7 天对比；周 = 7 天条形 + vs 前 4 周；
- * 月 = 按周走势 + vs 上月。应用 Top 5 只列图标 + 名称 + 百分比（不放时长条）。
+ * 新增：分类色条 + 图例（含周报 pp 差）、应用时长、带刻度迷你形状条、
+ * 日报专项（活跃区间/最活跃时段/最长专注）、周报专项（作息均值/工作日vs周末）、
+ * 月报专项（上半月 vs 下半月）。完整海报仍只在灯箱与导出时出现。
  */
 
 import { useState } from "react";
-import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
-import type { AppSnap, ReportView } from "./types";
+import type {
+  AppSnap,
+  CategorySnap,
+  DailyReport,
+  WeeklyReport,
+  ReportSnapshot,
+  ReportView,
+} from "./types";
 import { formatDuration } from "../utils/format";
-import { BASELINE_MIN_DAILY_MS, dateLabel, deltaLabel, monthLabel, weekRangeLabel } from "./format";
+import {
+  BASELINE_MIN_DAILY_MS,
+  dateLabel,
+  deltaLabel,
+  formatSleepMin,
+  monthLabel,
+  weekRangeLabel,
+} from "./format";
 import { renderQuips } from "./markup";
 import type { ResolvedIconMap } from "./icons";
 import ReportCard from "./ReportCard";
@@ -23,200 +32,315 @@ import snoopIconInline from "../assets/snoop-icon-64.png?inline";
 import "./report-summary.css";
 
 const SNOOP_BUNDLE_ID = "org.feedra.snoop";
-/** 缩略图缩放比：1000px 海报 × 0.19 = 190px，与右栏固定宽一致。 */
 const THUMB_SCALE = 0.19;
 
 const KIND_CN: Record<ReportView["report_type"], string> = {
-  day: "日报",
-  week: "周报",
-  month: "月报",
+  day: "日报", week: "周报", month: "月报",
 };
 
-/** 各报的规范化日期标题。 */
+/** 日报 24h 刻度：只在 0/6/12/18/23 位打标签。 */
+const DAY_TICKS = Array.from({ length: 24 }, (_, i) =>
+  i === 0 ? "0" : i === 6 ? "6" : i === 12 ? "12" : i === 18 ? "18" : i === 23 ? "24" : "",
+);
+const WEEK_TICKS = ["一", "二", "三", "四", "五", "六", "日"];
+
 function dateText(detail: ReportView): string {
   if (detail.report_type === "day") return dateLabel(detail.data.date);
   if (detail.report_type === "week") return weekRangeLabel(detail.data.week_start);
   return monthLabel(detail.data.month_start);
 }
 
-/** 字母兜底图标的主题色，与 AppIcon.tsx / ReportCard.tsx 的 colorFromName 算法一致。 */
 function colorFromName(name: string): string {
   let hash = 0;
   for (let i = 0; i < name.length; i++) {
     hash = name.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 60%, 55%)`;
+  return `hsl(${Math.abs(hash) % 360}, 60%, 55%)`;
 }
 
-/** 摘要里紧凑的 app 图标（20px，比海报的 48px 小）。 */
 function SummaryIcon({
-  bundleId,
-  name,
-  icons,
+  bundleId, name, icons, size = 20,
 }: {
-  bundleId: string;
-  name: string;
-  icons: ResolvedIconMap | null;
+  bundleId: string; name: string; icons: ResolvedIconMap | null; size?: number;
 }) {
   if (bundleId === SNOOP_BUNDLE_ID) {
-    return <img className="report-summary__app-icon" src={snoopIconInline} alt="" />;
+    return <img className="rs-app-icon" src={snoopIconInline} alt="" style={{ width: size, height: size }} />;
   }
   const data = icons?.get(bundleId);
   if (data) {
-    return <img className="report-summary__app-icon" src={`data:image/png;base64,${data}`} alt="" />;
+    return <img className="rs-app-icon" src={`data:image/png;base64,${data}`} alt="" style={{ width: size, height: size }} />;
   }
-  const letter = (name.charAt(0) || "?").toUpperCase();
   return (
     <span
-      className="report-summary__app-icon report-summary__app-icon--fallback"
-      style={{ backgroundColor: colorFromName(name) }}
+      className="rs-app-icon rs-app-icon--fallback"
+      style={{ width: size, height: size, backgroundColor: colorFromName(name), fontSize: size * 0.55 }}
     >
-      {letter}
+      {(name.charAt(0) || "?").toUpperCase()}
     </span>
   );
 }
 
-/**
- * 应用 Top 5：紧凑行（图标 + 名称 + 百分比），不放时长条。
- *
- * 吃的是报告的生成时快照而不是 `data.top_apps`，与海报同一份数据，
- * 两处不可能各显示一套名字（见 ReportCard 头注释）。
- */
-function SummaryApps({
-  apps,
-  icons,
+/** 分类色条 + 图例（可选 pp 差，用于周报）。 */
+function SummaryCategories({
+  categories,
+  deltaById,
+  showDelta,
 }: {
-  apps: AppSnap[];
-  icons: ResolvedIconMap | null;
+  categories: CategorySnap[];
+  deltaById?: Map<string, number>;
+  showDelta?: boolean;
 }) {
-  if (apps.length === 0) return <p className="report-summary__empty">无数据</p>;
+  const shown = categories.filter((c) => c.active_ms > 0);
+  if (shown.length === 0) return <p className="rs-empty">无数据</p>;
   return (
-    <div className="report-summary__apps">
+    <div className="rs-cats">
+      <div className="rs-cats-bar">
+        {shown.map((c) => (
+          <div
+            key={c.id}
+            className="rs-cats-seg"
+            style={{ width: `${c.share_pct}%`, background: c.color }}
+            title={`${c.name} ${c.share_pct.toFixed(0)}%`}
+          />
+        ))}
+      </div>
+      <div className="rs-cats-legend">
+        {shown.map((c) => {
+          const delta = deltaById?.get(c.id);
+          return (
+            <div key={c.id} className="rs-cats-row">
+              <span className="rs-cats-swatch" style={{ background: c.color }} />
+              <span className="rs-cats-name">{c.name}</span>
+              <span className="rs-cats-pct">{c.share_pct.toFixed(0)}%</span>
+              {showDelta && delta != null && (
+                <span className={`rs-cats-delta ${delta >= 0 ? "rs-cats-delta--up" : "rs-cats-delta--dn"}`}>
+                  {delta >= 0 ? "↑" : "↓"}{Math.abs(delta).toFixed(1)}pp
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** 应用列表：图标 + 名称 + 时长 + 百分比。 */
+function SummaryApps({
+  apps, icons,
+}: {
+  apps: AppSnap[]; icons: ResolvedIconMap | null;
+}) {
+  if (apps.length === 0) return <p className="rs-empty">无数据</p>;
+  const max = Math.max(...apps.map((a) => a.active_ms), 1);
+  return (
+    <div className="rs-apps">
       {apps.slice(0, 5).map((a) => (
-        <div key={a.bundle_id} className="report-summary__app">
+        <div key={a.bundle_id} className="rs-app">
           <SummaryIcon bundleId={a.bundle_id} name={a.name} icons={icons} />
-          <span className="report-summary__app-name">{a.name}</span>
-          <span className="report-summary__app-pct">{Math.round(a.share_pct)}%</span>
+          <span className="rs-app-name">{a.name}</span>
+          <div className="rs-app-track">
+            <div className="rs-app-fill" style={{ width: `${(a.active_ms / max) * 100}%` }} />
+          </div>
+          <span className="rs-app-dur">{formatDuration(a.active_ms)}</span>
+          <span className="rs-app-pct">{Math.round(a.share_pct)}%</span>
         </div>
       ))}
     </div>
   );
 }
 
-/** 迷你条形：一天的 24h 形状 / 一周 7 天 / 一月的按周走势，高约 30px。 */
-function MiniBars({ cells }: { cells: { active_ms: number }[] }) {
+/** 带刻度的迷你条形。ticks 与 cells 等长，非空字符串打刻度标签。 */
+function MiniBars({
+  cells, ticks,
+}: {
+  cells: { active_ms: number }[]; ticks?: string[];
+}) {
   const max = Math.max(...cells.map((c) => c.active_ms), 1);
   return (
-    <div className="report-summary__bars">
-      {cells.map((c, i) => (
-        <div key={i} className="report-summary__bars-col">
-          <div
-            className="report-summary__bars-fill"
-            style={{ height: `${Math.max((c.active_ms / max) * 100, c.active_ms > 0 ? 8 : 0)}%` }}
+    <div className="rs-bars-wrap">
+      <div className="rs-bars">
+        {cells.map((c, i) => (
+          <div key={i} className="rs-bars-col">
+            <div
+              className="rs-bars-fill"
+              style={{ height: `${Math.max((c.active_ms / max) * 100, c.active_ms > 0 ? 6 : 0)}%` }}
+            />
+          </div>
+        ))}
+      </div>
+      {ticks && (
+        <div className="rs-bars-ticks">
+          {ticks.map((t, i) => (
+            <div key={i} className="rs-bars-tick">{t}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Narrative({ detail }: { detail: ReportView }) {
+  if (!detail.narrative) return null;
+  return <div className="rs-narrative">{renderQuips(detail.narrative, "summary")}</div>;
+}
+
+/** 日报专项：活跃区间 / 最活跃小时 / 最长专注。 */
+function DayExtras({ d }: { d: DailyReport }) {
+  const spanMs = d.span_end_ms - d.span_start_ms;
+  const spanStr = spanMs > 0 ? formatDuration(spanMs) : null;
+  const focusMin = Math.round(d.longest_focus.duration_ms / 60000);
+  return (
+    <div className="rs-extras">
+      {spanStr && (
+        <div className="rs-extra">
+          <span className="rs-extra-label">活跃区间</span>
+          <span className="rs-extra-val">{spanStr}</span>
+        </div>
+      )}
+      <div className="rs-extra">
+        <span className="rs-extra-label">最活跃时段</span>
+        <span className="rs-extra-val">{d.peak_hour}:00 – {d.peak_hour + 1}:00</span>
+      </div>
+      {focusMin > 0 && (
+        <div className="rs-extra">
+          <span className="rs-extra-label">最长专注</span>
+          <span className="rs-extra-val">{focusMin} 分钟</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 周报专项：作息均值 + 工作日 vs 周末。 */
+function WeekExtras({ d }: { d: WeeklyReport }) {
+  const s = d.rhythm_summary;
+  const ww = d.weekday_weekend;
+  return (
+    <div className="rs-extras">
+      {s.days_counted >= 2 && s.avg_start_min != null && s.avg_end_min != null && (
+        <div className="rs-extra">
+          <span className="rs-extra-label">平均作息</span>
+          <span className="rs-extra-val">
+            {formatSleepMin(s.avg_start_min)} 开工 · {formatSleepMin(s.avg_end_min)} 停下
+          </span>
+        </div>
+      )}
+      {(ww.weekday_days > 0 || ww.weekend_days > 0) && (
+        <div className="rs-extra">
+          <span className="rs-extra-label">工作日/周末</span>
+          <span className="rs-extra-val">
+            {ww.weekday_days > 0 ? `工作日 ${formatDuration(ww.weekday_avg_active_ms)}` : "工作日无记录"}
+            {" · "}
+            {ww.weekend_days > 0 ? `周末 ${formatDuration(ww.weekend_avg_active_ms)}` : "周末无记录"}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 月报专项：上半月 vs 下半月（取前 4 条）。 */
+function MonthHalfShift({
+  shifts, snapshot,
+}: {
+  shifts: import("./types").CategoryHalfShift[];
+  snapshot: ReportSnapshot;
+}) {
+  if (shifts.length === 0) return null;
+  const nameById = new Map(snapshot.categories.map((c) => [c.id, c.name]));
+  const colorById = new Map(snapshot.categories.map((c) => [c.id, c.color]));
+  return (
+    <div className="rs-halfshift">
+      {shifts.slice(0, 4).map((h) => (
+        <div key={h.category} className="rs-halfshift-row">
+          <span
+            className="rs-halfshift-swatch"
+            style={{ background: colorById.get(h.category) ?? "#999" }}
           />
+          <span className="rs-halfshift-name">{nameById.get(h.category) ?? h.category}</span>
+          <span className="rs-halfshift-vals">
+            {h.first_half_share_pct.toFixed(0)}% → {h.second_half_share_pct.toFixed(0)}%
+          </span>
+          <span className={`rs-halfshift-delta ${h.delta_pp >= 0 ? "rs-cats-delta--up" : "rs-cats-delta--dn"}`}>
+            {h.delta_pp >= 0 ? "↑" : "↓"}{Math.abs(h.delta_pp).toFixed(1)}pp
+          </span>
         </div>
       ))}
     </div>
   );
 }
 
-function DeltaText({ pct }: { pct: number }) {
-  return <>{deltaLabel(pct)}</>;
-}
-
-/** AI 吐槽段（应用内正文字号，行高 1.75）。标记由 markup.tsx 统一渲染。 */
-function Narrative({ detail }: { detail: ReportView }) {
-  if (!detail.narrative) return null;
-  return <div className="report-summary__narrative">{renderQuips(detail.narrative, "summary")}</div>;
-}
-
-/** 底部双栏：左应用 Top 5、右「一天的形状 + 和平时比」。 */
-function MainCols({
-  title,
-  apps,
-  icons,
-  bars,
-  compare,
-}: {
-  title: string;
-  apps: AppSnap[];
-  icons: ResolvedIconMap | null;
-  bars: { active_ms: number }[];
-  compare: ReactNode;
-}) {
-  return (
-    <div className="report-summary__cols">
-      <section className="report-summary__col">
-        <h5 className="report-summary__col-title">应用 Top 5</h5>
-        <SummaryApps apps={apps} icons={icons} />
-      </section>
-      <section className="report-summary__col">
-        <h5 className="report-summary__col-title">{title}</h5>
-        <MiniBars cells={bars} />
-        {compare}
-      </section>
-    </div>
-  );
-}
-
+/** 三报各自的主体内容区。 */
 function DayMain({ detail, icons }: { detail: Extract<ReportView, { report_type: "day" }>; icons: ResolvedIconMap | null }) {
   const d = detail.data;
   return (
     <>
-      <div className="report-summary__active-label">活跃时长</div>
-      <div className="report-summary__active">{formatDuration(d.active_ms)}</div>
-      <div className="report-summary__sub">
-        前台 {formatDuration(d.foreground_ms)} · 切换 {d.switch_count} 次
+      <div className="rs-hero">
+        <div className="rs-hero-label">活跃时长</div>
+        <div className="rs-hero-num">{formatDuration(d.active_ms)}</div>
+        <div className="rs-hero-sub">
+          前台 {formatDuration(d.foreground_ms)} · 切换 {d.switch_count} 次
+          {d.vs_7d.avg_active_ms >= BASELINE_MIN_DAILY_MS && (
+            <> · 近 7 天 {deltaLabel(d.vs_7d.active_delta_pct)}</>
+          )}
+        </div>
       </div>
+      <DayExtras d={d} />
       <Narrative detail={detail} />
-      <MainCols
-        title="一天的形状"
-        apps={detail.snapshot.apps}
-        icons={icons}
-        bars={d.hourly}
-        compare={
-          d.vs_7d.avg_active_ms > 0 ? (
-            d.vs_7d.avg_active_ms >= BASELINE_MIN_DAILY_MS ? (
-              <p className="report-summary__compare">
-                近 7 天：活跃 <DeltaText pct={d.vs_7d.active_delta_pct} /> · 切换{" "}
-                <DeltaText pct={d.vs_7d.switch_delta_pct} />
-              </p>
-            ) : (
-              <p className="report-summary__compare">记录时间还不够，过几天再来对比</p>
-            )
-          ) : null
-        }
-      />
+      <div className="rs-section">
+        <div className="rs-section-title">分类</div>
+        <SummaryCategories categories={detail.snapshot.categories} />
+      </div>
+      <div className="rs-cols2">
+        <div className="rs-section">
+          <div className="rs-section-title">应用 Top 5</div>
+          <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+        </div>
+        <div className="rs-section">
+          <div className="rs-section-title">24 小时节奏</div>
+          <MiniBars cells={d.hourly} ticks={DAY_TICKS} />
+        </div>
+      </div>
     </>
   );
 }
 
 function WeekMain({ detail, icons }: { detail: Extract<ReportView, { report_type: "week" }>; icons: ResolvedIconMap | null }) {
   const d = detail.data;
+  const deltaById = new Map(d.categories.map((c) => [c.category, c.share_delta_pp]));
   return (
     <>
-      <div className="report-summary__active-label">活跃时长</div>
-      <div className="report-summary__active">{formatDuration(d.active_ms)}</div>
-      <div className="report-summary__sub">
-        日均 {formatDuration(d.avg_daily_active_ms)} · 前台 {formatDuration(d.foreground_ms)}
+      <div className="rs-hero">
+        <div className="rs-hero-label">活跃时长</div>
+        <div className="rs-hero-num">{formatDuration(d.active_ms)}</div>
+        <div className="rs-hero-sub">
+          日均 {formatDuration(d.avg_daily_active_ms)} · 前台 {formatDuration(d.foreground_ms)}
+          {d.baseline.baseline_sufficient && (
+            <> · vs 前 4 周 {deltaLabel(d.baseline.daily_delta_pct)}</>
+          )}
+        </div>
       </div>
+      <WeekExtras d={d} />
       <Narrative detail={detail} />
-      <MainCols
-        title="这一周"
-        apps={detail.snapshot.apps}
-        icons={icons}
-        bars={d.days}
-        compare={
-          d.baseline.baseline_sufficient ? (
-            <p className="report-summary__compare">
-              vs 前 4 周：日均 <DeltaText pct={d.baseline.daily_delta_pct} />
-            </p>
-          ) : (
-            <p className="report-summary__compare">记录时间还不够，下周开始对比</p>
-          )
-        }
-      />
+      <div className="rs-section">
+        <div className="rs-section-title">分类{d.baseline.baseline_sufficient ? <span className="rs-section-note">含 vs 前 4 周 pp 差</span> : null}</div>
+        <SummaryCategories
+          categories={detail.snapshot.categories}
+          deltaById={deltaById}
+          showDelta={d.baseline.baseline_sufficient}
+        />
+      </div>
+      <div className="rs-cols2">
+        <div className="rs-section">
+          <div className="rs-section-title">应用 Top 5</div>
+          <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+        </div>
+        <div className="rs-section">
+          <div className="rs-section-title">这一周</div>
+          <MiniBars cells={d.days} ticks={WEEK_TICKS} />
+        </div>
+      </div>
     </>
   );
 }
@@ -225,38 +349,43 @@ function MonthMain({ detail, icons }: { detail: Extract<ReportView, { report_typ
   const d = detail.data;
   return (
     <>
-      <div className="report-summary__active-label">活跃时长</div>
-      <div className="report-summary__active">{formatDuration(d.active_ms)}</div>
-      <div className="report-summary__sub">
-        日均 {formatDuration(d.avg_daily_active_ms)} · 前台 {formatDuration(d.foreground_ms)} · 有记录{" "}
-        {d.days_with_data} 天
+      <div className="rs-hero">
+        <div className="rs-hero-label">活跃时长</div>
+        <div className="rs-hero-num">{formatDuration(d.active_ms)}</div>
+        <div className="rs-hero-sub">
+          日均 {formatDuration(d.avg_daily_active_ms)} · 有记录 {d.days_with_data} 天
+          {d.prev_month.avg_daily_active_ms > 0 && (
+            <> · vs 上月 {deltaLabel(d.prev_month.daily_delta_pct)}</>
+          )}
+        </div>
       </div>
       <Narrative detail={detail} />
-      <MainCols
-        title="按周走势"
-        apps={detail.snapshot.apps}
-        icons={icons}
-        bars={d.weeks}
-        compare={
-          d.prev_month.avg_daily_active_ms > 0 ? (
-            <p className="report-summary__compare">
-              vs 上月：日均 <DeltaText pct={d.prev_month.daily_delta_pct} />
-            </p>
-          ) : null
-        }
-      />
+      <div className="rs-section">
+        <div className="rs-section-title">分类</div>
+        <SummaryCategories categories={detail.snapshot.categories} />
+      </div>
+      <div className="rs-cols2">
+        <div className="rs-section">
+          <div className="rs-section-title">应用 Top 5</div>
+          <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+        </div>
+        <div className="rs-section">
+          <div className="rs-section-title">按周走势</div>
+          <MiniBars cells={d.weeks} />
+        </div>
+      </div>
+      {d.half_shift.length > 0 && (
+        <div className="rs-section">
+          <div className="rs-section-title">上半月 vs 下半月</div>
+          <MonthHalfShift shifts={d.half_shift} snapshot={detail.snapshot} />
+        </div>
+      )}
     </>
   );
 }
 
 export default function ReportSummary({
-  detail,
-  icons,
-  onRegenerate,
-  regenerating,
-  onExport,
-  onOpenLightbox,
-  onCollapse,
+  detail, icons, onRegenerate, regenerating, onExport, onOpenLightbox, onCollapse,
 }: {
   detail: ReportView;
   icons: ResolvedIconMap | null;
@@ -266,21 +395,20 @@ export default function ReportSummary({
   onOpenLightbox: () => void;
   onCollapse: () => void;
 }) {
-  // 重新生成会覆盖这份报告的快照与叙述文本，且不可撤销——先问一句。
   const [confirmRegen, setConfirmRegen] = useState(false);
 
   return (
     <div className="report-summary">
-      <button type="button" className="report-summary__header" onClick={onCollapse} title="收起">
-        <span className="report-summary__headline">
-          <span className="report-summary__date">{dateText(detail)}</span>
-          <span className="report-summary__kind">{KIND_CN[detail.report_type]}</span>
+      <button type="button" className="rs-header" onClick={onCollapse} title="收起">
+        <span className="rs-headline">
+          <span className="rs-date">{dateText(detail)}</span>
+          <span className="rs-kind">{KIND_CN[detail.report_type]}</span>
         </span>
-        <span className="report-summary__collapse">收起 ↑</span>
+        <span className="rs-collapse">收起 ↑</span>
       </button>
 
-      <div className="report-summary__grid">
-        <div className="report-summary__main">
+      <div className="rs-grid">
+        <div className="rs-main">
           {detail.report_type === "week" ? (
             <WeekMain detail={detail} icons={icons} />
           ) : detail.report_type === "month" ? (
@@ -290,9 +418,9 @@ export default function ReportSummary({
           )}
         </div>
 
-        <aside className="report-summary__side">
+        <aside className="rs-side">
           <div
-            className="report-summary__thumb"
+            className="rs-thumb"
             role="button"
             tabIndex={0}
             onClick={onOpenLightbox}
@@ -305,23 +433,23 @@ export default function ReportSummary({
             aria-label="打开海报"
           >
             <div
-              className="report-summary__thumb-scaled"
+              className="rs-thumb-scaled"
               style={{ transform: `translateX(-50%) scale(${THUMB_SCALE})` }}
             >
               <ReportCard detail={detail} icons={icons} showFooter />
             </div>
-            <span className="report-summary__thumb-fade" aria-hidden />
+            <span className="rs-thumb-fade" aria-hidden />
           </div>
 
-          <div className="report-summary__actions">
+          <div className="rs-actions">
             {detail.status === "ok" && (
-              <button type="button" className="report-summary__export" onClick={onExport}>
+              <button type="button" className="rs-export" onClick={onExport}>
                 导出成图
               </button>
             )}
             <button
               type="button"
-              className="report-summary__regen"
+              className="rs-regen"
               onClick={() => setConfirmRegen(true)}
               disabled={regenerating}
               title="用当前的分类设置重算这份报告"
