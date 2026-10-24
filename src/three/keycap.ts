@@ -340,7 +340,8 @@ export function buildKeycapGeometry(profile: RowProfile, widthU = 1, depthU = 1)
       const off = fillet * (1 - c);
       const x = ox - ex * off;
       const z = oz - ez * off;
-      const yBase = isLast ? crownY(x, z) : wallTop[i] + fillet * s;
+      // 用弧点处实际 crownY 计算高度，避免大碗深时 fillet 中间步出现折棱。
+      const yBase = crownY(x, z) - fillet * (1 - s);
       const [cnx, cny, cnz] = crownNormal(x);
       const nx = ex * c * 1 + cnx * s;
       const ny = cny * s;
