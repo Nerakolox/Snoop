@@ -10,11 +10,11 @@
 
 /* ── Header ─────────────────────────────────────────────────────────────────── */
 .ds-header {
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-6);
   border-bottom: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
 }
 
 .ds-header-top {
@@ -84,9 +84,9 @@
 /* 核心指标行 */
 .ds-kpis {
   display: flex;
-  gap: var(--space-8);
+  gap: var(--space-6);
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: flex-start;
 }
 
 .ds-kpi {
@@ -128,7 +128,7 @@
   padding: var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: var(--space-6);
 }
 
 /* ── Section chrome ──────────────────────────────────────────────────────────── */
@@ -197,7 +197,8 @@
 .ds-grid2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-8);
+  gap: var(--space-6);
+  align-items: start;
 }
 
 @media (max-width: 760px) {
@@ -260,6 +261,7 @@
   white-space: nowrap;
   font-size: var(--text-sm);
   color: var(--color-text);
+  max-width: 8em;
 }
 
 .ds-donut-pct {
