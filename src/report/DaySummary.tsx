@@ -216,10 +216,10 @@ export default function DaySummary({
               onClick={() => setConfirmRegen(true)}
               disabled={regenerating}
               title="用当前的分类设置重算这份报告"
-              style={{ marginRight: "var(--space-4)" }}
             >
               {regenerating ? "重新生成中…" : "重新生成"}
             </button>
+            <span className="ds-header-sep" aria-hidden>·</span>
             <button type="button" className="ds-collapse-btn" onClick={onCollapse}>收起 ↑</button>
           </div>
         </div>
