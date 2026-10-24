@@ -166,7 +166,7 @@ export default function Keyboard() {
   const allKeyCounts = useMemo(() => Object.values(keyCounts), [keyCounts]);
 
   const handleKeyClick = (key: LayoutKey) => {
-    // 自定义配列的键没有 code（legend→code 映射不在本次范围内），点击不下钻
+    // 自定义配列的键没有 code（legendCode.ts 推断不出的键留空），点击不下钻
     if (!key.code) return;
     actions.setSelectedKey(selectedKey === key.code ? null : key.code);
   };
@@ -236,6 +236,10 @@ export default function Keyboard() {
           <KeySelectionProvider value={{ onKeyClick: handleKeyClick, selectedIndex }}>
             {renderMode === "3d" ? (
               <Keyboard3D
+                // 3D 场景的构建 effect 只在挂载时跑一次（内部持有 keys/边界），
+                // 切换配列必须整体重建，否则键位格、键帽和 countOf 读到的 keys
+                // 还停留在上一次配列。用 key 触发卸载 → 挂载，资源由 cleanup 释放。
+                key={layoutId}
                 keys={layoutKeys}
                 keyCounts={keyCounts}
                 allKeyCounts={allKeyCounts}
