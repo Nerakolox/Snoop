@@ -1,206 +1,14 @@
-/* 报告摘要 —— 展开报告时的双栏布局。
-   颜色/间距/字号一律走全局 token，深浅双态自动跟随 data-theme。 */
+/* 报告摘要共用样式 — 颜色/间距/字号一律走全局 token，深浅双态自动跟随 data-theme。
+   旧双栏布局（rs-header/rs-grid/rs-hero 等）已随 Editorial 重构删除。 */
 
-.report-summary {
+.ds-shell {
   --rs-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-
-/* ── 卡片头 ─────────────────────────────────────────────────────────────── */
-.rs-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  width: 100%;
-  padding: var(--space-3) var(--space-6);
-  background: transparent;
-  border: none;
-  border-bottom: 1px solid var(--color-border);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.rs-header:hover { background: var(--color-surface-2); }
-
-.rs-headline {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.rs-date {
-  font-family: var(--rs-mono);
-  font-size: var(--text-xs);
-  color: var(--color-text-2);
-  font-variant-numeric: tabular-nums;
-}
-
-.rs-kind {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  padding: 1px 7px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-2);
-}
-
-.rs-collapse {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-}
-
-.rs-header:hover .rs-collapse { color: var(--color-accent); }
-
-/* ── 外层双栏：左主体 + 右侧栏 ─────────────────────────────────────────── */
-.rs-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 192px;
-  gap: var(--space-6);
-  padding: var(--space-6);
-  align-items: start;
-}
-
-.rs-main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-5);
-  min-width: 0;
-}
-
-/* ── 大数字英雄区 ────────────────────────────────────────────────────────── */
-.rs-hero {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding-left: var(--space-3);
-  border-left: 2px solid var(--color-accent);
-}
-
-.rs-hero-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-}
-
-.rs-hero-num {
-  font-size: 30px;
-  line-height: 1.1;
-  font-weight: 700;
-  letter-spacing: -0.5px;
-  color: var(--color-accent);
-  font-family: var(--rs-mono);
-  font-variant-numeric: tabular-nums;
-}
-
-.rs-hero-sub {
-  font-size: var(--text-sm);
-  color: var(--color-text-2);
-  font-family: var(--rs-mono);
-  font-variant-numeric: tabular-nums;
-  line-height: 1.5;
-}
-
-/* ── 小指标 pill 行（日报/周报专项）────────────────────────────────────── */
-.rs-extras {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
-.rs-extra {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px var(--space-3);
-  background: var(--color-surface-2);
-  border-radius: var(--radius-full);
-  border: 1px solid var(--color-border);
-}
-
-.rs-extra-label {
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-  white-space: nowrap;
-}
-
-.rs-extra-val {
-  font-size: var(--text-xs);
-  font-family: var(--rs-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text);
-  font-weight: 500;
-  white-space: nowrap;
-}
-
-/* ── 叙述文本（置于底部，引文式缩进，标明这是点评而非数据） ──────────────── */
-.rs-narrative {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  font-size: 13.5px;
-  line-height: 1.7;
-  color: var(--color-text-2);
-  padding-left: var(--space-4);
-  border-left: 2px solid var(--color-border);
-}
-
-.rs-narrative-line {
-  margin: 0;
-  padding: 0;
-}
-
-.rs-narrative-n {
-  font-family: var(--rs-mono);
-  font-weight: 650;
-  font-size: 1.06em;
-  color: var(--color-text);
-  font-variant-numeric: tabular-nums;
-}
-
-.rs-narrative-em {
-  color: var(--color-accent);
-  font-weight: 600;
-}
-
-/* ── 内容小节 ───────────────────────────────────────────────────────────── */
-.rs-section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.rs-section-title {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-xs);
-  font-weight: 600;
-  color: var(--color-text-3);
-}
-
-.rs-section-note {
-  font-weight: 400;
-  color: var(--color-text-3);
 }
 
 .rs-empty {
   margin: 0;
   font-size: var(--text-sm);
   color: var(--color-text-3);
-}
-
-/* 内层两列：分类图例 + 节奏图。节奏图固定宽度避免拉伸过宽 */
-.rs-cols2 {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 160px;
-  gap: var(--space-5);
-  align-items: start;
 }
 
 /* ── 分类色条 ───────────────────────────────────────────────────────────── */
@@ -244,7 +52,6 @@
 }
 
 .rs-cats-name {
-  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -254,45 +61,85 @@
 }
 
 .rs-cats-pct {
-  flex-shrink: 0;
-  font-size: var(--text-sm);
-  font-family: var(--rs-mono);
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
   color: var(--color-text-2);
-  min-width: 4ch;
   text-align: right;
 }
 
-.rs-cats-delta {
-  flex-shrink: 0;
+.rs-cats-dur {
   font-size: var(--text-xs);
-  font-family: var(--rs-mono);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
   font-variant-numeric: tabular-nums;
-  min-width: 5ch;
-  text-align: right;
+  color: var(--color-text-3);
 }
 
-.rs-cats-delta--up { color: var(--color-text-3); }
-.rs-cats-delta--dn { color: var(--color-text-3); }
+/* ── Mini bars（周/月节奏）──────────────────────────────────────────────── */
+.rs-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 56px;
+  gap: 3px;
+}
 
-/* ── 应用列表 ───────────────────────────────────────────────────────────── */
-.rs-apps {
+.rs-bars-col {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+
+.rs-bars-fill {
+  width: 100%;
+  background: var(--color-accent);
+  border-radius: 2px 2px 0 0;
+  opacity: 0.7;
+  min-height: 2px;
+}
+
+.rs-bars-ticks {
+  display: flex;
+  margin-top: 4px;
+}
+
+.rs-bars-tick {
+  flex: 1;
+  font-size: 9px;
+  color: var(--color-text-3);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  text-align: left;
+  line-height: 1;
+  overflow: hidden;
+}
+
+/* ── Half-shift（前/后半月对比）───────────────────────────────────────── */
+.rs-halfshift {
+  display: flex;
+  gap: var(--space-6);
+}
+
+.rs-halfshift-item {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: 2px;
 }
 
-/* 图标固宽；名称 auto（随内容），压缩但不超过 120px；条形占剩余空间；时长/百分比 auto */
-.rs-app {
-  display: grid;
-  grid-template-columns: 20px minmax(0, 120px) 1fr auto auto;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
+.rs-halfshift-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
+.rs-halfshift-val {
+  font-size: var(--text-sm);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-2);
+  font-weight: 500;
+}
+
+/* ── App icon（兼容旧 rs- 前缀，与 ds- 同规格）──────────────────────── */
 .rs-app-icon {
-  flex-shrink: 0;
   border-radius: 20%;
   object-fit: contain;
 }
@@ -306,216 +153,76 @@
   border-radius: 20%;
 }
 
-.rs-app-name {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--text-sm);
-  color: var(--color-text);
-}
-
-.rs-app-track {
-  height: 4px;
-  background: var(--color-surface-2);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.rs-app-fill {
-  height: 100%;
-  background: var(--color-accent);
-  border-radius: 2px;
-  min-width: 2px;
-}
-
-.rs-app-dur {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  font-family: var(--rs-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-2);
-  white-space: nowrap;
-}
-
-.rs-app-pct {
-  flex-shrink: 0;
-  font-size: var(--text-xs);
-  font-family: var(--rs-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-3);
-  min-width: 3ch;
-  text-align: right;
-}
-
-/* ── 迷你条形 + 刻度 ────────────────────────────────────────────────────── */
-.rs-bars-wrap {
+/* ── ReportCard 海报专用（poster / lightbox / export）────────────────── */
+.rs-col {
   display: flex;
   flex-direction: column;
-  gap: 3px;
 }
 
-.rs-bars {
+.rs-day {
   display: flex;
-  align-items: flex-end;
+  flex-direction: column;
   gap: 2px;
-  height: 40px;
 }
 
-.rs-bars-col {
-  flex: 1;
-  height: 100%;
-  display: flex;
-  align-items: flex-end;
+.rs-day--empty {
+  opacity: 0.3;
 }
 
-.rs-bars-fill {
-  width: 100%;
-  background: var(--color-accent);
-  border-radius: 2px 2px 0 0;
-  opacity: 0.85;
-}
-
-.rs-bars-ticks {
-  display: flex;
-}
-
-.rs-bars-tick {
-  flex: 1;
-  font-size: 9px;
+.rs-empty {
+  margin: 0;
+  font-size: var(--text-sm);
   color: var(--color-text-3);
-  font-family: var(--rs-mono);
-  text-align: left;
-  overflow: hidden;
-  line-height: 1;
-  /* 每个刻度格子 flex:1，标签左对齐自然落在对应列边缘 */
 }
 
-/* ── 月报上/下半月 ──────────────────────────────────────────────────────── */
-.rs-halfshift {
+.rs-fill {
+  background: var(--color-accent);
+  border-radius: 2px;
+}
+
+.rs-fill--max {
+  opacity: 1;
+}
+
+.rs-legend {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.rs-halfshift-row {
-  display: grid;
-  grid-template-columns: 8px minmax(0,1fr) auto auto;
-  align-items: center;
   gap: var(--space-2);
+  align-items: center;
 }
 
-.rs-halfshift-swatch {
+.rs-legend-swatch {
   width: 8px;
   height: 8px;
   border-radius: 2px;
   flex-shrink: 0;
 }
 
-.rs-halfshift-name {
-  font-size: var(--text-sm);
-  color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rs-halfshift-vals {
+.rs-legend-label {
   font-size: var(--text-xs);
-  font-family: var(--rs-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--color-text-2);
-  white-space: nowrap;
-}
-
-.rs-halfshift-delta {
-  font-size: var(--text-xs);
-  font-family: var(--rs-mono);
-  font-variant-numeric: tabular-nums;
   color: var(--color-text-3);
-  min-width: 5ch;
-  text-align: right;
 }
 
-/* ── 右侧栏 ─────────────────────────────────────────────────────────────── */
-.rs-side {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-
-.rs-thumb {
-  position: relative;
-  width: 100%;
-  height: 250px;
+.rs-track {
+  height: 4px;
+  background: var(--color-surface-2);
+  border-radius: 2px;
   overflow: hidden;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  cursor: pointer;
 }
 
-.rs-thumb:hover { border-color: var(--color-accent); }
-
-.rs-thumb-scaled {
-  position: absolute;
-  top: 0;
-  left: 50%;
-  width: 1000px;
-  transform-origin: top center;
-}
-
-.rs-thumb-fade {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 72px;
-  background: linear-gradient(to bottom, transparent, var(--color-surface));
-  pointer-events: none;
-}
-
-.rs-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.rs-export {
-  appearance: none;
-  border: 1px solid var(--color-accent);
+.rs-track-fill {
+  height: 100%;
   background: var(--color-accent);
-  color: var(--color-on-accent);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-  width: 100%;
+  border-radius: 2px;
+  min-width: 2px;
 }
 
-.rs-export:hover {
-  background: var(--color-accent-hover);
-  border-color: var(--color-accent-hover);
-}
-
-.rs-regen {
-  appearance: none;
-  border: 1px solid var(--color-border);
-  background: var(--color-surface);
+.rs-value {
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
   color: var(--color-text-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  font: inherit;
-  font-size: var(--text-sm);
-  cursor: pointer;
-  width: 100%;
 }
 
-.rs-regen:hover {
-  border-color: var(--color-accent);
-  color: var(--color-accent);
-}
-
-.rs-regen:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.rs-value--muted {
+  color: var(--color-text-3);
 }
