@@ -81,11 +81,13 @@ export type RowProfile = {
  * 倾角：正 = 键帽向使用者前倾（前端低）；R4 近水平，R1 前倾最大。
  */
 export const ROW_PROFILES: Record<RowType, RowProfile> = {
-  R1: { height: 0.515, tiltDeg: 8,  dish: 0.026, taper: 0.02, fillet: 0.07 },
-  R2: { height: 0.412, tiltDeg: 6,  dish: 0.026, taper: 0.02, fillet: 0.07 },
-  R3: { height: 0.379, tiltDeg: 3,  dish: 0.026, taper: 0.02, fillet: 0.07 },
-  R4: { height: 0.451, tiltDeg: 0,  dish: 0.026, taper: 0.02, fillet: 0.07 },
-  R5: { height: 0.451, tiltDeg: 0,  dish: 0.026, taper: 0.02, fillet: 0.07 },
+  // 倾角来源：KeyV2 GMK Cherry 规格（R1=0°/R4=11.5°，正值＝前端低朝向用户）。
+  // 凹陷深度：Cherry 柱面凹碗 0.65mm / 19.05mm·U⁻¹ = 0.0341U。
+  R1: { height: 0.515, tiltDeg:  0,   dish: 0.0341, taper: 0.02, fillet: 0.07 },
+  R2: { height: 0.412, tiltDeg:  2.5, dish: 0.0341, taper: 0.02, fillet: 0.07 },
+  R3: { height: 0.379, tiltDeg:  5,   dish: 0.0341, taper: 0.02, fillet: 0.07 },
+  R4: { height: 0.451, tiltDeg: 11.5, dish: 0.0341, taper: 0.02, fillet: 0.07 },
+  R5: { height: 0.451, tiltDeg: 11.5, dish: 0.0341, taper: 0.02, fillet: 0.07 },
 };
 
 const ROW_TYPES: RowType[] = ["R1", "R2", "R3", "R4", "R5"];
