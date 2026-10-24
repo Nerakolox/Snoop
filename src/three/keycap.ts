@@ -55,7 +55,7 @@ const DISH_RINGS = 2;
 export type RowType = "R1" | "R2" | "R3" | "R4" | "R5";
 
 export type RowProfile = {
-  /** 键帽顶面中心高度（U），底面为 0。 */
+  /** 键帽顶面边缘最高点（U），底面为 0。凹碗中心比此值低 dish。 */
   height: number;
   /** 顶面前倾角（度）：正 = 向使用者前倾（前端低），负 = 后仰（前端高）。 */
   tiltDeg: number;
