@@ -16,9 +16,9 @@
  * - 相机自实现（不用 OrbitControls）：默认三分之四视角（俯仰 38°），
  *   俯仰限「俯视 → 与水平约 25°」、水平 ±40°，滚轮缩放限距，带「重置视角」。
  * - 高度编码开关（默认关、localStorage 持久化）：键帽永不离开键位格；计数改由
- *   键帽正上方的悬浮数值牌表达（见 three/plates.ts）——牌子悬空高度 = 固定间距 +
- *   √(计数/p95) 的抬升量，牌面直接写次数，超 95 分位换强调色描边并拉出引导线。
- *   开/关与数据变化都带过渡动画，牌子本体随相机 billboard 朝向。
+ *   键帽正上方的热度柱表达（见 three/pillars.ts）——每键一根方柱，从键帽顶面
+ *   垂直升起，高度 = √(计数/max) × MAX_RISE，颜色取热力色阶。
+ *   开/关与数据变化都带过渡动画。
  * - 标签图集一次烘焙，实例化 UV 取样，主题切换只换标签深浅两个 uniform。
  * - 按需渲染：无常驻 rAF，仅在数据/主题/视角/悬浮/过渡动画变化时渲染一帧。
  *   页面隐藏/最小化时过渡动画循环完全停止。
@@ -65,7 +65,7 @@ import type { LayoutKey } from "../../keyboardLayout";
 import { displayLabel } from "../../keyboardLayout";
 import { bucketByPercentile } from "../../analytics";
 import type { Intensity } from "../../analytics";
-import { KEY_GAP, KEY_UNIT } from "../../layouts/metrics";
+import { KEY_GAP_3D, KEY_UNIT } from "../../layouts/metrics";
 import {
   applyAtlasUvAttributes,
   buildKeycapAtlas,
@@ -78,15 +78,11 @@ import {
 } from "../../three/keycap";
 import { buildCaseGeometry, buildDeckGeometry, CASE_BEZEL } from "../../three/board";
 import {
-  buildPlateResources,
-  DIGIT_HEIGHT,
-  formatCount,
-  GUIDE_WIDTH,
-  PLATE_GAP,
-  PLATE_HEIGHT,
-  PLATE_RISE,
-  PLATE_WIDTH,
-} from "../../three/plates";
+  buildPillarResources,
+  PILLAR_MAX_RISE,
+  PILLAR_SINK,
+  type PillarResources,
+} from "../../three/pillars";
 import { observeTheme, readThemeColors, type ThemeColors } from "../../three/tokens";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import KeyCountTooltip, { type KeyCountAnchor } from "./KeyCountTooltip";
@@ -121,9 +117,6 @@ const LIGHT_FILL_COLOR = 0xe8eaec;
 // ---- 悬浮高亮 -----------------------------------------------------------------
 const HOVER_LIFT = 0.06; // 悬浮键上浮量（U）
 const OUTLINE_PAD = 0.04; // 描边壳每边外扩量（U）；绝对量，宽键不随宽度放大
-
-/** 字形在牌面上的竖向偏移：字体基线落在牌面中线上，视觉居中。 */
-const DIGIT_Y_OFFSET = 0.004;
 
 const ACCENT_FALLBACK = "#7C5CFF";
 
@@ -194,8 +187,8 @@ type GLResources = {
   deckMesh: Mesh;
   deckGeometry: BufferGeometry;
   deckMaterial: MeshStandardMaterial;
-  /** 悬浮数值牌（牌子 / 引导线 / 数字）整组资源。 */
-  plates: ReturnType<typeof buildPlateResources>;
+  /** 热度柱（每键一根，高度编码击键次数）。 */
+  pillars: PillarResources;
   /** 室内环境贴图（PMREM 预滤波）：金属外壳的主要受光来源。 */
   envTexture: Texture;
   pmrem: PMREMGenerator;
@@ -293,7 +286,7 @@ export default function Keyboard3D({
     let lossTimes: number[] = [];
 
     // 每键的几何中心与 XZ 缩放（高度 Y 已烤进几何，实例矩阵不再缩 Y）
-    const gapU = KEY_GAP / KEY_UNIT;
+    const gapU = KEY_GAP_3D / KEY_UNIT;
     const n = keys.length;
     const keyCenterX = new Float32Array(n);
     const keyCenterZ = new Float32Array(n);
@@ -366,7 +359,6 @@ export default function Keyboard3D({
     };
     // 数值牌整体可见度（0 → 1）：高度编码开关的淡入淡出，与抬升共用一条过渡动画
     const plateMixRef = { current: 0, target: 0 };
-    const p95Ref: { current: number } = { current: 0 }; // 当前周期 95 分位（高度编码上界）
     const hoverRef: { current: number | null } = { current: null };
     const selectedRef: { current: number | null } = { current: null };
     const animRef: { current: number | null } = { current: null };
@@ -443,7 +435,7 @@ export default function Keyboard3D({
         res.caseMaterial.dispose();
         res.deckMesh.geometry.dispose();
         res.deckMaterial.dispose();
-        res.plates.dispose();
+        res.pillars.dispose();
         res.envTexture.dispose();
         res.pmrem.dispose();
       } catch {
@@ -531,11 +523,9 @@ export default function Keyboard3D({
       caseMesh.renderOrder = -3;
       boardGroup.add(caseMesh);
 
-      // 悬浮数值牌：牌子 + 引导线 + 数字三套实例化网格，整组挂在 boardGroup 下，
-      // 随打字倾角一起转；牌面朝向由 writeMatrices 里的 billboard 姿态保证。
-      const plateRes = buildPlateResources(n);
-      plateRes.setAccent(readAccent());
-      boardGroup.add(plateRes.root);
+      // 热度柱：每键一根方柱，height 由 writeMatrices 驱动
+      const pillarRes = buildPillarResources(n);
+      boardGroup.add(pillarRes.mesh);
 
       // 环境反射：室内棚拍环境（三盏柔光箱 + 顶光）预滤波成 PMREM，挂在 scene 上。
       // 金属材质的颜色几乎全部来自环境反射 —— 没有它，高 metalness 的铝壳会塌成
@@ -557,7 +547,7 @@ export default function Keyboard3D({
         deckMesh,
         deckGeometry,
         deckMaterial,
-        plates: plateRes,
+        pillars: pillarRes,
         envTexture,
         pmrem,
       };
@@ -566,35 +556,18 @@ export default function Keyboard3D({
 
     // ---- 矩阵 / 描边 / 渲染 ---------------------------------------------------
     // 数值牌 billboard：牌子挂在 boardGroup 下，boardGroup 有 6° 打字倾角，
-    // 所以实例旋转要先把相机朝向换算到 boardGroup 局部空间（inverse(board) × camera）。
-    // 相机无 roll，牌的局部 +Y 在屏幕上仍是竖直的，引导线读起来就是一条垂线。
-    const _billboard = new Quaternion();
-    const _axisZ = new Vector3();
-    const _axisX = new Vector3();
-    const _negBoardQ = new Quaternion();
-    const updateBillboard = () => {
-      const res = resourcesRef.current;
-      if (!res) return;
-      _negBoardQ.copy(res.boardGroup.quaternion).invert();
-      _billboard.copy(_negBoardQ).multiply(camera.quaternion);
-    };
-
-    /** 一帧内每键只算一次：牌子可见度、悬空高度、牌底/键顶高度。 */
-    const plateHeightOf = (i: number): number => {
+    /** 柱子底面 Y：键帽顶面往下嵌 PILLAR_SINK，随悬浮上浮。 */
+    const pillarBaseY = (i: number): number => {
       const hover = i === hoverRef.current ? HOVER_LIFT : 0;
-      // 牌中心 = 键帽顶面 + 悬浮 + 牌高一半 + √(计数/p95) 抬升
-      return capTopY[i] + hover + PLATE_GAP + PLATE_HEIGHT / 2 + riseRef.current[i] * plateMixRef.current;
+      return capTopY[i] + hover - PILLAR_SINK;
     };
 
     const writeMatrices = () => {
       const res = resourcesRef.current;
       if (!res) return;
       const mix = plateMixRef.current;
-      updateBillboard();
 
       // 键帽：宽深已烤进几何，实例矩阵不缩放（只留悬浮上浮）。
-      // _q 会被下面的数值牌循环改成 billboard 姿态，键帽必须显式归零，
-      // 否则从第二帧起键帽会带上相机朝向的旋转。
       _q.identity();
       for (const g of res.groups) {
         for (let j = 0; j < g.indices.length; j++) {
@@ -608,93 +581,40 @@ export default function Keyboard3D({
         g.mesh.instanceMatrix.needsUpdate = true;
       }
 
-      // 牌子 / 引导线 / 数字：都用同一组大小与姿态
-      const plateW = PLATE_WIDTH * mix;
-      const plateH = PLATE_HEIGHT * mix;
-      let digitCursor = 0;
+      // 热度柱：每键一根，高度编码按压次数，从键帽顶面垂直升起
+      _q.identity();
+      const pillars = res.pillars;
       for (let i = 0; i < n; i++) {
         const count = countOf(i);
-        const visible = mix > 0.001 && count > 0;
-        if (!visible) {
+        const h = riseRef.current[i] * mix;
+        if (mix <= 0.001 || count <= 0 || h <= 0.0001) {
           _pos.set(0, 0, 0);
           _scale.set(0, 0, 0);
           _m.compose(_pos, _q, _scale);
-          res.plates.plates.setMatrixAt(i, _m);
-          res.plates.guides.setMatrixAt(i, _m);
+          pillars.mesh.setMatrixAt(i, _m);
           continue;
         }
-
-        const hover = i === hoverRef.current ? HOVER_LIFT : 0;
-        const plateY = plateHeightOf(i);
-
-        // 面板
-        _pos.set(keyCenterX[i], plateY, keyCenterZ[i]);
-        _scale.set(plateW, plateH, mix);
-        _m.compose(_pos, _billboard, _scale);
-        res.plates.plates.setMatrixAt(i, _m);
-
-        // 引导线：键帽顶面往上一点 → 牌底；靠键帽一端在着色器里淡出
-        const guideBottom = capTopY[i] + hover + 0.03;
-        const guideTop = plateY - plateH / 2;
-        const guideH = Math.max(0, guideTop - guideBottom);
-        if (guideH > 0.004) {
-          _pos.set(keyCenterX[i], guideBottom + guideH / 2, keyCenterZ[i]);
-          _scale.set(GUIDE_WIDTH * mix, guideH, mix);
-          _m.compose(_pos, _billboard, _scale);
-        } else {
-          _pos.set(0, 0, 0);
-          _scale.set(0, 0, 0);
-          _m.compose(_pos, _q, _scale);
-        }
-        res.plates.guides.setMatrixAt(i, _m);
-
-        // 数字：沿牌面局部 X 逐字排布，整体往相机方向推一点点避免与牌面 z-fighting。
-        // boardGroup 的 billboard 姿态下，实例局部 +X 对应屏幕右侧，直接累加即读序。
-        const glyphs = res.plates.layout(formatCount(count));
-        _axisX.set(1, 0, 0).applyQuaternion(_billboard);
-        _axisZ.set(0, 0, 1).applyQuaternion(_billboard);
-        const digitY = plateY + DIGIT_Y_OFFSET;
-        for (const gl of glyphs) {
-          if (digitCursor >= res.plates.digits.count) break;
-          _pos
-            .set(keyCenterX[i], digitY, keyCenterZ[i])
-            .addScaledVector(_axisX, gl.offset)
-            .addScaledVector(_axisZ, 0.004);
-          _q.copy(_billboard);
-          _scale.set(gl.width * mix, DIGIT_HEIGHT * mix, mix);
-          _m.compose(_pos, _q, _scale);
-          res.plates.digits.setMatrixAt(digitCursor, _m);
-          res.plates.digitUv.setXY(digitCursor, gl.u0, gl.u1);
-          res.plates.digitV.setXY(digitCursor, gl.v0, gl.v1);
-          digitCursor++;
-        }
+        _pos.set(keyCenterX[i], pillarBaseY(i), keyCenterZ[i]);
+        _scale.set(1, h, 1);
+        _m.compose(_pos, _q, _scale);
+        pillars.mesh.setMatrixAt(i, _m);
       }
-      res.plates.plates.count = n;
-      res.plates.guides.count = n;
-      res.plates.digits.count = digitCursor;
-      res.plates.plates.instanceMatrix.needsUpdate = true;
-      res.plates.guides.instanceMatrix.needsUpdate = true;
-      res.plates.digits.instanceMatrix.needsUpdate = true;
-      res.plates.digitUv.needsUpdate = true;
-      res.plates.plates.visible = mix > 0.001;
-      res.plates.guides.visible = mix > 0.001;
-      res.plates.digits.visible = mix > 0.001;
+      pillars.mesh.count = n;
+      pillars.mesh.instanceMatrix.needsUpdate = true;
+      pillars.mesh.visible = mix > 0.001;
     };
 
-    /** 超 95 分位的键在面板/引导线上加强调。数据或高度开关变化时刷新一次即可。 */
+    /** 按热力色阶给每根柱子着色。数据或主题变化时刷新一次即可。 */
     const writeEmphasis = () => {
       const res = resourcesRef.current;
       if (!res) return;
-      const p95 = p95Ref.current;
-      const plateAttr = res.plates.plateEmphasis;
-      const guideAttr = res.plates.guideEmphasis;
+      const theme = themeRef.current;
+      const pillars = res.pillars;
       for (let i = 0; i < n; i++) {
-        const on = heightModeRef.current && p95 > 0 && countOf(i) > p95 ? 1 : 0;
-        plateAttr.setX(i, on);
-        guideAttr.setX(i, on);
+        const lvl = levelOf(i);
+        pillars.mesh.setColorAt(i, theme.intensity[lvl]);
       }
-      plateAttr.needsUpdate = true;
-      guideAttr.needsUpdate = true;
+      if (pillars.mesh.instanceColor) pillars.mesh.instanceColor.needsUpdate = true;
     };
 
     const updateOutline = () => {
@@ -763,39 +683,27 @@ export default function Keyboard3D({
       res.outlineMaterial.color.copy(readAccent());
       res.caseMaterial.color.copy(themeRef.current.caseColor);
       res.deckMaterial.color.copy(themeRef.current.plate);
-      res.plates.setAccent(readAccent());
+      writeEmphasis();
       render();
     };
 
-    // ---- 数值牌抬升目标 --------------------------------------------------------
-    /** 当前周期非零计数的 95 分位（高度编码上界）。 */
-    const computeP95 = (): number => {
-      const arr: number[] = [];
-      for (let i = 0; i < n; i++) {
-        const c = countOf(i);
-        if (c > 0) arr.push(c);
-      }
-      if (arr.length === 0) return 0;
-      arr.sort((a, b) => a - b);
-      return arr[Math.floor(arr.length * 0.95)];
-    };
-    /** 每键牌子的抬升量：√(计数/p95) 归一化 —— 平方根压缩了长尾，
-     *  高频键之间的小差异仍然拉开，而 1 次和 3 次不会一个贴顶一个贴地。
-     *  高度编码关闭时全部归零、牌子整体隐藏。 */
+    // ---- 热度柱抬升目标 --------------------------------------------------------
+    /** 每键柱高：√(计数/max) 归一化，用 max（不用 p95）保留完整排序。
+     *  高度编码关闭时全部归零、柱子隐藏。 */
     const computeTargetRise = (): Float32Array => {
       const arr = new Float32Array(n);
       plateMixRef.target = heightModeRef.current ? 1 : 0;
-      if (!heightModeRef.current) {
-        p95Ref.current = 0;
-        return arr;
+      if (!heightModeRef.current) return arr;
+      let maxCount = 0;
+      for (let i = 0; i < n; i++) {
+        const c = countOf(i);
+        if (c > maxCount) maxCount = c;
       }
-      const p95 = computeP95();
-      p95Ref.current = p95;
-      if (p95 <= 0) return arr;
+      if (maxCount <= 0) return arr;
       for (let i = 0; i < n; i++) {
         const c = countOf(i);
         if (c <= 0) continue;
-        arr[i] = Math.sqrt(Math.min(c / p95, 1)) * PLATE_RISE;
+        arr[i] = Math.sqrt(c / maxCount) * PILLAR_MAX_RISE;
       }
       return arr;
     };
@@ -884,8 +792,7 @@ export default function Keyboard3D({
       const label = displayLabel(key);
       const count = countOf(idx);
       const level = levelOf(idx);
-      const exceedsScale = heightModeRef.current && p95Ref.current > 0 && count > p95Ref.current;
-      const tkey = `${idx}|${count}|${level}|${exceedsScale}`;
+      const tkey = `${idx}|${count}|${level}`;
       if (lastTooltipKeyRef.current === tkey) {
         // 内容没变，仅光标移动时同步坐标，避免每帧重建 tooltip 状态
         setTooltip((prev) => (prev ? { ...prev, x: clientX, y: clientY } : prev));
