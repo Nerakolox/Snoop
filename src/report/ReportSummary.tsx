@@ -1,25 +1,20 @@
 /**
- * 报告摘要 —— 展开报告时的紧凑摘要（双栏：左摘要 + 右 190px 海报缩略图）。
- *
- * 新增：分类色条 + 图例（含周报 pp 差）、应用时长、带刻度迷你形状条、
- * 日报专项（活跃区间/最活跃时段/最长专注）、周报专项（作息均值/工作日vs周末）、
- * 月报专项（上半月 vs 下半月）。完整海报仍只在灯箱与导出时出现。
+ * 报告摘要 —— 周报 / 月报展开视图，沿用日报的 Editorial Report 布局。
+ * 日报由 DaySummary 独立渲染。
  */
-
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type {
   AppSnap,
   CategorySnap,
-  DailyReport,
-  WeeklyReport,
+  CategoryHalfShift,
+  MonthlyReport,
   ReportSnapshot,
   ReportView,
+  WeeklyReport,
 } from "./types";
 import { formatDuration } from "../utils/format";
 import {
-  BASELINE_MIN_DAILY_MS,
-  dateLabel,
   deltaLabel,
   formatSleepMin,
   monthLabel,
@@ -27,29 +22,13 @@ import {
 } from "./format";
 import { renderQuips } from "./markup";
 import type { ResolvedIconMap } from "./icons";
-import ReportCard from "./ReportCard";
 import DaySummary from "./DaySummary";
 import snoopIconInline from "../assets/snoop-icon-64.png?inline";
 import "./report-summary.css";
+import "./day-summary.css";
 
 const SNOOP_BUNDLE_ID = "org.feedra.snoop";
-const THUMB_SCALE = 0.19;
-
-const KIND_CN: Record<ReportView["report_type"], string> = {
-  day: "日报", week: "周报", month: "月报",
-};
-
-/** 日报 24h 刻度：只在 0/6/12/18/23 位打标签。 */
-const DAY_TICKS = Array.from({ length: 24 }, (_, i) =>
-  i === 0 ? "0" : i === 6 ? "6" : i === 12 ? "12" : i === 18 ? "18" : i === 23 ? "24" : "",
-);
 const WEEK_TICKS = ["一", "二", "三", "四", "五", "六", "日"];
-
-function dateText(detail: ReportView): string {
-  if (detail.report_type === "day") return dateLabel(detail.data.date);
-  if (detail.report_type === "week") return weekRangeLabel(detail.data.week_start);
-  return monthLabel(detail.data.month_start);
-}
 
 function colorFromName(name: string): string {
   let hash = 0;
@@ -83,26 +62,21 @@ function SummaryIcon({
 
 /** 分类色条 + 图例（可选 pp 差，用于周报）。 */
 function SummaryCategories({
-  categories,
-  deltaById,
-  showDelta,
+  categories, deltaById, showDelta,
 }: {
   categories: CategorySnap[];
   deltaById?: Map<string, number>;
   showDelta?: boolean;
 }) {
   const shown = categories.filter((c) => c.active_ms > 0);
-  if (shown.length === 0) return <p className="rs-empty">无数据</p>;
+  if (shown.length === 0) return <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-3)" }}>无数据</p>;
   return (
     <div className="rs-cats">
       <div className="rs-cats-bar">
         {shown.map((c) => (
-          <div
-            key={c.id}
-            className="rs-cats-seg"
+          <div key={c.id} className="rs-cats-seg"
             style={{ width: `${c.share_pct}%`, background: c.color }}
-            title={`${c.name} ${c.share_pct.toFixed(0)}%`}
-          />
+            title={`${c.name} ${c.share_pct.toFixed(0)}%`} />
         ))}
       </div>
       <div className="rs-cats-legend">
@@ -126,128 +100,48 @@ function SummaryCategories({
   );
 }
 
-/** 应用列表：图标 + 名称 + 时长 + 百分比。 */
-function SummaryApps({
-  apps, icons,
-}: {
-  apps: AppSnap[]; icons: ResolvedIconMap | null;
-}) {
-  if (apps.length === 0) return <p className="rs-empty">无数据</p>;
+function SummaryApps({ apps, icons }: { apps: AppSnap[]; icons: ResolvedIconMap | null }) {
+  if (apps.length === 0) return <p style={{ fontSize: "var(--text-sm)", color: "var(--color-text-3)" }}>无数据</p>;
   const max = Math.max(...apps.map((a) => a.active_ms), 1);
   return (
-    <div className="rs-apps">
+    <div className="ds-apps">
       {apps.slice(0, 5).map((a) => (
-        <div key={a.bundle_id} className="rs-app">
+        <div key={a.bundle_id} className="ds-app">
           <SummaryIcon bundleId={a.bundle_id} name={a.name} icons={icons} />
-          <span className="rs-app-name">{a.name}</span>
-          <div className="rs-app-track">
-            <div className="rs-app-fill" style={{ width: `${(a.active_ms / max) * 100}%` }} />
+          <span className="ds-app-name">{a.name}</span>
+          <div className="ds-app-track">
+            <div className="ds-app-fill" style={{ width: `${(a.active_ms / max) * 100}%` }} />
           </div>
-          <span className="rs-app-dur">{formatDuration(a.active_ms)}</span>
-          <span className="rs-app-pct">{Math.round(a.share_pct)}%</span>
+          <span className="ds-app-dur">{formatDuration(a.active_ms)}</span>
+          <span className="ds-app-pct">{Math.round(a.share_pct)}%</span>
         </div>
       ))}
     </div>
   );
 }
 
-/** 带刻度的迷你条形。ticks 与 cells 等长，非空字符串打刻度标签。 */
-function MiniBars({
-  cells, ticks,
-}: {
-  cells: { active_ms: number }[]; ticks?: string[];
-}) {
+function MiniBars({ cells, ticks }: { cells: { active_ms: number }[]; ticks?: string[] }) {
   const max = Math.max(...cells.map((c) => c.active_ms), 1);
   return (
     <div className="rs-bars-wrap">
       <div className="rs-bars">
         {cells.map((c, i) => (
           <div key={i} className="rs-bars-col">
-            <div
-              className="rs-bars-fill"
-              style={{ height: `${Math.max((c.active_ms / max) * 100, c.active_ms > 0 ? 6 : 0)}%` }}
-            />
+            <div className="rs-bars-fill"
+              style={{ height: `${Math.max((c.active_ms / max) * 100, c.active_ms > 0 ? 6 : 0)}%` }} />
           </div>
         ))}
       </div>
       {ticks && (
         <div className="rs-bars-ticks">
-          {ticks.map((t, i) => (
-            <div key={i} className="rs-bars-tick">{t}</div>
-          ))}
+          {ticks.map((t, i) => <div key={i} className="rs-bars-tick">{t}</div>)}
         </div>
       )}
     </div>
   );
 }
 
-function Narrative({ detail }: { detail: ReportView }) {
-  if (!detail.narrative) return null;
-  return <div className="rs-narrative">{renderQuips(detail.narrative, "summary")}</div>;
-}
-
-/** 日报专项：活跃区间 / 最活跃小时 / 最长专注。 */
-function DayExtras({ d }: { d: DailyReport }) {
-  const spanMs = d.span_end_ms - d.span_start_ms;
-  const spanStr = spanMs > 0 ? formatDuration(spanMs) : null;
-  const focusMin = Math.round(d.longest_focus.duration_ms / 60000);
-  return (
-    <div className="rs-extras">
-      {spanStr && (
-        <div className="rs-extra">
-          <span className="rs-extra-label">活跃区间</span>
-          <span className="rs-extra-val">{spanStr}</span>
-        </div>
-      )}
-      <div className="rs-extra">
-        <span className="rs-extra-label">最活跃时段</span>
-        <span className="rs-extra-val">{d.peak_hour}:00 – {d.peak_hour + 1}:00</span>
-      </div>
-      {focusMin > 0 && (
-        <div className="rs-extra">
-          <span className="rs-extra-label">最长专注</span>
-          <span className="rs-extra-val">{focusMin} 分钟</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 周报专项：作息均值 + 工作日 vs 周末。 */
-function WeekExtras({ d }: { d: WeeklyReport }) {
-  const s = d.rhythm_summary;
-  const ww = d.weekday_weekend;
-  return (
-    <div className="rs-extras">
-      {s.days_counted >= 2 && s.avg_start_min != null && s.avg_end_min != null && (
-        <div className="rs-extra">
-          <span className="rs-extra-label">平均作息</span>
-          <span className="rs-extra-val">
-            {formatSleepMin(s.avg_start_min)} 开工 · {formatSleepMin(s.avg_end_min)} 停下
-          </span>
-        </div>
-      )}
-      {(ww.weekday_days > 0 || ww.weekend_days > 0) && (
-        <div className="rs-extra">
-          <span className="rs-extra-label">工作日/周末</span>
-          <span className="rs-extra-val">
-            {ww.weekday_days > 0 ? `工作日 ${formatDuration(ww.weekday_avg_active_ms)}` : "工作日无记录"}
-            {" · "}
-            {ww.weekend_days > 0 ? `周末 ${formatDuration(ww.weekend_avg_active_ms)}` : "周末无记录"}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/** 月报专项：上半月 vs 下半月（取前 4 条）。 */
-function MonthHalfShift({
-  shifts, snapshot,
-}: {
-  shifts: import("./types").CategoryHalfShift[];
-  snapshot: ReportSnapshot;
-}) {
+function HalfShift({ shifts, snapshot }: { shifts: CategoryHalfShift[]; snapshot: ReportSnapshot }) {
   if (shifts.length === 0) return null;
   const nameById = new Map(snapshot.categories.map((c) => [c.id, c.name]));
   const colorById = new Map(snapshot.categories.map((c) => [c.id, c.color]));
@@ -255,10 +149,7 @@ function MonthHalfShift({
     <div className="rs-halfshift">
       {shifts.slice(0, 4).map((h) => (
         <div key={h.category} className="rs-halfshift-row">
-          <span
-            className="rs-halfshift-swatch"
-            style={{ background: colorById.get(h.category) ?? "#999" }}
-          />
+          <span className="rs-halfshift-swatch" style={{ background: colorById.get(h.category) ?? "#999" }} />
           <span className="rs-halfshift-name">{nameById.get(h.category) ?? h.category}</span>
           <span className="rs-halfshift-vals">
             {h.first_half_share_pct.toFixed(0)}% → {h.second_half_share_pct.toFixed(0)}%
@@ -272,119 +163,396 @@ function MonthHalfShift({
   );
 }
 
-/** 三报各自的主体内容区。 */
-function DayMain({ detail, icons }: { detail: Extract<ReportView, { report_type: "day" }>; icons: ResolvedIconMap | null }) {
-  const d = detail.data;
+function Narrative({ narrative }: { narrative: string | null }) {
+  if (!narrative) return null;
+  const lines = narrative.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (lines.length === 0) return null;
+  const gridClass = `ds-obs-grid${lines.length === 1 ? " ds-obs-grid--single" : ""}`;
   return (
-    <>
-      <div className="rs-hero">
-        <div className="rs-hero-label">活跃时长</div>
-        <div className="rs-hero-num">{formatDuration(d.active_ms)}</div>
-        <div className="rs-hero-sub">
-          前台 {formatDuration(d.foreground_ms)} · 切换 {d.switch_count} 次
-          {d.vs_7d.avg_active_ms >= BASELINE_MIN_DAILY_MS && (
-            <> · 近 7 天 {deltaLabel(d.vs_7d.active_delta_pct)}</>
-          )}
-        </div>
-      </div>
-      <div className="rs-cols2">
-        <div className="rs-section">
-          <div className="rs-section-title">分类</div>
-          <SummaryCategories categories={detail.snapshot.categories} />
-        </div>
-        <div className="rs-section">
-          <div className="rs-section-title">24 小时节奏</div>
-          <MiniBars cells={d.hourly} ticks={DAY_TICKS} />
-        </div>
-      </div>
-      <div className="rs-section">
-        <div className="rs-section-title">应用 Top 5</div>
-        <SummaryApps apps={detail.snapshot.apps} icons={icons} />
-      </div>
-      <DayExtras d={d} />
-      <Narrative detail={detail} />
-    </>
+    <div className={gridClass}>
+      {lines.map((line, i) => (
+        <div key={i} className="ds-obs-item">{renderQuips(line, "summary")}</div>
+      ))}
+    </div>
   );
 }
 
-function WeekMain({ detail, icons }: { detail: Extract<ReportView, { report_type: "week" }>; icons: ResolvedIconMap | null }) {
+/* ── 周报标题 ─────────────────────────────────────────────────────────────── */
+function WeekHeadline({ d }: { d: WeeklyReport }) {
+  const avgMin = Math.round(d.avg_daily_active_ms / 60000);
+  const hasDelta = d.baseline.baseline_sufficient;
+  const delta = d.baseline.daily_delta_pct;
+  if (d.days_with_data <= 2) return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">本周记录天数<span className="ds-headline-accent">较少</span>，</span>
+      <span className="ds-headline-line">数据仅供参考。</span>
+    </div>
+  );
+  if (hasDelta && delta >= 20) return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">本周活跃时长</span>
+      <span className="ds-headline-line"><span className="ds-headline-accent">明显高于</span>近期均值。</span>
+    </div>
+  );
+  if (hasDelta && delta <= -20) return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">本周活跃时长</span>
+      <span className="ds-headline-line"><span className="ds-headline-accent">低于</span>近期均值。</span>
+    </div>
+  );
+  if (avgMin >= 480) return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">这周的日均活跃</span>
+      <span className="ds-headline-line"><span className="ds-headline-accent">相当充实</span>。</span>
+    </div>
+  );
+  return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">本周活动概览</span>
+    </div>
+  );
+}
+
+/* ── 月报标题 ─────────────────────────────────────────────────────────────── */
+function MonthHeadline({ d }: { d: MonthlyReport }) {
+  const hasDelta = d.prev_month.avg_daily_active_ms > 0;
+  const delta = d.prev_month.daily_delta_pct;
+  if (d.days_with_data <= 5) return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">本月记录天数<span className="ds-headline-accent">有限</span>，</span>
+      <span className="ds-headline-line">数据仅供参考。</span>
+    </div>
+  );
+  if (hasDelta && delta >= 15) return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">本月活跃时长</span>
+      <span className="ds-headline-line"><span className="ds-headline-accent">高于</span>上月。</span>
+    </div>
+  );
+  if (hasDelta && delta <= -15) return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">本月活跃时长</span>
+      <span className="ds-headline-line"><span className="ds-headline-accent">低于</span>上月。</span>
+    </div>
+  );
+  if (d.days_with_data >= 25) return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">这个月记录<span className="ds-headline-accent">相当完整</span>，</span>
+      <span className="ds-headline-line">共 {d.days_with_data} 天有效数据。</span>
+    </div>
+  );
+  return (
+    <div className="ds-headline">
+      <span className="ds-headline-line">本月活动概览</span>
+    </div>
+  );
+}
+
+/* ── 周报 Editorial 组件 ──────────────────────────────────────────────────── */
+function WeekSummary({
+  detail, icons, onRegenerate, regenerating, onExport, onOpenLightbox, onCollapse,
+}: {
+  detail: Extract<ReportView, { report_type: "week" }>;
+  icons: ResolvedIconMap | null;
+  onRegenerate: () => void;
+  regenerating: boolean;
+  onExport: () => void;
+  onOpenLightbox: () => void;
+  onCollapse: () => void;
+}) {
+  const [confirmRegen, setConfirmRegen] = useState(false);
   const d = detail.data;
   const deltaById = new Map(d.categories.map((c) => [c.category, c.share_delta_pp]));
+
   return (
-    <>
-      <div className="rs-hero">
-        <div className="rs-hero-label">活跃时长</div>
-        <div className="rs-hero-num">{formatDuration(d.active_ms)}</div>
-        <div className="rs-hero-sub">
-          日均 {formatDuration(d.avg_daily_active_ms)} · 前台 {formatDuration(d.foreground_ms)}
-          {d.baseline.baseline_sufficient && (
-            <> · vs 前 4 周 {deltaLabel(d.baseline.daily_delta_pct)}</>
+    <div className="ds-shell">
+      {/* ── Header ── */}
+      <div className="ds-header">
+        <div className="ds-header-top">
+          <span className="ds-header-label">WEEKLY ACTIVITY / {weekRangeLabel(d.week_start)}</span>
+          <div className="ds-header-actions">
+            {detail.status === "ok" && (
+              <button type="button" className="ds-header-export" onClick={onOpenLightbox}>预览海报 ↗</button>
+            )}
+            {detail.status === "ok" && (
+              <button type="button" className="ds-header-export" onClick={onExport}>导出周报告 ↗</button>
+            )}
+            <button type="button" className="ds-collapse-btn"
+              onClick={() => setConfirmRegen(true)} disabled={regenerating}
+              title="用当前的分类设置重算这份报告">
+              {regenerating ? "重新生成中…" : "重新生成"}
+            </button>
+            <span className="ds-header-sep" aria-hidden>·</span>
+            <button type="button" className="ds-collapse-btn" onClick={onCollapse}>收起 ↑</button>
+          </div>
+        </div>
+        <WeekHeadline d={d} />
+        <div className="ds-kpis">
+          <div className="ds-kpi ds-kpi--primary">
+            <span className="ds-kpi-label">活跃时长</span>
+            <span className="ds-kpi-val">{formatDuration(d.active_ms)}</span>
+            {d.baseline.baseline_sufficient && (
+              <span className="ds-kpi-sub">vs 前 4 周 {deltaLabel(d.baseline.daily_delta_pct)}</span>
+            )}
+          </div>
+          <div className="ds-kpi">
+            <span className="ds-kpi-label">日均活跃</span>
+            <span className="ds-kpi-val">{formatDuration(d.avg_daily_active_ms)}</span>
+          </div>
+          <div className="ds-kpi">
+            <span className="ds-kpi-label">有效天数</span>
+            <span className="ds-kpi-val">{d.days_with_data} 天</span>
+          </div>
+          {d.rhythm_summary.days_counted >= 2 &&
+           d.rhythm_summary.avg_start_min != null &&
+           d.rhythm_summary.avg_end_min != null && (
+            <div className="ds-kpi">
+              <span className="ds-kpi-label">平均作息</span>
+              <span className="ds-kpi-val">
+                {formatSleepMin(d.rhythm_summary.avg_start_min!)} – {formatSleepMin(d.rhythm_summary.avg_end_min!)}
+              </span>
+            </div>
           )}
         </div>
       </div>
-      <div className="rs-cols2">
-        <div className="rs-section">
-          <div className="rs-section-title">分类{d.baseline.baseline_sufficient ? <span className="rs-section-note">含 vs 前 4 周 pp 差</span> : null}</div>
-          <SummaryCategories
-            categories={detail.snapshot.categories}
-            deltaById={deltaById}
-            showDelta={d.baseline.baseline_sufficient}
-          />
-        </div>
-        <div className="rs-section">
-          <div className="rs-section-title">这一周</div>
+
+      {/* ── Body ── */}
+      <div className="ds-body">
+        {/* 01 每日节奏 */}
+        <div className="ds-section">
+          <div className="ds-section-head">
+            <span className="ds-section-id">01 / WEEKLY RHYTHM</span>
+            <span className="ds-section-q">这一周每天的活跃分布</span>
+          </div>
           <MiniBars cells={d.days} ticks={WEEK_TICKS} />
         </div>
+
+        {/* 02+03 分类 & 应用 */}
+        <div className="ds-grid2">
+          <div className="ds-section">
+            <div className="ds-section-head">
+              <span className="ds-section-id">02 / CATEGORIES</span>
+              <span className="ds-section-q">
+                时间花在什么事情上{d.baseline.baseline_sufficient ? "（含 vs 前 4 周 pp 差）" : ""}
+              </span>
+            </div>
+            <SummaryCategories
+              categories={detail.snapshot.categories}
+              deltaById={deltaById}
+              showDelta={d.baseline.baseline_sufficient}
+            />
+          </div>
+          <div className="ds-section">
+            <div className="ds-section-head">
+              <span className="ds-section-id">03 / APPLICATIONS</span>
+              <span className="ds-section-q">最常使用的应用</span>
+            </div>
+            <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+          </div>
+        </div>
+
+        {/* 04 工作日 vs 周末 */}
+        {(d.weekday_weekend.weekday_days > 0 || d.weekday_weekend.weekend_days > 0) && (
+          <div className="ds-section">
+            <div className="ds-section-head">
+              <span className="ds-section-id">04 / WEEKDAY vs WEEKEND</span>
+              <span className="ds-section-q">工作日与周末的活跃差异</span>
+            </div>
+            <div className="ds-kpis">
+              {d.weekday_weekend.weekday_days > 0 && (
+                <div className="ds-kpi">
+                  <span className="ds-kpi-label">工作日日均</span>
+                  <span className="ds-kpi-val">{formatDuration(d.weekday_weekend.weekday_avg_active_ms)}</span>
+                  <span className="ds-kpi-sub">{d.weekday_weekend.weekday_days} 天</span>
+                </div>
+              )}
+              {d.weekday_weekend.weekend_days > 0 && (
+                <div className="ds-kpi">
+                  <span className="ds-kpi-label">周末日均</span>
+                  <span className="ds-kpi-val">{formatDuration(d.weekday_weekend.weekend_avg_active_ms)}</span>
+                  <span className="ds-kpi-sub">{d.weekday_weekend.weekend_days} 天</span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* 05 Observations */}
+        {detail.narrative && (
+          <div className="ds-section">
+            <div className="ds-section-head">
+              <span className="ds-section-id">05 / OBSERVATIONS</span>
+              <span className="ds-section-q">值得留意的细节</span>
+            </div>
+            <Narrative narrative={detail.narrative} />
+          </div>
+        )}
+
+        <div className="ds-footer">
+          <span className="ds-footer-left">SNOOP / WEEKLY RECORD</span>
+          <span className="ds-footer-right">{weekRangeLabel(d.week_start)}</span>
+        </div>
       </div>
-      <div className="rs-section">
-        <div className="rs-section-title">应用 Top 5</div>
-        <SummaryApps apps={detail.snapshot.apps} icons={icons} />
-      </div>
-      <WeekExtras d={d} />
-      <Narrative detail={detail} />
-    </>
+
+      {confirmRegen && createPortal(
+        <div className="dev-confirm-overlay" onClick={() => setConfirmRegen(false)}>
+          <div className="dev-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dev-confirm-header"><h3>按当前分类重新生成</h3></div>
+            <p className="dev-confirm-desc">
+              这份报告现在显示的是<b>生成那一刻</b>的分类名称与配色。重新生成会用
+              <b>当前</b>的分类设置重算，并覆盖原有的分类结果与这段吐槽文案。
+              <br />覆盖后不可撤销。
+            </p>
+            <div className="dev-confirm-actions">
+              <button className="setting-btn" onClick={() => setConfirmRegen(false)}>取消</button>
+              <button className="setting-btn setting-btn-primary"
+                onClick={() => { setConfirmRegen(false); onRegenerate(); }}>重新生成</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </div>
   );
 }
 
-function MonthMain({ detail, icons }: { detail: Extract<ReportView, { report_type: "month" }>; icons: ResolvedIconMap | null }) {
+/* ── 月报 Editorial 组件 ──────────────────────────────────────────────────── */
+function MonthSummary({
+  detail, icons, onRegenerate, regenerating, onExport, onOpenLightbox, onCollapse,
+}: {
+  detail: Extract<ReportView, { report_type: "month" }>;
+  icons: ResolvedIconMap | null;
+  onRegenerate: () => void;
+  regenerating: boolean;
+  onExport: () => void;
+  onOpenLightbox: () => void;
+  onCollapse: () => void;
+}) {
+  const [confirmRegen, setConfirmRegen] = useState(false);
   const d = detail.data;
+
   return (
-    <>
-      <div className="rs-hero">
-        <div className="rs-hero-label">活跃时长</div>
-        <div className="rs-hero-num">{formatDuration(d.active_ms)}</div>
-        <div className="rs-hero-sub">
-          日均 {formatDuration(d.avg_daily_active_ms)} · 有记录 {d.days_with_data} 天
-          {d.prev_month.avg_daily_active_ms > 0 && (
-            <> · vs 上月 {deltaLabel(d.prev_month.daily_delta_pct)}</>
-          )}
+    <div className="ds-shell">
+      {/* ── Header ── */}
+      <div className="ds-header">
+        <div className="ds-header-top">
+          <span className="ds-header-label">MONTHLY ACTIVITY / {monthLabel(d.month_start)}</span>
+          <div className="ds-header-actions">
+            {detail.status === "ok" && (
+              <button type="button" className="ds-header-export" onClick={onOpenLightbox}>预览海报 ↗</button>
+            )}
+            {detail.status === "ok" && (
+              <button type="button" className="ds-header-export" onClick={onExport}>导出月报告 ↗</button>
+            )}
+            <button type="button" className="ds-collapse-btn"
+              onClick={() => setConfirmRegen(true)} disabled={regenerating}
+              title="用当前的分类设置重算这份报告">
+              {regenerating ? "重新生成中…" : "重新生成"}
+            </button>
+            <span className="ds-header-sep" aria-hidden>·</span>
+            <button type="button" className="ds-collapse-btn" onClick={onCollapse}>收起 ↑</button>
+          </div>
+        </div>
+        <MonthHeadline d={d} />
+        <div className="ds-kpis">
+          <div className="ds-kpi ds-kpi--primary">
+            <span className="ds-kpi-label">活跃时长</span>
+            <span className="ds-kpi-val">{formatDuration(d.active_ms)}</span>
+            {d.prev_month.avg_daily_active_ms > 0 && (
+              <span className="ds-kpi-sub">vs 上月 {deltaLabel(d.prev_month.daily_delta_pct)}</span>
+            )}
+          </div>
+          <div className="ds-kpi">
+            <span className="ds-kpi-label">日均活跃</span>
+            <span className="ds-kpi-val">{formatDuration(d.avg_daily_active_ms)}</span>
+          </div>
+          <div className="ds-kpi">
+            <span className="ds-kpi-label">有效天数</span>
+            <span className="ds-kpi-val">{d.days_with_data} 天</span>
+          </div>
         </div>
       </div>
-      <div className="rs-cols2">
-        <div className="rs-section">
-          <div className="rs-section-title">分类</div>
-          <SummaryCategories categories={detail.snapshot.categories} />
-        </div>
-        <div className="rs-section">
-          <div className="rs-section-title">按周走势</div>
+
+      {/* ── Body ── */}
+      <div className="ds-body">
+        {/* 01 按周走势 */}
+        <div className="ds-section">
+          <div className="ds-section-head">
+            <span className="ds-section-id">01 / MONTHLY RHYTHM</span>
+            <span className="ds-section-q">按周的活跃走势</span>
+          </div>
           <MiniBars cells={d.weeks} />
         </div>
-      </div>
-      <div className="rs-section">
-        <div className="rs-section-title">应用 Top 5</div>
-        <SummaryApps apps={detail.snapshot.apps} icons={icons} />
-      </div>
-      {d.half_shift.length > 0 && (
-        <div className="rs-section">
-          <div className="rs-section-title">上半月 vs 下半月</div>
-          <MonthHalfShift shifts={d.half_shift} snapshot={detail.snapshot} />
+
+        {/* 02+03 分类 & 应用 */}
+        <div className="ds-grid2">
+          <div className="ds-section">
+            <div className="ds-section-head">
+              <span className="ds-section-id">02 / CATEGORIES</span>
+              <span className="ds-section-q">时间花在什么事情上</span>
+            </div>
+            <SummaryCategories categories={detail.snapshot.categories} />
+          </div>
+          <div className="ds-section">
+            <div className="ds-section-head">
+              <span className="ds-section-id">03 / APPLICATIONS</span>
+              <span className="ds-section-q">最常使用的应用</span>
+            </div>
+            <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+          </div>
         </div>
+
+        {/* 04 上半月 vs 下半月 */}
+        {d.half_shift.length > 0 && (
+          <div className="ds-section">
+            <div className="ds-section-head">
+              <span className="ds-section-id">04 / HALF-MONTH SHIFT</span>
+              <span className="ds-section-q">上半月 vs 下半月分类变化</span>
+            </div>
+            <HalfShift shifts={d.half_shift} snapshot={detail.snapshot} />
+          </div>
+        )}
+
+        {/* 05 Observations */}
+        {detail.narrative && (
+          <div className="ds-section">
+            <div className="ds-section-head">
+              <span className="ds-section-id">05 / OBSERVATIONS</span>
+              <span className="ds-section-q">值得留意的细节</span>
+            </div>
+            <Narrative narrative={detail.narrative} />
+          </div>
+        )}
+
+        <div className="ds-footer">
+          <span className="ds-footer-left">SNOOP / MONTHLY RECORD</span>
+          <span className="ds-footer-right">{monthLabel(d.month_start)}</span>
+        </div>
+      </div>
+
+      {confirmRegen && createPortal(
+        <div className="dev-confirm-overlay" onClick={() => setConfirmRegen(false)}>
+          <div className="dev-confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dev-confirm-header"><h3>按当前分类重新生成</h3></div>
+            <p className="dev-confirm-desc">
+              这份报告现在显示的是<b>生成那一刻</b>的分类名称与配色。重新生成会用
+              <b>当前</b>的分类设置重算，并覆盖原有的分类结果与这段吐槽文案。
+              <br />覆盖后不可撤销。
+            </p>
+            <div className="dev-confirm-actions">
+              <button className="setting-btn" onClick={() => setConfirmRegen(false)}>取消</button>
+              <button className="setting-btn setting-btn-primary"
+                onClick={() => { setConfirmRegen(false); onRegenerate(); }}>重新生成</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
-      <Narrative detail={detail} />
-    </>
+    </div>
   );
 }
 
+/* ── 入口 ─────────────────────────────────────────────────────────────────── */
 export default function ReportSummary({
   detail, icons, onRegenerate, regenerating, onExport, onOpenLightbox, onCollapse,
 }: {
@@ -396,117 +564,30 @@ export default function ReportSummary({
   onOpenLightbox: () => void;
   onCollapse: () => void;
 }) {
-  // 日报走全新的 Editorial 布局
   if (detail.report_type === "day") {
     return (
       <DaySummary
-        detail={detail}
-        icons={icons}
-        onRegenerate={onRegenerate}
-        regenerating={regenerating}
-        onExport={onExport}
-        onOpenLightbox={onOpenLightbox}
-        onCollapse={onCollapse}
+        detail={detail} icons={icons}
+        onRegenerate={onRegenerate} regenerating={regenerating}
+        onExport={onExport} onOpenLightbox={onOpenLightbox} onCollapse={onCollapse}
       />
     );
   }
-
-  const [confirmRegen, setConfirmRegen] = useState(false);
-
+  if (detail.report_type === "week") {
+    return (
+      <WeekSummary
+        detail={detail} icons={icons}
+        onRegenerate={onRegenerate} regenerating={regenerating}
+        onExport={onExport} onOpenLightbox={onOpenLightbox} onCollapse={onCollapse}
+      />
+    );
+  }
   return (
-    <div className="report-summary">
-      <button type="button" className="rs-header" onClick={onCollapse} title="收起">
-        <span className="rs-headline">
-          <span className="rs-date">{dateText(detail)}</span>
-          <span className="rs-kind">{KIND_CN[detail.report_type]}</span>
-        </span>
-        <span className="rs-collapse">收起 ↑</span>
-      </button>
-
-      <div className="rs-grid">
-        <div className="rs-main">
-          {detail.report_type === "week" ? (
-            <WeekMain detail={detail} icons={icons} />
-          ) : detail.report_type === "month" ? (
-            <MonthMain detail={detail} icons={icons} />
-          ) : (
-            <DayMain detail={detail} icons={icons} />
-          )}
-        </div>
-
-        <aside className="rs-side">
-          <div
-            className="rs-thumb"
-            role="button"
-            tabIndex={0}
-            onClick={onOpenLightbox}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onOpenLightbox();
-              }
-            }}
-            aria-label="打开海报"
-          >
-            <div
-              className="rs-thumb-scaled"
-              style={{ transform: `translateX(-50%) scale(${THUMB_SCALE})` }}
-            >
-              <ReportCard detail={detail} icons={icons} showFooter />
-            </div>
-            <span className="rs-thumb-fade" aria-hidden />
-          </div>
-
-          <div className="rs-actions">
-            {detail.status === "ok" && (
-              <button type="button" className="rs-export" onClick={onExport}>
-                导出成图
-              </button>
-            )}
-            <button
-              type="button"
-              className="rs-regen"
-              onClick={() => setConfirmRegen(true)}
-              disabled={regenerating}
-              title="用当前的分类设置重算这份报告"
-            >
-              {regenerating ? "重新生成中…" : "按当前分类重新生成"}
-            </button>
-          </div>
-        </aside>
-      </div>
-
-      {confirmRegen &&
-        createPortal(
-          <div className="dev-confirm-overlay" onClick={() => setConfirmRegen(false)}>
-            <div className="dev-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-              <div className="dev-confirm-header">
-                <h3>按当前分类重新生成</h3>
-              </div>
-              <p className="dev-confirm-desc">
-                这份报告现在显示的是<b>生成那一刻</b>的分类名称与配色。重新生成会用
-                <b>当前</b>的分类设置重算，并覆盖原有的分类结果与这段吐槽文案。
-                <br />
-                覆盖后不可撤销。
-              </p>
-              <div className="dev-confirm-actions">
-                <button className="setting-btn" onClick={() => setConfirmRegen(false)}>
-                  取消
-                </button>
-                <button
-                  className="setting-btn setting-btn-primary"
-                  onClick={() => {
-                    setConfirmRegen(false);
-                    onRegenerate();
-                  }}
-                >
-                  重新生成
-                </button>
-              </div>
-            </div>
-          </div>,
-          document.body,
-        )}
-    </div>
+    <MonthSummary
+      detail={detail} icons={icons}
+      onRegenerate={onRegenerate} regenerating={regenerating}
+      onExport={onExport} onOpenLightbox={onOpenLightbox} onCollapse={onCollapse}
+    />
   );
 }
+
