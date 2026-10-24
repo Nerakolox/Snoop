@@ -1,0 +1,410 @@
+/* Day Summary — Editorial Report 布局。
+   全部颜色走全局 token，深浅双态自动跟随 data-theme。 */
+
+.ds-shell {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────────── */
+.ds-header {
+  padding: var(--space-5) var(--space-6);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.ds-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.ds-header-label {
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--color-text-3);
+  letter-spacing: 0.08em;
+}
+
+.ds-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.ds-header-export {
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-accent);
+  cursor: pointer;
+  padding: 0;
+  letter-spacing: 0.02em;
+}
+.ds-header-export:hover { text-decoration: underline; }
+
+.ds-collapse-btn {
+  appearance: none;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  cursor: pointer;
+  padding: 0;
+}
+.ds-collapse-btn:hover { color: var(--color-accent); }
+
+/* 大标题 */
+.ds-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.ds-headline-line {
+  font-size: 21px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--color-text);
+  letter-spacing: -0.3px;
+}
+
+.ds-headline-accent {
+  color: var(--color-accent);
+}
+
+/* 核心指标行 */
+.ds-kpis {
+  display: flex;
+  gap: var(--space-8);
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+
+.ds-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ds-kpi-val {
+  font-size: var(--text-sm);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-2);
+  font-weight: 500;
+  line-height: 1.1;
+}
+
+.ds-kpi--primary .ds-kpi-val {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--color-accent);
+  letter-spacing: -0.5px;
+}
+
+.ds-kpi-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+}
+
+.ds-kpi-sub {
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-3);
+}
+
+/* ── Body ────────────────────────────────────────────────────────────────────── */
+.ds-body {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-8);
+}
+
+/* ── Section chrome ──────────────────────────────────────────────────────────── */
+.ds-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.ds-section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ds-section-id {
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--color-text-3);
+  letter-spacing: 0.08em;
+}
+
+.ds-section-q {
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+}
+
+/* ── Timeline ────────────────────────────────────────────────────────────────── */
+.ds-timeline-bars {
+  display: flex;
+  align-items: flex-end;
+  height: 64px;
+  gap: 2px;
+}
+
+.ds-timeline-col {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+
+.ds-timeline-fill {
+  width: 100%;
+  background: var(--color-accent);
+  border-radius: 2px 2px 0 0;
+  opacity: 0.75;
+}
+
+.ds-timeline-ticks {
+  display: flex;
+  margin-top: 4px;
+}
+
+.ds-timeline-tick {
+  flex: 1;
+  font-size: 9px;
+  color: var(--color-text-3);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  text-align: left;
+  line-height: 1;
+  overflow: hidden;
+}
+
+/* ── Data grid（分类 + 应用 双栏）─────────────────────────────────────────────── */
+.ds-grid2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-8);
+}
+
+@media (max-width: 760px) {
+  .ds-grid2 { grid-template-columns: 1fr; }
+}
+
+/* ── Donut chart ─────────────────────────────────────────────────────────────── */
+.ds-donut-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.ds-donut-svg {
+  flex-shrink: 0;
+  width: 96px;
+  height: 96px;
+}
+
+.ds-donut-center-label {
+  font-size: 9px;
+  fill: var(--color-text-2);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.ds-donut-center-pct {
+  font-size: 14px;
+  font-weight: 700;
+  fill: var(--color-text);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+.ds-donut-legend {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ds-donut-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.ds-donut-swatch {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.ds-donut-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.ds-donut-pct {
+  flex-shrink: 0;
+  font-size: var(--text-sm);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-2);
+  min-width: 4ch;
+  text-align: right;
+}
+
+/* ── Applications ────────────────────────────────────────────────────────────── */
+.ds-apps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ds-app {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 120px) 1fr auto auto;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.ds-app-icon {
+  border-radius: 20%;
+  object-fit: contain;
+}
+
+.ds-app-icon--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 600;
+  border-radius: 20%;
+}
+
+.ds-app-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-sm);
+  color: var(--color-text);
+}
+
+.ds-app-track {
+  height: 4px;
+  background: var(--color-surface-2);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.ds-app-fill {
+  height: 100%;
+  background: var(--color-accent);
+  border-radius: 2px;
+  min-width: 2px;
+}
+
+.ds-app-dur {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-2);
+  white-space: nowrap;
+}
+
+.ds-app-pct {
+  flex-shrink: 0;
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-3);
+  min-width: 3ch;
+  text-align: right;
+}
+
+/* ── Observations ────────────────────────────────────────────────────────────── */
+.ds-obs-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-5);
+}
+
+.ds-obs-grid--single {
+  grid-template-columns: 1fr;
+}
+
+@media (max-width: 760px) {
+  .ds-obs-grid { grid-template-columns: 1fr; }
+}
+
+.ds-obs-item {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-accent);
+  font-size: 13.5px;
+  line-height: 1.7;
+  color: var(--color-text-2);
+}
+
+/* narrative markup — renderQuips("summary") が出力するクラス */
+.report-summary__narrative-line {
+  margin: 0;
+  padding: 0;
+}
+
+.report-summary__narrative-n {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-weight: 650;
+  font-size: 1.06em;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.report-summary__narrative-em {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────────── */
+.ds-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
+  gap: var(--space-4);
+}
+
+.ds-footer-left {
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color: var(--color-text-3);
+  letter-spacing: 0.06em;
+}
+
+.ds-footer-right {
+  font-size: var(--text-xs);
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-3);
+}

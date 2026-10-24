@@ -78,7 +78,9 @@
 .rs-hero {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-accent);
 }
 
 .rs-hero-label {
@@ -101,19 +103,24 @@
   color: var(--color-text-2);
   font-family: var(--rs-mono);
   font-variant-numeric: tabular-nums;
+  line-height: 1.5;
 }
 
-/* ── 小指标行（日报/周报专项）─────────────────────────────────────────── */
+/* ── 小指标 pill 行（日报/周报专项）────────────────────────────────────── */
 .rs-extras {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-5);
+  gap: var(--space-2);
 }
 
 .rs-extra {
   display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
+  align-items: center;
+  gap: 5px;
+  padding: 3px var(--space-3);
+  background: var(--color-surface-2);
+  border-radius: var(--radius-full);
+  border: 1px solid var(--color-border);
 }
 
 .rs-extra-label {
@@ -123,23 +130,30 @@
 }
 
 .rs-extra-val {
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-family: var(--rs-mono);
   font-variant-numeric: tabular-nums;
   color: var(--color-text);
+  font-weight: 500;
+  white-space: nowrap;
 }
 
-/* ── 叙述文本 ───────────────────────────────────────────────────────────── */
+/* ── 叙述文本（置于底部，引文式缩进，标明这是点评而非数据） ──────────────── */
 .rs-narrative {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
   font-size: 13.5px;
-  line-height: 1.75;
-  color: var(--color-text);
+  line-height: 1.7;
+  color: var(--color-text-2);
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--color-border);
 }
 
-.rs-narrative-line { margin: 0; }
+.rs-narrative-line {
+  margin: 0;
+  padding: 0;
+}
 
 .rs-narrative-n {
   font-family: var(--rs-mono);
@@ -181,11 +195,12 @@
   color: var(--color-text-3);
 }
 
-/* 内层两列（应用 + 形状条并排）*/
+/* 内层两列：分类图例 + 节奏图。节奏图固定宽度避免拉伸过宽 */
 .rs-cols2 {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) 160px;
   gap: var(--space-5);
+  align-items: start;
 }
 
 /* ── 分类色条 ───────────────────────────────────────────────────────────── */
@@ -244,7 +259,7 @@
   font-family: var(--rs-mono);
   font-variant-numeric: tabular-nums;
   color: var(--color-text-2);
-  min-width: 2.8ch;
+  min-width: 4ch;
   text-align: right;
 }
 
@@ -267,9 +282,10 @@
   gap: var(--space-2);
 }
 
+/* 图标固宽；名称 auto（随内容），压缩但不超过 120px；条形占剩余空间；时长/百分比 auto */
 .rs-app {
   display: grid;
-  grid-template-columns: 20px minmax(0,1fr) minmax(0,40px) auto auto;
+  grid-template-columns: 20px minmax(0, 120px) 1fr auto auto;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
@@ -435,7 +451,7 @@
   overflow: hidden;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
-  background: #ffffff;
+  background: var(--color-surface);
   cursor: pointer;
 }
 
@@ -453,7 +469,7 @@
   position: absolute;
   left: 0; right: 0; bottom: 0;
   height: 72px;
-  background: linear-gradient(to bottom, rgba(255,255,255,0), #ffffff);
+  background: linear-gradient(to bottom, transparent, var(--color-surface));
   pointer-events: none;
 }
 

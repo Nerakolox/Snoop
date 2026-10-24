@@ -28,6 +28,7 @@ import {
 import { renderQuips } from "./markup";
 import type { ResolvedIconMap } from "./icons";
 import ReportCard from "./ReportCard";
+import DaySummary from "./DaySummary";
 import snoopIconInline from "../assets/snoop-icon-64.png?inline";
 import "./report-summary.css";
 
@@ -286,22 +287,22 @@ function DayMain({ detail, icons }: { detail: Extract<ReportView, { report_type:
           )}
         </div>
       </div>
-      <DayExtras d={d} />
-      <Narrative detail={detail} />
-      <div className="rs-section">
-        <div className="rs-section-title">分类</div>
-        <SummaryCategories categories={detail.snapshot.categories} />
-      </div>
       <div className="rs-cols2">
         <div className="rs-section">
-          <div className="rs-section-title">应用 Top 5</div>
-          <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+          <div className="rs-section-title">分类</div>
+          <SummaryCategories categories={detail.snapshot.categories} />
         </div>
         <div className="rs-section">
           <div className="rs-section-title">24 小时节奏</div>
           <MiniBars cells={d.hourly} ticks={DAY_TICKS} />
         </div>
       </div>
+      <div className="rs-section">
+        <div className="rs-section-title">应用 Top 5</div>
+        <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+      </div>
+      <DayExtras d={d} />
+      <Narrative detail={detail} />
     </>
   );
 }
@@ -321,26 +322,26 @@ function WeekMain({ detail, icons }: { detail: Extract<ReportView, { report_type
           )}
         </div>
       </div>
-      <WeekExtras d={d} />
-      <Narrative detail={detail} />
-      <div className="rs-section">
-        <div className="rs-section-title">分类{d.baseline.baseline_sufficient ? <span className="rs-section-note">含 vs 前 4 周 pp 差</span> : null}</div>
-        <SummaryCategories
-          categories={detail.snapshot.categories}
-          deltaById={deltaById}
-          showDelta={d.baseline.baseline_sufficient}
-        />
-      </div>
       <div className="rs-cols2">
         <div className="rs-section">
-          <div className="rs-section-title">应用 Top 5</div>
-          <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+          <div className="rs-section-title">分类{d.baseline.baseline_sufficient ? <span className="rs-section-note">含 vs 前 4 周 pp 差</span> : null}</div>
+          <SummaryCategories
+            categories={detail.snapshot.categories}
+            deltaById={deltaById}
+            showDelta={d.baseline.baseline_sufficient}
+          />
         </div>
         <div className="rs-section">
           <div className="rs-section-title">这一周</div>
           <MiniBars cells={d.days} ticks={WEEK_TICKS} />
         </div>
       </div>
+      <div className="rs-section">
+        <div className="rs-section-title">应用 Top 5</div>
+        <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+      </div>
+      <WeekExtras d={d} />
+      <Narrative detail={detail} />
     </>
   );
 }
@@ -359,20 +360,19 @@ function MonthMain({ detail, icons }: { detail: Extract<ReportView, { report_typ
           )}
         </div>
       </div>
-      <Narrative detail={detail} />
-      <div className="rs-section">
-        <div className="rs-section-title">分类</div>
-        <SummaryCategories categories={detail.snapshot.categories} />
-      </div>
       <div className="rs-cols2">
         <div className="rs-section">
-          <div className="rs-section-title">应用 Top 5</div>
-          <SummaryApps apps={detail.snapshot.apps} icons={icons} />
+          <div className="rs-section-title">分类</div>
+          <SummaryCategories categories={detail.snapshot.categories} />
         </div>
         <div className="rs-section">
           <div className="rs-section-title">按周走势</div>
           <MiniBars cells={d.weeks} />
         </div>
+      </div>
+      <div className="rs-section">
+        <div className="rs-section-title">应用 Top 5</div>
+        <SummaryApps apps={detail.snapshot.apps} icons={icons} />
       </div>
       {d.half_shift.length > 0 && (
         <div className="rs-section">
@@ -380,6 +380,7 @@ function MonthMain({ detail, icons }: { detail: Extract<ReportView, { report_typ
           <MonthHalfShift shifts={d.half_shift} snapshot={detail.snapshot} />
         </div>
       )}
+      <Narrative detail={detail} />
     </>
   );
 }
@@ -395,6 +396,21 @@ export default function ReportSummary({
   onOpenLightbox: () => void;
   onCollapse: () => void;
 }) {
+  // 日报走全新的 Editorial 布局
+  if (detail.report_type === "day") {
+    return (
+      <DaySummary
+        detail={detail}
+        icons={icons}
+        onRegenerate={onRegenerate}
+        regenerating={regenerating}
+        onExport={onExport}
+        onOpenLightbox={onOpenLightbox}
+        onCollapse={onCollapse}
+      />
+    );
+  }
+
   const [confirmRegen, setConfirmRegen] = useState(false);
 
   return (
