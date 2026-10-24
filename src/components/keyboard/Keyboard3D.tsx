@@ -128,6 +128,11 @@ function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
+/** 快入慢落：用于进场俯冲，前 30% 的时间冲过 70% 的路程。 */
+function easeOutCubic(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}
+
 /** 读 --color-accent（描边/标记色），主题切换后重读。 */
 function readAccent(): Color {
   if (typeof document === "undefined") return new Color(ACCENT_FALLBACK);
@@ -715,7 +720,7 @@ export default function Keyboard3D({
         animRef.current = null;
       }
     };
-    const startAnim = (duration: number) => {
+    const startAnim = (duration: number, ease: (t: number) => number = easeInOutCubic) => {
       stopAnim();
       const startRise = Float32Array.from(riseRef.current);
       const targetRise = riseRef.target;
@@ -725,7 +730,7 @@ export default function Keyboard3D({
       const t0 = performance.now();
       const step = (now: number) => {
         const t = Math.min(1, (now - t0) / duration);
-        const e = easeInOutCubic(t);
+        const e = ease(t);
         const cur = riseRef.current;
         for (let i = 0; i < n; i++) {
           cur[i] = startRise[i] + (targetRise[i] - startRise[i]) * e;
@@ -965,13 +970,20 @@ export default function Keyboard3D({
     renderer.setSize(initW, initH, false);
     camera.aspect = initW / initH;
     camera.updateProjectionMatrix();
-    camRef.current.radius = fitRadius(TILT_DEFAULT);
-    riseRef.current.set(computeTargetRise());
-    plateMixRef.current = plateMixRef.target;
+
+    // 进场俯冲：从高空斜角冲向默认位置，1100ms easeOutCubic
+    const targetRadius = fitRadius(TILT_DEFAULT);
+    camRef.current = { radius: targetRadius * 2.2, yaw: (18 * Math.PI) / 180, tilt: (12 * Math.PI) / 180 };
+    camTargetRef.current = { radius: targetRadius, yaw: 0, tilt: TILT_DEFAULT };
+    riseRef.current.fill(0); // 柱子从零升起
+    riseRef.target = computeTargetRise();
+    plateMixRef.current = 0;
+    // plateMixRef.target 已由 computeTargetRise 设好
     writeEmphasis();
     applyColors();
     resourcesRef.current!.setTextColors(themeRef.current.darkText, themeRef.current.lightText);
     render();
+    startAnim(1100, easeOutCubic);
 
     // ---- 清理（同步，与初始化严格配对） ----------------------------------------
     return () => {
