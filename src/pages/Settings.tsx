@@ -127,6 +127,7 @@ export default function Settings() {
   const [dbInfo, setDbInfo] = useState<DbInfo | null>(null);
   const [newApp, setNewApp] = useState("");
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestRect, setSuggestRect] = useState<DOMRect | null>(null);
   const ignoreComboRef = useRef<HTMLDivElement>(null);
   const ignoreInputRef = useRef<HTMLInputElement>(null);
   const [recentApps, setRecentApps] = useState<string[]>([]);
@@ -215,6 +216,40 @@ export default function Settings() {
       unlistenPromise.then((u) => u()).catch(() => {});
     };
   }, []);
+
+  // 弹层用 fixed + portal 渲染以逃出 .settings-group 的 overflow:hidden，
+  // 但 fixed 坐标不会跟随滚动，所以这里在打开期间持续监听 scroll/resize，
+  // 用 input 的实时 getBoundingClientRect 刷新定位。
+  // 输入框一旦滚进顶栏（top < 顶栏高度）就关闭弹层，避免 fixed 弹层盖住顶栏操作区。
+  useEffect(() => {
+    if (!showSuggestions) {
+      setSuggestRect(null);
+      return;
+    }
+    const update = () => {
+      const el = ignoreInputRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      if (r.top < 50) {
+        setShowSuggestions(false);
+        return;
+      }
+      setSuggestRect(r);
+    };
+    update();
+    let raf = 0;
+    const onScroll = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(update);
+    };
+    window.addEventListener("scroll", onScroll, true);
+    window.addEventListener("resize", onScroll);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("scroll", onScroll, true);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, [showSuggestions]);
 
   function applyTheme(t: ThemeMode) {
     setTheme(t);
@@ -480,8 +515,8 @@ export default function Settings() {
           {settings.ignore_list.length > 0 && (
             <div className="setting-ignore-list">
               {settings.ignore_list.map((app) => (
-                <span key={app} className="setting-ignore-tag">
-                  {app}
+                <span key={app} className="setting-ignore-tag" title={app}>
+                  {appDisplayName(app)}
                   <button
                     className="setting-ignore-remove"
                     onClick={() => removeIgnore(app)}
@@ -514,20 +549,18 @@ export default function Settings() {
               }}
               autoComplete="off"
             />
-            {showSuggestions && (() => {
+            {showSuggestions && suggestRect && (() => {
               const q = newApp.trim().toLowerCase();
               const suggestions = recentApps
                 .filter((a) => !settings.ignore_list.includes(a))
                 .filter((a) => !q || appDisplayName(a).toLowerCase().includes(q) || a.toLowerCase().includes(q))
                 .slice(0, 8);
               if (suggestions.length === 0) return null;
-              const rect = ignoreInputRef.current?.getBoundingClientRect();
-              if (!rect) return null;
               return createPortal(
                 <ul
                   className="setting-ignore-suggestions"
                   role="listbox"
-                  style={{ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 260) }}
+                  style={{ top: suggestRect.bottom + 4, left: suggestRect.left, width: Math.max(suggestRect.width, 260) }}
                 >
                   {suggestions.map((a) => (
                     <li
