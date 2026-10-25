@@ -1,0 +1,361 @@
+/* ---------- 更新日志弹窗 ----------
+   纵向时间线，最新版本在顶部。整套只用中性色 + 一处品牌紫（当前版本节点），
+   理由见 ChangelogDialog.tsx 顶部注释。
+*/
+
+@keyframes changelog-dialog-in {
+  from { opacity: 0; transform: scale(0.97) translateY(10px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0); }
+}
+
+.changelog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8);
+  background: rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: overlay-in var(--dur-base) var(--ease-smooth) both;
+}
+
+.changelog-dialog {
+  display: flex;
+  flex-direction: column;
+  width: 640px;
+  max-width: 100%;
+  max-height: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  overflow: hidden;
+  outline: none;
+  animation: changelog-dialog-in var(--dur-base) var(--ease-bounce) both;
+}
+
+/* ---- 头部 ---- */
+
+.changelog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-6) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.changelog-head-text {
+  min-width: 0;
+}
+
+.changelog-title {
+  margin: 0;
+  font-size: var(--text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--color-text);
+}
+
+.changelog-sub {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.changelog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-3);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-smooth),
+              color var(--dur-fast) var(--ease-smooth);
+}
+
+.changelog-close:hover {
+  background: var(--color-surface-2);
+  color: var(--color-text);
+}
+
+/* ---- 主体（唯一滚动区） ---- */
+
+.changelog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-6);
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color var(--dur-base) var(--ease-smooth);
+}
+
+.changelog-body:hover,
+.changelog-body:focus-within {
+  scrollbar-color: rgba(107, 102, 112, 0.35) transparent;
+}
+
+.changelog-body::-webkit-scrollbar {
+  width: 10px;
+  background: transparent;
+}
+
+.changelog-body::-webkit-scrollbar-thumb {
+  background-color: rgba(107, 102, 112, 0.22);
+  border: 2px solid transparent;
+  border-radius: var(--radius-full);
+  background-clip: padding-box;
+}
+
+.changelog-body::-webkit-scrollbar-thumb:hover {
+  background-color: rgba(107, 102, 112, 0.4);
+}
+
+/* ---- 时间线 ---- */
+
+.changelog-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 每一项自己画「到下一项的连线」，最后一项不画。
+   用 padding-bottom 而非 margin 撑开间距，连线才能连续不断。 */
+.changelog-entry {
+  position: relative;
+  padding: 0 0 var(--space-6) 26px;
+}
+
+.changelog-entry:last-child {
+  padding-bottom: 0;
+}
+
+.changelog-entry::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 13px;
+  bottom: 0;
+  width: 1px;
+  background: var(--color-border);
+}
+
+.changelog-entry:last-child::before {
+  display: none;
+}
+
+/* 节点：默认空心（中性），当前版本实心品牌紫 + 外圈光晕 */
+.changelog-dot {
+  position: absolute;
+  left: 0;
+  top: 5px;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-full);
+  background: var(--color-surface);
+  border: 1.5px solid var(--neutral-4);
+  box-sizing: border-box;
+}
+
+.changelog-entry.is-current .changelog-dot {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px var(--color-accent-soft);
+}
+
+/* ---- 版本卡 ---- */
+
+.changelog-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.changelog-version {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.changelog-entry.is-current .changelog-version {
+  color: var(--color-text);
+}
+
+.changelog-current-badge {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 3px 6px;
+  border-radius: var(--radius-full);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+  letter-spacing: 0.02em;
+  transform: translateY(-1px);
+}
+
+.changelog-date {
+  margin-left: auto;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.changelog-tagline {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-2);
+  line-height: 1.5;
+}
+
+/* ---- 条目分组 ---- */
+
+.changelog-group {
+  margin-top: var(--space-3);
+}
+
+.changelog-kind {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-3);
+  letter-spacing: 0.06em;
+  margin-bottom: var(--space-1);
+}
+
+.changelog-notes {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.changelog-note {
+  position: relative;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text);
+  line-height: 1.55;
+}
+
+/* 行首短横：比圆点轻，不跟版本节点抢视觉重量 */
+.changelog-note::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 0.62em;
+  width: 6px;
+  height: 1px;
+  background: var(--neutral-4);
+}
+
+.changelog-note-text {
+  display: block;
+}
+
+.changelog-note-detail {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  line-height: 1.5;
+}
+
+/* ---- 链接 ---- */
+
+.changelog-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.changelog-link {
+  padding: 3px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-2);
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-smooth),
+              border-color var(--dur-fast) var(--ease-smooth),
+              background var(--dur-fast) var(--ease-smooth);
+}
+
+.changelog-link:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+/* ---- 底部 ---- */
+
+.changelog-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-6);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-2);
+  flex-shrink: 0;
+}
+
+.changelog-foot-note {
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  line-height: 1.4;
+}
+
+.changelog-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  padding: 4px var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-2);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition: color var(--dur-fast) var(--ease-smooth),
+              border-color var(--dur-fast) var(--ease-smooth);
+}
+
+.changelog-retry:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.changelog-empty {
+  margin: 0;
+  padding: var(--space-8) 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--color-text-3);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .changelog-overlay,
+  .changelog-dialog {
+    animation: none;
+  }
+}

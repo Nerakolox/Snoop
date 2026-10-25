@@ -464,3 +464,58 @@
   to { transform: rotate(360deg); }
 }
 
+
+/* 版本号：可点开更新日志。做成一条贴在右边的按钮，右侧留出箭头；
+   有未读时按钮前挂一个小圆点。 */
+.setting-version-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--control-height);
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--control-radius);
+  background: transparent;
+  color: var(--color-text-2);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-smooth),
+    color var(--dur-fast) var(--ease-smooth),
+    border-color var(--dur-fast) var(--ease-smooth);
+}
+
+.setting-version-btn:hover {
+  background: var(--color-surface-2);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+
+.setting-version-btn svg {
+  color: var(--color-text-3);
+  transition: transform var(--dur-fast) var(--ease-smooth),
+              color var(--dur-fast) var(--ease-smooth);
+}
+
+.setting-version-btn:hover svg {
+  transform: translateX(1px);
+  color: var(--color-text-2);
+}
+
+.setting-version-text {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 未读圆点：贴在按钮左内侧，不占布局宽度 */
+.setting-version-dot {
+  position: absolute;
+  left: 1px;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  box-shadow: 0 0 0 2px var(--color-surface);
+}

@@ -8,14 +8,16 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { enable as enableAutostart, disable as disableAutostart, isEnabled as isAutostartEnabled } from "@tauri-apps/plugin-autostart";
 import {
   Sun, Moon, Monitor, Power, Minimize2,
-  Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code, Tags,
+  Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code, Tags, ChevronRight,
 } from "lucide-react";
 import Categories from "./settings/Categories";
 import { resetAppIconCache } from "../components/AppIcon";
+import { useChangelogDialog } from "../components/changelog/ChangelogProvider";
 import PageShell from "../components/PageShell";
 import KLELayoutPicker, { getSavedLayout, saveLayout } from "../components/KLELayoutPicker";
 import { useAiEnabled } from "../ai/master";
 import { getAiConfig } from "../ai/client";
+import { loadAppVersion } from "../changelog/appVersion";
 import { useContextActions, useContextState } from "../store/context";
 import { fetchUnmappedKeys, clearUnmappedKeys } from "../data/client";
 import type { UnmappedKey } from "../data/types";
@@ -155,6 +157,7 @@ export default function Settings() {
   );
   const [aiEnabled, setAiEnabled] = useAiEnabled();
   const actions = useContextActions();
+  const { open: openChangelog, hasUnseen } = useChangelogDialog();
   // AI 配置状态：只用于在开关开启时显示「已配置 · T2 / 未配置服务」一行状态。
   const [aiStatus, setAiStatus] = useState<{ configured: boolean; tier: string } | null>(null);
   const [unmapped, setUnmapped] = useState<UnmappedKey[]>([]);
@@ -187,7 +190,7 @@ export default function Settings() {
     invoke<AppSettings>("get_settings").then(setSettings).catch(console.error);
     invoke<DbInfo>("get_db_info").then(setDbInfo).catch(console.error);
     invoke<string[]>("get_recent_apps").then(setRecentApps).catch(console.error);
-    invoke<string>("get_app_version").then(setVersion).catch(console.error);
+    loadAppVersion().then(setVersion);
     fetchUnmappedKeys().then(setUnmapped).catch(console.error);
     invoke<UpdateState>("get_update_state").then(setUpdateState).catch(console.error);
     // 以系统实际注册状态为准显示开关初始值，避免本地布尔和真实注册项漂移
@@ -769,10 +772,19 @@ export default function Settings() {
       <div className="settings-group">
         <div className="settings-group-title">关于</div>
 
-        <SettingRow label="版本">
-          <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-2)", fontVariantNumeric: "tabular-nums" }}>
-            {version ? `v${version}` : ""}
-          </span>
+        <SettingRow label="版本" desc="查看每个版本改了什么">
+          <button
+            type="button"
+            className="setting-version-btn"
+            onClick={openChangelog}
+            aria-label="打开更新日志"
+          >
+            {hasUnseen && <span className="setting-version-dot" aria-hidden />}
+            <span className="setting-version-text">
+              {version ? `v${version}` : ""}
+            </span>
+            <ChevronRight size={13} strokeWidth={2} />
+          </button>
         </SettingRow>
 
         <SettingRow label="开源仓库">

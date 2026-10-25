@@ -14,6 +14,7 @@ import Dev from "./pages/Dev";
 import KeymapTest from "./pages/KeymapTest";
 import { useContextState, useContextActions } from "./store/context";
 import { TopBarToolsProvider } from "./components/topbar/TopBarToolsContext";
+import { ChangelogProvider } from "./components/changelog/ChangelogProvider";
 import { useAiEnabled } from "./ai/master";
 import { loadCategories } from "./categories/store";
 
@@ -150,19 +151,21 @@ export default function App() {
   const style = { "--page-fade-dur": `${dur}ms` } as React.CSSProperties;
 
   return (
-    <div className="app-shell">
-      <Sidebar active={page} onSelect={handleSelect} />
-      <TopBarToolsProvider>
-        <div className="app-right">
-          <TopBar />
-          <AccessibilityBanner />
-          <main className="app-main">
-            <div className={layerClass} style={style}>
-              {renderPage(displayed)}
-            </div>
-          </main>
-        </div>
-      </TopBarToolsProvider>
-    </div>
+    <ChangelogProvider>
+      <div className="app-shell">
+        <Sidebar active={page} onSelect={handleSelect} />
+        <TopBarToolsProvider>
+          <div className="app-right">
+            <TopBar />
+            <AccessibilityBanner />
+            <main className="app-main">
+              <div className={layerClass} style={style}>
+                {renderPage(displayed)}
+              </div>
+            </main>
+          </div>
+        </TopBarToolsProvider>
+      </div>
+    </ChangelogProvider>
   );
 }
