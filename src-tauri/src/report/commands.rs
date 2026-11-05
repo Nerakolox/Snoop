@@ -26,6 +26,8 @@ pub struct ReportMeta {
     pub generated_at_ms: i64,
     pub active_ms: i64,
     pub foreground_ms: i64,
+    /// AI 给的一句话标题；历史报告 / 模板兜底为 None。
+    pub headline: Option<String>,
     pub narrative_source: Option<String>,
 }
 
@@ -43,6 +45,7 @@ pub fn get_report_list(state: State<'_, DbPath>) -> Result<Vec<ReportMeta>, Stri
             generated_at_ms: r.generated_at_ms,
             active_ms: r.active_ms,
             foreground_ms: r.foreground_ms,
+            headline: r.headline,
             narrative_source: r.narrative_source,
         })
         .collect())
@@ -86,13 +89,21 @@ pub fn get_report(
                 }
             };
 
+            // 坏 JSON 不报错：当作没有编辑层文案，报告仍可打开。
+            let ai_copy = r
+                .copy_json
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok());
+
             Ok(Some(ReportView {
                 report_type: r.report_type,
                 status: r.status,
                 data,
                 narrative: r.narrative,
+                headline: r.headline,
                 narrative_source: r.narrative_source,
                 snapshot,
+                ai_copy,
             }))
         }
     }

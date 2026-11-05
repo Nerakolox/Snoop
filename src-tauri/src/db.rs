@@ -172,8 +172,10 @@ impl Database {
                 foreground_ms    INTEGER NOT NULL,
                 data_json        TEXT NOT NULL,
                 narrative        TEXT,
+                headline         TEXT,
                 narrative_source TEXT,
                 snapshot_json    TEXT,
+                copy_json        TEXT,
                 UNIQUE(report_date, report_type)
             );
             ",
@@ -189,6 +191,8 @@ impl Database {
         self.migrate_unique_index()?;
         self.migrate_category_seed()?;
         self.migrate_report_snapshot()?;
+        self.migrate_report_headline()?;
+        self.migrate_report_copy()?;
         self.migrate_key_codes()?;
         Ok(())
     }
@@ -350,6 +354,41 @@ impl Database {
             self.conn
                 .execute_batch("ALTER TABLE daily_reports ADD COLUMN snapshot_json TEXT;")?;
             println!("✓ 已添加报告快照字段 snapshot_json");
+        }
+        Ok(())
+    }
+
+    /// 给存量库的 `daily_reports` 补上 AI 标题列。
+    ///
+    /// 不回填：历史报告没有 AI 标题，前端按数据另起一句，不必为旧报告编造标题。
+    fn migrate_report_headline(&self) -> Result<()> {
+        let has_col: bool = self
+            .conn
+            .prepare("SELECT 1 FROM pragma_table_info('daily_reports') WHERE name='headline'")?
+            .exists([])?;
+
+        if !has_col {
+            self.conn
+                .execute_batch("ALTER TABLE daily_reports ADD COLUMN headline TEXT;")?;
+            println!("✓ 已添加报告标题字段 headline");
+        }
+        Ok(())
+    }
+
+    /// 给存量库的 `daily_reports` 补上结构化编辑层文案列。
+    ///
+    /// 不回填：历史报告没有 AI 编辑层文案，前端按现有模板渲染；
+    /// 只有用户手动「重新生成」才会写入新文案。
+    fn migrate_report_copy(&self) -> Result<()> {
+        let has_col: bool = self
+            .conn
+            .prepare("SELECT 1 FROM pragma_table_info('daily_reports') WHERE name='copy_json'")?
+            .exists([])?;
+
+        if !has_col {
+            self.conn
+                .execute_batch("ALTER TABLE daily_reports ADD COLUMN copy_json TEXT;")?;
+            println!("✓ 已添加报告编辑层文案字段 copy_json");
         }
         Ok(())
     }

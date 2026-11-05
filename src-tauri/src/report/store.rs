@@ -36,6 +36,8 @@ pub struct ReportRow {
     pub data_json: String,
     /// AI 或模板文案（`too_little` 为 None）。
     pub narrative: Option<String>,
+    /// AI 给的一句话标题。模板兜底 / 历史报告为 None，前端按数据另起。
+    pub headline: Option<String>,
     /// `ai` | `template`（`too_little` 为 None）。
     pub narrative_source: Option<String>,
     /// [`super::snapshot::ReportSnapshot`] 序列化。生成时写入，此后不再随分类表变化。
@@ -43,6 +45,8 @@ pub struct ReportRow {
     /// `None` 只出现在加列之前就存在的历史报告上——[`super::commands::get_report`]
     /// 首次打开它们时补写，之后恒为 `Some`。
     pub snapshot_json: Option<String>,
+    /// AI 结构化编辑层文案（JSON，version=2）。历史报告 / 模板兜底为 None。
+    pub copy_json: Option<String>,
 }
 
 fn row_to_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReportRow> {
@@ -55,21 +59,23 @@ fn row_to_report(row: &rusqlite::Row<'_>) -> rusqlite::Result<ReportRow> {
         foreground_ms: row.get(5)?,
         data_json: row.get(6)?,
         narrative: row.get(7)?,
-        narrative_source: row.get(8)?,
-        snapshot_json: row.get(9)?,
+        headline: row.get(8)?,
+        narrative_source: row.get(9)?,
+        snapshot_json: row.get(10)?,
+        copy_json: row.get(11)?,
     })
 }
 
 const COLS: &str = "report_date, report_type, status, generated_at_ms, \
-    active_ms, foreground_ms, data_json, narrative, narrative_source, snapshot_json";
+    active_ms, foreground_ms, data_json, narrative, headline, narrative_source, snapshot_json, copy_json";
 
 /// 插入或覆盖（同 (report_date, report_type) 只保留一条）。
 pub fn upsert(conn: &Connection, r: &ReportRow) -> Result<()> {
     conn.execute(
         "INSERT INTO daily_reports
          (report_date, report_type, status, generated_at_ms, active_ms, foreground_ms,
-          data_json, narrative, narrative_source, snapshot_json)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
+          data_json, narrative, headline, narrative_source, snapshot_json, copy_json)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)
          ON CONFLICT(report_date, report_type) DO UPDATE SET
              status = excluded.status,
              generated_at_ms = excluded.generated_at_ms,
@@ -77,8 +83,10 @@ pub fn upsert(conn: &Connection, r: &ReportRow) -> Result<()> {
              foreground_ms = excluded.foreground_ms,
              data_json = excluded.data_json,
              narrative = excluded.narrative,
+             headline = excluded.headline,
              narrative_source = excluded.narrative_source,
-             snapshot_json = excluded.snapshot_json",
+             snapshot_json = excluded.snapshot_json,
+             copy_json = excluded.copy_json",
         params![
             r.report_date,
             r.report_type,
@@ -88,8 +96,10 @@ pub fn upsert(conn: &Connection, r: &ReportRow) -> Result<()> {
             r.foreground_ms,
             r.data_json,
             r.narrative,
+            r.headline,
             r.narrative_source,
             r.snapshot_json,
+            r.copy_json,
         ],
     )?;
     Ok(())

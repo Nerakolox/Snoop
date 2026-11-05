@@ -3,6 +3,8 @@
 // 核心：调用频率与显示频率解耦。
 //   - 每 30 分钟批量生成一批句子（按强度 0-4 分池），一次 API 调用覆盖全部状态。
 //   - 显示侧从对应状态池里轮转取用、不重复（取完一轮再洗牌）。
+//   - 不维护「当季梗」清单：提示词只给观察角度，新鲜语感交给模型；最近说过的
+//     句子会作为 avoid 回传，并在本地按归一化文本判重，防止跨批次复读。
 //   - 缓存只在内存里，不落库；应用重启后重新生成。
 //
 // 降级契约（与 useAI 同源）：AI 未配置 / 功能关闭 / tier 不足 / 请求失败 →
@@ -26,6 +28,33 @@ const BATCH_TTL_MS = 30 * 60 * 1000;
 
 /** 单句上限（字）。侧栏低音量版：20 字封顶，超长丢弃，防 AI 输出长段落。 */
 const MAX_QUIP_CHARS = 20;
+
+/** 跨批次判重：记住最近说过的句子数。下一批把它们作为 `avoid` 喂回去。 */
+const RECENT_LIMIT = 12;
+
+/** 吐槽用的应用窗口：最近 5 分钟内用过的应用分布。 */
+const APP_WINDOW_MS = 5 * 60 * 1000;
+
+/** 最多带几个应用：够模型抓一个话头，避免罗列清单。 */
+const APP_WINDOW_TOP = 5;
+
+/** 最近说过的句子（新句在前），用于避免每 30 分钟生成同一批话。 */
+let recentQuips: string[] = [];
+
+/**
+ * 观察角度池 —— 只描述「从哪儿找话头」，不含任何具体梗。
+ * 每批随机抽 3 条塞进 payload，让不同批次的视角错开；久放不坏，不需要跟着网络更新。
+ */
+const ANGLES = [
+  "时间点：现在几点，这个点在干什么",
+  "持续性：这状态撑了多久，像不像马上要停",
+  "切换频率：是专注还是来回横跳",
+  "输入密度：键盘和鼠标的实际动静",
+  "拟人化设备：键盘、鼠标、屏幕此刻的处境",
+  "反差：嘴上的计划和手上的动作差多少",
+  "自我管理：说好的休息 / 说好的干活",
+  "一天中的位置：刚开工、半场、快到点、深夜",
+];
 
 /** 全部强度档。缓存/校验/输出都以这 5 档为键。 */
 const INTENSITIES: readonly Intensity[] = [0, 1, 2, 3, 4];
@@ -114,11 +143,37 @@ function switchCount(buckets: RawBucket[]): number {
   return n;
 }
 
-/** 构造 T3 形状 payload。无 `apps`：纯聚合数字，信封层原样透传（T1 安全）。 */
+type WindowApp = { id: string; name: string; ms: number };
+
+/** 聚合最近 5 分钟的应用分布；按使用时长降序，返回总时长与 Top N。 */
+function appWindow(buckets: RawBucket[], nowMs: number): { totalMs: number; apps: WindowApp[] } {
+  const byApp = new Map<string, WindowApp>();
+  let totalMs = 0;
+  for (const b of buckets) {
+    if (nowMs - b.bucket_start >= APP_WINDOW_MS) continue;
+    const ms = b.duration_ms || 0;
+    if (ms <= 0) continue;
+    totalMs += ms;
+    const id = b.app_bundle_id || b.app_name || "unknown";
+    const cur = byApp.get(id);
+    if (cur) {
+      cur.ms += ms;
+    } else {
+      byApp.set(id, { id, name: b.app_name || b.app_bundle_id || "未知应用", ms });
+    }
+  }
+  const apps = [...byApp.values()].sort((a, b) => b.ms - a.ms).slice(0, APP_WINDOW_TOP);
+  return { totalMs, apps };
+}
+
+/** 构造 payload。`apps` 带 id + name：信封层按 T2 保留真实应用名，按 T1 只留代号。 */
 function buildPayload(buckets: RawBucket[], nowMs: number): unknown {
   const recent = buckets.filter((b) => nowMs - b.bucket_start < RECENT_ACTIVITY_WINDOW_MS);
+  const win = appWindow(buckets, nowMs);
   return {
     system_prompt: SYSTEM_PROMPT,
+    // id 只用于本地代号映射；T2 下 name 会随请求发给模型。
+    apps: win.apps.map((a) => ({ id: a.id, name: a.name })),
     facts: {
       states: INTENSITIES,
       today: {
@@ -127,6 +182,13 @@ function buildPayload(buckets: RawBucket[], nowMs: number): unknown {
       },
       current_intensity: computeIntensity(recent),
       hour: new Date(nowMs).getHours(),
+      // 与 apps 同序：模型用下标把应用和时长/占比对上。
+      recent_apps: win.apps.map((a) => ({
+        minutes: Math.round((a.ms / 60_000) * 10) / 10,
+        share_pct: win.totalMs > 0 ? Math.round((a.ms / win.totalMs) * 100) : 0,
+      })),
+      avoid: recentQuips,
+      angles: pickAngles(3),
     },
   };
 }
@@ -142,6 +204,31 @@ function shuffle<T>(arr: T[]): T[] {
   return out;
 }
 
+/** 每批随机抽几条观察角度，让模型别每批都从同一个方向写。 */
+function pickAngles(count: number): string[] {
+  return shuffle(ANGLES).slice(0, count);
+}
+
+/** 判重用的归一化：去掉空白与常见标点，避免只差一个标点就被当成新句。 */
+function normalizeQuip(s: string): string {
+  return s.replace(/[\s，。！？、；：,.!?;:~～「」『』"'“”‘’()（）]/g, "");
+}
+
+/** 记住最近说过的句子（新句在前），作为下一次调用的 `avoid` 清单。 */
+function rememberQuips(parsed: QuipPools): void {
+  const merged = [...INTENSITIES.flatMap((i) => parsed[i] ?? []), ...recentQuips];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of merged) {
+    const key = normalizeQuip(s);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(s);
+    if (out.length >= RECENT_LIMIT) break;
+  }
+  recentQuips = out;
+}
+
 /** 解析并校验 AI 返回的 JSON。未知键丢组、超长/空句丢句、某档 0 句则该档缺失。 */
 function parseQuips(content: string): QuipPools {
   let raw: unknown;
@@ -153,6 +240,8 @@ function parseQuips(content: string): QuipPools {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return {};
 
   const out: QuipPools = {};
+  // 同批内去重，同时排掉最近说过的句子；模型复读时宁可让该档缺失、回落模板。
+  const seen = new Set(recentQuips.map(normalizeQuip));
   const obj = raw as Record<string, unknown>;
   for (const key of Object.keys(obj)) {
     const intensity = INTENSITIES.find((i) => String(i) === key);
@@ -165,6 +254,9 @@ function parseQuips(content: string): QuipPools {
       if (typeof item !== "string") continue;
       const s = item.trim();
       if (s.length === 0 || s.length > MAX_QUIP_CHARS) continue; // 超长 → 丢弃该句
+      const norm = normalizeQuip(s);
+      if (!norm || seen.has(norm)) continue; // 与最近说过的 / 本批重复 → 丢弃
+      seen.add(norm);
       valid.push(s);
     }
     if (valid.length > 0) out[intensity] = shuffle(valid);
@@ -196,6 +288,7 @@ export function ensureQuipCache(buckets: RawBucket[]): Promise<void> {
         const parsed = parseQuips(result.content);
         if (Object.keys(parsed).length > 0) {
           pools = parsed;
+          rememberQuips(parsed);
           bump();
         }
       }
@@ -219,32 +312,14 @@ export function getQuip(intensity: Intensity): string | null {
   return quip;
 }
 
-// ── Prompt（贱兮兮人设：毒舌 + 抬杠 + 句句带梗，音量仍然低）────────────────
+// ── Prompt（贱兮兮人设：毒舌 + 抬杠，梗只做调味，音量仍然低）────────────────
 //
-// 梗是有保质期的。这份词表就是「换梗」的唯一入口——过时了直接改这里，
-// 不用动任何逻辑，也不用等模板兜底（constants.ts 的 CAT_QUIPS）跟着发版。
-const MEME_KIT = [
-  "句式类（最通用，可以套任意内容）：",
-  "- 「！？oo？！」表示震惊，等于「怎么这么o」。出处是「！？这么强？！」表情包，",
-  "  把「强？！」镜像成「强强」就有了「！？强强？！」。这个句式随便套：！？这么闲？！",
-  "- 「就这？」「啊这」「啊？」——无语和看不上的三连。",
-  "- 「ooo了属于是」倒装句，如「间歇性上进了属于是」。",
-  "- 「那你厉害咯」「啊对对对」「遥遥领先」——假意肯定，实为反讽。",
-  "- 「他急了他急了」「急了」「应激了」——指认对方破防。",
-  "- 「这位更是重量级」「老oo了」「这就是oo吗，i了i了」。",
-  "",
-  "近期热词：",
-  "- 「我要验牌」= 要你亮证据（如「你说你没摸鱼？我要验牌」）；「牌没有问题」= 核验通过。",
-  "- 「活人感」= 真实、不像机器生成；「低电量人生」「间歇性上进」= 想躺又不甘心。",
-  "",
-  "抬杠专用：「人型ETC」「杠精」「阿基米德」（都指一靠近就抬杠的人）。",
-  "",
-  "语气技法：句尾加「呢/咯/哦/捏」，敬词用「您/宁」。",
-].join("\n");
-
+// 不再维护「当季梗」清单：硬编码的梗既会过期，也会让模型反复照抄那几句。
+// 新鲜语感交给模型自己；本地只做两件事——每批换观察角度、把最近说过的句子
+// 作为 avoid 喂回去，避免同一套说法跨批次复读。
 const SYSTEM_PROMPT = [
-  "你是 Snoop 里的一只猫，一只贱兮兮的猫：阴阳怪气、爱抬杠、爱挑刺、说话欠揍，",
-  "拿事实开刀，从不夸奖。你说话像个泡在中文互联网里的老网民，张口就是梗。",
+  "你是 Snoop 里的一只猫，一只贱兮兮的猫：阴阳怪气、爱抬杠、爱挑刺，说话欠揍，",
+  "拿事实开刀，从不夸奖。你说话像个泡在中文互联网里的老网民，但不是梗复读机。",
   "",
   "用户消息里是一份当日数据（JSON）：",
   "- states：需要生成文案的状态键（\"0\"~\"4\"）",
@@ -252,6 +327,10 @@ const SYSTEM_PROMPT = [
   "- today.switch_count：今日应用切换次数",
   "- current_intensity：用户此刻所处的状态",
   "- hour：当前小时（0~23）",
+  "- apps：最近 5 分钟用过的应用，带真实应用名",
+  "- recent_apps：与 apps 同序，minutes 是这 5 分钟里用了多久，share_pct 是占比",
+  "- avoid：最近已经说过的句子，不能重复",
+  "- angles：这一批建议的观察角度",
   "",
   "状态键含义（侧栏只显示四档标签，3 和 4 都叫「爆肝中」）：",
   "- \"0\" = 挂机中（长时间无输入）",
@@ -260,26 +339,30 @@ const SYSTEM_PROMPT = [
   "- \"3\" = 爆肝中·刚上头（键盘开始不停）",
   "- \"4\" = 爆肝中·峰值（密集打字，手速拉满）",
   "",
-  "── 可用梗（自由取用、自由改造，别原样照抄整句）──",
-  MEME_KIT,
-  "",
   "要求：",
   "- 每个状态写 2~3 句，每句 20 字以内（含标点）。超过 20 字的句子会被直接丢弃。",
-  "- 每一句都要带梗——套上面的句式，或用上面的热词，别写平铺直叙的白话。",
   "- 一句话，不追问。观察当下的状态本身，拿数据里的细节挤兑一句，不总结、不回顾。",
+  "- 优先从 angles 里找话头，不要五档都用同一个角度；同一档的几句也要换角度。",
+  "- 应用分布只用来找一个具体话头：整批最多提一个应用，直接写 apps 里的 name",
+  "  （如「Chrome 又占了大半」），不要罗列应用清单；apps 为空就别提。",
+  "- 梗是调味，不是主菜：整批 10~15 句里，带网络热词或流行句式的最多 2~3 句。",
+  "  其余靠观察角度、反问、假意肯定、夸张、拟人化来写，不要为了玩梗牺牲准确性。",
+  "- 不许复读：同一个固定说法、口头禅、句式模板，整批里最多出现一次；",
+  "  不要连续两句用同一种修辞；avoid 里的句子和它们用过的固定说法都不能再用。",
   "- 挤兑可以针对人（懒、拖、三分钟热度、自制力），但只能挂在数据说得通的事实上。",
   "- 少用「喵」，不要每句都带。",
   "",
   "标点：",
-  "- 只有「！？oo？！」这一个句式可以用感叹号，且必须首尾成对。",
-  "- 其余句子不用感叹号，问号最多一个。",
+  "- 感叹号整批最多两句，问号整批最多一个；不要用标点堆情绪。",
   "",
   "禁止：",
-  "- 夸奖、表扬、鼓励（贱猫不夸人）。反讽式的假夸（「那你厉害咯」）不算，可以用。",
+  "- 夸奖、表扬、鼓励（贱猫不夸人）。反讽式的假夸不算，但一批里最多一句。",
   "- 挂机档断言人走了/偷懒——只能针对「没输入」这个事实；「人呢」这类疑问可以，「又跑了」这类断言不行。",
-  "- 提到任何具体应用名。",
+  "- 凭空编造 apps 里没有的应用。",
   "- 涉及外貌、家人、疾病、地域的攻击；也不要脏字。挤兑的是干活状态，不是这个人的人格。",
   "- 卖惨、过度撒娇、颜文字刷屏。",
+  "- 把「！？强强？！」「我要验牌」「牌没有问题」「属于是」「他急了」「遥遥领先」这类",
+  "  已经被用烂的固定梗写进结果；它们是反例，不是模板。",
   "",
   "只输出一个 JSON 对象，键为 \"0\"~\"4\"，值为字符串数组。不要输出 JSON 以外的任何文字。",
 ].join("\n");

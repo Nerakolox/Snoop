@@ -44,10 +44,14 @@ pub struct ReportView {
     pub status: String,
     pub data: Value,
     pub narrative: Option<String>,
+    /// AI 给的一句话标题；模板兜底 / 历史报告为 None（前端按数据另起）。
+    pub headline: Option<String>,
     pub narrative_source: Option<String>,
     /// 生成时的分类显示名 / 颜色 / 归属（见 [`snapshot`]）。分类的显示名与配色
     /// **只能**从这里读，不许前端拿 id 再去查分类表——那就漏回实时状态了。
     pub snapshot: ReportSnapshot,
+    /// AI 结构化编辑层文案（version=2）。历史报告 / 模板兜底 / AI 失败为 None。
+    pub ai_copy: Option<Value>,
 }
 
 /// 三种报计算结果的统一外壳，让落库路径只写一遍。
@@ -164,7 +168,9 @@ pub async fn generate_report(
             &report,
             "ok",
             Some(narrative::zero_data_narrative(report.report_type())),
+            None,
             Some("template".to_string()),
+            None,
         );
     }
 
@@ -174,7 +180,7 @@ pub async fn generate_report(
     }
 
     // 其余（手动 too_little / 有足够数据）一律 status="ok"，走正常叙事。
-    let (text, source) = match &report {
+    let generated = match &report {
         Computed::Day(r) => narrative::generate_narrative(config, code_map, db_path, r).await,
         Computed::Week(r) => {
             narrative::generate_weekly_narrative(config, code_map, db_path, r).await
@@ -184,7 +190,15 @@ pub async fn generate_report(
         }
     };
 
-    write_row(&conn, &report, "ok", Some(text), Some(source))
+    write_row(
+        &conn,
+        &report,
+        "ok",
+        Some(generated.narrative),
+        generated.headline,
+        Some(generated.source),
+        generated.ai_copy,
+    )
 }
 
 /// 落库 + 组装 `ReportView`。三种报、手动/自动共用这一条写路径。
@@ -196,7 +210,9 @@ fn write_row(
     report: &Computed,
     status: &str,
     narrative: Option<String>,
+    headline: Option<String>,
     narrative_source: Option<String>,
+    ai_copy: Option<Value>,
 ) -> Result<Option<ReportView>, String> {
     let data = report.to_json();
     let snap = snapshot::build(conn, &data).map_err(|e| e.to_string())?;
@@ -210,8 +226,12 @@ fn write_row(
         foreground_ms: report.foreground_ms(),
         data_json: serde_json::to_string(&data).unwrap_or_default(),
         narrative: narrative.clone(),
+        headline: headline.clone(),
         narrative_source: narrative_source.clone(),
         snapshot_json: serde_json::to_string(&snap).ok(),
+        copy_json: ai_copy
+            .as_ref()
+            .and_then(|v| serde_json::to_string(v).ok()),
     };
     store::upsert(conn, &row).map_err(|e| e.to_string())?;
 
@@ -220,8 +240,10 @@ fn write_row(
         status: status.to_string(),
         data,
         narrative,
+        headline,
         narrative_source,
         snapshot: snap,
+        ai_copy,
     }))
 }
 

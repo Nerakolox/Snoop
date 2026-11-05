@@ -1,26 +1,26 @@
 /**
  * 导出成图对话框 —— 预览 + 保存。
  *
- * 预览与导出走**同一个** <ReportCard>（foreignObject 方案的优势：所见即所得）。
- * 卡片固定 1000px 宽、高度按内容自适应；预览把卡片用 transform:scale 缩到 300px 宽展示，
- * 保存时取卡片根节点的 offsetWidth/offsetHeight 作为 canvas 尺寸，生成真 1000×H PNG，
- * 预览缩放不影响导出像素。
+ * 预览与导出走**同一个** <ReportSheet>（foreignObject 方案的优势：所见即所得）。
+ * 纸张固定 1080px 宽、高度按内容自适应；预览把纸张用 transform:scale 缩到 420px 宽展示，
+ * 保存时取 `.rsheet` 根节点的 offsetWidth/offsetHeight 作为 canvas 尺寸，生成真 1080×H PNG，
+ * 预览缩放不影响导出像素。标题与保存按钮固定，只有预览区滚动。
  *
  * 图标用 useReportIcons 在打开对话框时一次性预解析（Promise.all(get_app_icon)），
- * 就绪后才渲染卡片、才允许保存，避免把字母兜底块截进成品图。
+ * 就绪后才渲染纸张、才允许保存，避免把字母兜底块截进成品图。
  */
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useToast } from "../components/shared/Toast";
 import type { ReportView } from "./types";
 import { EXPORT_WIDTH, bytesToBase64, captureNodeAsPng } from "./export";
 import { saveReportPng } from "./client";
 import { useReportIcons } from "./icons";
-import ReportCard from "./ReportCard";
-import reportCardCss from "./report-card.css?inline";
+import ReportSheet from "./sheet/ReportSheet";
+import sheetCss from "./sheet/sheet.css?inline";
 
-const PREVIEW_W = 300;
+const PREVIEW_W = 420;
 
 const KIND_CN: Record<ReportView["report_type"], string> = {
   day: "日报",
@@ -55,20 +55,20 @@ export default function ExportDialog({
   // 所以取的是未缩放的布局高度，再乘 scale 换算成预览里的展示高度）。
   useLayoutEffect(() => {
     if (!icons) return;
-    const el = cardRef.current?.querySelector<HTMLElement>(".report-card");
+    const el = cardRef.current?.querySelector<HTMLElement>(".rsheet");
     if (el) setCardH(el.offsetHeight);
   }, [icons, detail]);
 
   async function handleSave() {
-    const root = cardRef.current?.querySelector<HTMLElement>(".report-card");
+    const root = cardRef.current?.querySelector<HTMLElement>(".rsheet");
     if (!root) return;
     const width = root.offsetWidth;
     const height = root.offsetHeight;
     setCapturing(true);
     setError(null);
     try {
-      const bytes = await captureNodeAsPng(root, width, height, reportCardCss);
-      const name = `snoop-${KIND_CN[detail.report_type]}-${canonicalDate(detail)}.png`;
+      const bytes = await captureNodeAsPng(root, width, height, sheetCss);
+      const name = `Snoop-${KIND_CN[detail.report_type]}-${canonicalDate(detail)}.png`;
       const savedPath = await saveReportPng(bytesToBase64(bytes), name);
       if (savedPath) {
         toast.show({ message: `已保存：${savedPath}` });
@@ -82,31 +82,49 @@ export default function ExportDialog({
     }
   }
 
+  // Esc 关闭（与灯箱 / 应用内其他弹层一致）。
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   // 用 portal 挂到 document.body，position:fixed 相对真实视口定位（同设置页开发模式确认弹窗），
   // 不受 .page-layer 的 transform 包含块影响，居中即视口居中、不会跑到标题栏/侧栏外。
   return createPortal(
     <div className="export-dialog-overlay" onClick={onClose}>
-      <div className="export-dialog" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="export-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-label="导出成图"
+        onClick={(e) => e.stopPropagation()}
+      >
         <div className="export-dialog__head">
           <h3>导出成图</h3>
-          <button type="button" className="export-dialog__close" onClick={onClose}>
+          <button type="button" className="export-dialog__close" onClick={onClose} aria-label="关闭">
             ×
           </button>
         </div>
 
-        <div
-          className="export-dialog__preview"
-          style={{ height: Math.round(cardH * scale) }}
-        >
-          {icons ? (
-            <div className="export-dialog__scaled" style={{ transform: `scale(${scale})` }}>
-              <div ref={cardRef}>
-                <ReportCard detail={detail} icons={icons} showFooter />
+        {/* 预览区独立滚动：标题与保存按钮固定，长海报不会把操作按钮顶出对话框。 */}
+        <div className="export-dialog__preview-scroll scroll-area">
+          <div
+            className="export-dialog__preview"
+            style={{ height: Math.round(cardH * scale) || 240 }}
+          >
+            {icons ? (
+              <div className="export-dialog__scaled" style={{ transform: `scale(${scale})` }}>
+                <div ref={cardRef}>
+                  <ReportSheet detail={detail} icons={icons} width={EXPORT_WIDTH} showFooter />
+                </div>
               </div>
-            </div>
-          ) : (
-            <div className="export-dialog__loading">正在准备应用图标…</div>
-          )}
+            ) : (
+              <div className="export-dialog__loading">正在准备应用图标…</div>
+            )}
+          </div>
         </div>
 
         {error && <p className="export-dialog__error">{error}</p>}

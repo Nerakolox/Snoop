@@ -17,11 +17,12 @@
 
 import type { ReactNode } from "react";
 
-export type NarrativeVariant = "card" | "summary";
+export type NarrativeVariant = "card" | "summary" | "sheet";
 
 const PREFIX: Record<NarrativeVariant, string> = {
   card: "report-card__narrative",
   summary: "report-summary__narrative",
+  sheet: "rs-narrative",
 };
 
 /** 把换行分隔的叙事串渲染成一列段落（每段内部再解析标记）。 */
@@ -73,6 +74,11 @@ function tryParseMarkup(text: string, i: number): ParsedMarkup {
   while (text[closeEnd] === "}") closeEnd += 1;
 
   return { kind, content: text.slice(contentStart, firstClose), next: closeEnd };
+}
+
+/** 渲染单行叙事（不带段落外壳），供杂志版式的旁批 / 侧卡内联使用。 */
+export function renderNarrativeLine(text: string, variant: NarrativeVariant = "sheet"): ReactNode {
+  return renderMarkup(text, PREFIX[variant]);
 }
 
 /** 把一段文本里的 `{n:...}` / `{em:...}`（单双花括号都吃）替换成带样式的 span，其余平铺为文本。 */

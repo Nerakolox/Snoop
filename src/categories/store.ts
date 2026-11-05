@@ -9,7 +9,7 @@
 //
 // **报告不在此列。** 报告是快照不是视图：一份已生成的报告显示的是生成那一刻的
 // 分类名与配色，存在它自己的 `snapshot` 里（`src-tauri/src/report/snapshot.rs`），
-// 改名改色一律不影响。报告组件因此不 import 本模块——见 report/ReportCard.tsx。
+// 改名改色一律不影响。报告组件因此不 import 本模块——见 report/sheet/ReportSheet.tsx。
 
 import { useEffect, useSyncExternalStore } from "react";
 import { invalidateQuipCache } from "../ai/quip";

@@ -1,20 +1,28 @@
 /**
- * 报告 —— 历史日报 / 周报 / 月报时间轴。
- * 消费全局 (kind, anchor)：顶栏的日/周/月 筛列表显示的报类型，日期导航滚到并高亮
- * 对应周期那份报告。三种报按日期倒序，点开在卡片原位展开。
+ * 报告 —— 历史日报 / 周报 / 月报的「刊物归档」。
  *
- * 展开是「摘要 + 缩略图」双栏（<ReportSummary>）：左栏为屏幕重排的紧凑摘要，
- * 右栏是海报缩略图 + 导出成图 / 重新生成。完整海报只在灯箱与导出时出现。
+ * 页面本身是杂志式的目录：页头一期一号，列表是一条条「本期刊物」；
+ * 点开某一份，原位展开完整杂志跨页（`ReportSheet`），同一份版式也就是导出的海报。
+ *
+ * 全局 (kind, anchor) 决定列表显示哪种报、以及滚动定位到哪一期。三种报按日期倒序，
+ * 展开、生成、导出、灯箱都围绕当前选中的那一份。
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronRight,
+  ChevronUp,
+  Download,
+  Maximize2,
+  RefreshCw,
+} from "lucide-react";
 import PageShell from "../components/PageShell";
 import { useToast } from "../components/shared/Toast";
 import { formatDuration } from "../utils/format";
 import { getReport, getReportList, regenerateReport } from "../report/client";
 import { dateLabel, monthLabel, weekRangeLabel } from "../report/format";
 import { useReportIcons } from "../report/icons";
-import ReportSummary from "../report/ReportSummary";
+import ReportSheet from "../report/sheet/ReportSheet";
 import Lightbox from "../report/Lightbox";
 import ExportDialog from "../report/ExportDialog";
 import type { ReportKind, ReportMeta, ReportView } from "../report/types";
@@ -34,14 +42,14 @@ export default function Report() {
   const [regenerating, setRegenerating] = useState(false);
   // 导出成图对话框：挂当前详情那份报告，null 表示关闭。
   const [exporting, setExporting] = useState<ReportView | null>(null);
-  // 海报灯箱：点缩略图打开，展示当前详情那份完整海报。
+  // 海报灯箱：点「全屏」打开，展示当前详情那份完整海报。
   const [lightboxOpen, setLightboxOpen] = useState(false);
   // 生成当前 anchor 对应的那份报告。
   const [generating, setGenerating] = useState(false);
   const toast = useToast();
   const listRef = useRef<HTMLDivElement>(null);
 
-  // 详情卡的 app 图标：与导出成图共用同一套预解析结果。
+  // 详情卡与导出成图共用同一套预解析 app 图标。
   const reportIcons = useReportIcons(detail);
 
   useEffect(() => {
@@ -62,7 +70,7 @@ export default function Report() {
       return;
     }
     let alive = true;
-    getReport(selected.date, selected.type as import("../report/types").ReportKind)
+    getReport(selected.date, selected.type as ReportKind)
       .then((d) => {
         if (alive) setDetail(d);
       })
@@ -112,10 +120,7 @@ export default function Report() {
     if (!selected) return;
     setRegenerating(true);
     try {
-      const v = await regenerateReport(
-        selected.date,
-        selected.type as import("../report/types").ReportKind,
-      );
+      const v = await regenerateReport(selected.date, selected.type as ReportKind);
       setDetail(v);
       setReports(await getReportList());
       toast.show({ message: "已重新生成" });
@@ -127,8 +132,7 @@ export default function Report() {
     }
   }
 
-  // 手动生成某个周期（anchor 已按 kind 归一到周期起点；或「记录太少」占位行指定的历史周期）。
-  // 手动生成恒成功：无论多少数据都生成，后端不再返回 too_little 行。
+  // 手动生成某个周期。anchor 已按 kind 归一到周期起点；「记录太少」占位行也可点此生成。
   async function generateOne(type: ReportKind, date: string) {
     setGenerating(true);
     try {
@@ -150,78 +154,120 @@ export default function Report() {
 
   return (
     <>
-      <PageShell className="report-page" header={<ReportHeader />}>
-      <div className="report-list" ref={listRef}>
-        {!hasCurrent && (
-          <div className="report-generate">
-            <p className="report-generate-text">
-              {filtered.length === 0
-                ? `还没有${KIND_LABEL[kind]}报`
-                : `${rowTitle(kind, anchor)} 还没有报告`}
-            </p>
-            <button
-              type="button"
-              className="report-generate-btn"
-              onClick={handleGenerate}
-              disabled={generating}
-            >
-              {generating ? "生成中…" : "生成这份报告"}
-            </button>
-            {generating && <span className="report-generate-hint">AI 生成中，稍等…</span>}
-          </div>
-        )}
-        {filtered.map((r) => {
-          const key = reportKey(r.report_type, r.report_date);
-          if (r.status === "too_little") {
+      <PageShell className="report-page" header={<ReportHeader count={filtered.length} kind={kind} />}>
+        <div className="report-list" ref={listRef}>
+          {!hasCurrent && (
+            <div className="report-generate">
+              <div className="report-generate__main">
+                <span className="report-generate__eyebrow">NO ISSUE YET</span>
+                <p className="report-generate-text">
+                  {filtered.length === 0
+                    ? `还没有${KIND_LABEL[kind]}报`
+                    : `${rowTitle(kind, anchor)} 还没有报告`}
+                </p>
+                <span className="report-generate-hint">
+                  {generating ? "AI 正在写这一期的正文与旁批…" : "生成后会收进下面的归档。"}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="report-generate-btn"
+                onClick={handleGenerate}
+                disabled={generating}
+              >
+                {generating ? "生成中…" : "生成这份报告"}
+              </button>
+            </div>
+          )}
+
+          {filtered.map((r) => {
+            const key = reportKey(r.report_type, r.report_date);
+            if (r.status === "too_little") {
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  data-report-key={key}
+                  className="report-skip-row"
+                  onClick={() => generateOne(r.report_type as ReportKind, r.report_date)}
+                  disabled={generating}
+                  title="手动生成这份报告"
+                >
+                  <span className="report-skip-row__date">{rowTitle(r.report_type, r.report_date)}</span>
+                  <span className="report-skip-row__note">记录太少，这一期没有成刊</span>
+                  <span className="report-skip-row__action">
+                    点此生成 <RefreshCw size={12} />
+                  </span>
+                </button>
+              );
+            }
+            if (selected && reportKey(selected.type, selected.date) === key) {
+              if (!detail) {
+                return (
+                  <div key={key} className="report-card-loading">
+                    正在翻到这一期…
+                  </div>
+                );
+              }
+              return (
+                <div key={key} data-report-key={key} className="report-detail">
+                  <div className="report-detail__bar">
+                    <div className="report-detail__label">
+                      <span>{KIND_LABEL[r.report_type]}</span>
+                      <b>{rowTitle(r.report_type, r.report_date)}</b>
+                    </div>
+                    <div className="report-detail__actions">
+                      <button type="button" onClick={() => setSelected(null)}>
+                        <ChevronUp size={15} />
+                        收起
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRegenerate}
+                        disabled={regenerating}
+                      >
+                        <RefreshCw size={15} className={regenerating ? "is-spinning" : undefined} />
+                        {regenerating ? "重生成中…" : "重新生成"}
+                      </button>
+                      <button type="button" onClick={() => setExporting(detail)}>
+                        <Download size={15} />
+                        导出成图
+                      </button>
+                      <button type="button" onClick={() => setLightboxOpen(true)}>
+                        <Maximize2 size={15} />
+                        全屏
+                      </button>
+                    </div>
+                  </div>
+                  <div className="report-detail__paper">
+                    <ReportSheet detail={detail} icons={reportIcons} />
+                  </div>
+                </div>
+              );
+            }
             return (
               <button
                 key={key}
                 type="button"
                 data-report-key={key}
-                className="report-skip-row"
-                onClick={() => generateOne(r.report_type as ReportKind, r.report_date)}
-                disabled={generating}
-                title="手动生成这份报告"
+                className={`report-row${key === currentKey ? " is-current" : ""}`}
+                onClick={() => openReport(r.report_type, r.report_date)}
               >
-                {rowTitle(r.report_type, r.report_date)} · 记录太少 · 点此生成
+                <span className={`report-row-kind report-row-kind--${r.report_type}`}>
+                  {KIND_LABEL[r.report_type]}
+                </span>
+                <span className="report-row-main">
+                  <span className="report-row-date">{rowTitle(r.report_type, r.report_date)}</span>
+                  <span className="report-row-headline">
+                    {r.headline?.trim() || metaSubline(r)}
+                  </span>
+                </span>
+                <span className="report-row-total">{formatDuration(r.active_ms)}</span>
+                <ChevronRight size={16} className="report-row-arrow" />
               </button>
             );
-          }
-          if (selected && reportKey(selected.type, selected.date) === key) {
-            if (!detail) {
-              return <div key={key} className="report-card-loading">加载中…</div>;
-            }
-            return (
-              <ReportSummary
-                key={key}
-                detail={detail}
-                icons={reportIcons}
-                onRegenerate={handleRegenerate}
-                regenerating={regenerating}
-                onExport={() => setExporting(detail)}
-                onOpenLightbox={() => setLightboxOpen(true)}
-                onCollapse={() => setSelected(null)}
-              />
-            );
-          }
-          return (
-            <button
-              key={key}
-              type="button"
-              data-report-key={key}
-              className={`report-row${key === currentKey ? " is-current" : ""}`}
-              onClick={() => openReport(r.report_type, r.report_date)}
-            >
-              <span className={`report-row-kind report-row-kind--${r.report_type}`}>
-                {KIND_LABEL[r.report_type]}
-              </span>
-              <span className="report-row-date">{rowTitle(r.report_type, r.report_date)}</span>
-              <span className="report-row-total">{formatDuration(r.active_ms)}</span>
-              <span className="report-row-arrow">›</span>
-            </button>
-          );
-        })}
-      </div>
+          })}
+        </div>
       </PageShell>
       {exporting && <ExportDialog detail={exporting} onClose={() => setExporting(null)} />}
       {lightboxOpen && detail && (
@@ -241,9 +287,9 @@ export default function Report() {
 }
 
 const KIND_LABEL: Record<ReportMeta["report_type"], string> = {
-  day: "日",
-  week: "周",
-  month: "月",
+  day: "日报",
+  week: "周刊",
+  month: "月刊",
 };
 
 function rowTitle(type: ReportMeta["report_type"], date: string): string {
@@ -252,11 +298,25 @@ function rowTitle(type: ReportMeta["report_type"], date: string): string {
   return dateLabel(date);
 }
 
-function ReportHeader() {
+/** 历史报告没有 AI 标题时，列表第二行给一个由数据得到的事实句。 */
+function metaSubline(r: ReportMeta): string {
+  const pct =
+    r.foreground_ms > 0 ? Math.round((r.active_ms / r.foreground_ms) * 100) : 0;
+  return `输入活跃占前台的 ${pct}%`;
+}
+
+function ReportHeader({ count, kind }: { count: number; kind: ReportKind }) {
   return (
     <div className="report-header">
-      <h1 className="report-header-title">报告</h1>
-      <p className="report-header-subtitle">日 · 周 · 月，三种尺度回看自己</p>
+      <div className="report-header__main">
+        <p className="report-header-eyebrow">Snoop / ARCHIVE</p>
+        <h1 className="report-header-title">报告</h1>
+        <p className="report-header-subtitle">日 · 周 · 月，三种尺度回看自己</p>
+      </div>
+      <div className="report-header__meta">
+        <b>{count}</b>
+        <span>{KIND_LABEL[kind]}归档</span>
+      </div>
     </div>
   );
 }

@@ -1,17 +1,35 @@
-/* 报告页 —— 历史日报 / 周报 / 月报时间轴 + 展开摘要卡。
-   摘要与缩略图见 src/report/report-summary.css，海报见 report-card.css，
-   灯箱见 lightbox.css。本文件只管页面 chrome（页头 / 列表 / 空状态生成 / 导出对话框）。 */
+/* 报告页 —— 刊物归档：页头 / 目录行 / 原位展开的杂志跨页 / 生成空状态。
+   杂志纸张本身的样式在 src/report/sheet/sheet.css，本文件只管页面 chrome
+   与导出对话框（导出预览也复用同一张 ReportSheet）。 */
 
 .report-page {
   gap: var(--space-6);
 }
 
 /* ---- 页头 ---- */
+
+.report-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.report-header-eyebrow {
+  margin: 0 0 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--color-accent);
+}
+
 .report-header-title {
   margin: 0;
-  font-size: var(--text-xl);
+  font-size: var(--text-2xl);
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--color-text);
 }
 
@@ -21,11 +39,33 @@
   color: var(--color-text-3);
 }
 
-/* ---- 空状态生成：当前 anchor 的报告不存在时，在列表位显示空状态 + 生成按钮 ---- */
+.report-header__meta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-shrink: 0;
+  color: var(--color-text-3);
+}
+
+.report-header__meta b {
+  font-size: 28px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-accent);
+}
+
+.report-header__meta span {
+  font-size: var(--text-xs);
+  letter-spacing: 0.5px;
+}
+
+/* ---- 空状态生成：当前周期还没有这一期 ---- */
+
 .report-generate {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  justify-content: space-between;
+  gap: var(--space-4);
   flex-wrap: wrap;
   padding: var(--space-4) var(--space-6);
   background: var(--color-surface);
@@ -33,18 +73,42 @@
   border-radius: var(--radius-md);
 }
 
+.report-generate__main {
+  min-width: 0;
+}
+
+.report-generate__eyebrow {
+  display: block;
+  margin-bottom: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: var(--color-accent);
+}
+
 .report-generate-text {
   margin: 0;
-  font-size: var(--text-sm);
-  color: var(--color-text-2);
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.report-generate-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
 }
 
 .report-generate-btn {
+  flex-shrink: 0;
+  appearance: none;
+  padding: var(--space-1) var(--space-4);
   border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
   background: var(--color-accent);
   color: var(--color-on-accent);
-  padding: var(--space-1) var(--space-3);
-  border-radius: var(--radius-sm);
+  font: inherit;
   font-size: var(--text-sm);
   cursor: pointer;
 }
@@ -59,14 +123,8 @@
   cursor: not-allowed;
 }
 
-.report-generate-hint {
-  font-size: var(--text-xs);
-  color: var(--color-text-3);
-}
+/* ---- 目录行 ---- */
 
-/* ---- 列表 ---- */
-/* 列表项与展开后的摘要卡都占满内容宽（不再封顶 1000px 去对齐海报），
-   收起/展开切换时左右边缘不跳。 */
 .report-list {
   display: flex;
   flex-direction: column;
@@ -76,52 +134,44 @@
 
 .report-row {
   appearance: none;
-  display: flex;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-4);
   width: 100%;
-  padding: var(--space-4) var(--space-6);
+  padding: 14px var(--space-6);
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   font: inherit;
   color: inherit;
-  cursor: pointer;
   text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-smooth),
+    transform var(--dur-fast) var(--ease-smooth);
 }
 
 .report-row:hover {
   border-color: var(--color-accent);
+  transform: translateY(-1px);
 }
 
-/* 当前周期（全局 anchor 指向）的报告行：持久描边 + 浅紫底，区别于 hover 的瞬时反馈 */
+/* 当前周期（全局 anchor 指向）的那一期：持久描边 + 浅紫底 */
 .report-row.is-current {
   border-color: var(--color-accent);
   background: var(--color-accent-soft);
 }
 
-.report-row-date {
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.report-row-total {
-  margin-left: auto;
-  color: var(--color-text-2);
-}
-
-.report-row-arrow {
-  color: var(--color-text-3);
-}
-
-/* 类型徽章：日 / 周 / 月 */
 .report-row-kind {
-  font-size: var(--text-xs);
-  padding: 1px 7px;
-  border-radius: var(--radius-full);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-2);
   flex-shrink: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--color-text-2);
 }
 
 .report-row-kind--week {
@@ -130,26 +180,68 @@
 }
 
 .report-row-kind--month {
-  background: var(--color-accent);
   border-color: var(--color-accent);
+  background: var(--color-accent);
   color: var(--color-on-accent);
 }
 
-/* 「记录太少」：极简灰色条目，可点击手动生成这份报告 */
+.report-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.report-row-date {
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.report-row-headline {
+  overflow: hidden;
+  font-size: var(--text-xs);
+  color: var(--color-text-3);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.report-row-total {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: var(--text-xs);
+  color: var(--color-text-2);
+  white-space: nowrap;
+}
+
+.report-row-arrow {
+  color: var(--color-text-3);
+}
+
+.report-row:hover .report-row-arrow {
+  color: var(--color-accent);
+}
+
+/* 「记录太少」：浅一档的目录行，可点击手动生成 */
 .report-skip-row {
-  display: block;
+  appearance: none;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-4);
   width: 100%;
   padding: var(--space-3) var(--space-6);
-  color: var(--color-text-3);
-  background: var(--color-surface-2);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
+  background: var(--color-surface-2);
+  color: var(--color-text-3);
+  font: inherit;
   font-size: var(--text-sm);
   text-align: left;
   cursor: pointer;
 }
 
 .report-skip-row:hover:not(:disabled) {
+  border-color: var(--color-border);
   color: var(--color-text-2);
 }
 
@@ -157,13 +249,127 @@
   cursor: default;
 }
 
-/* getReport 返回中的占位：与摘要卡同宽同圆角 */
-.report-card-loading {
+.report-skip-row__date {
+  font-weight: 500;
+}
+
+.report-skip-row__note {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.report-skip-row__action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--color-accent);
+  white-space: nowrap;
+}
+
+/* ---- 原位展开的杂志跨页 ---- */
+
+.report-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   width: 100%;
-  min-height: 360px;
+}
+
+.report-detail__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.report-detail__label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.report-detail__label span {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--color-accent);
+}
+
+.report-detail__label b {
+  overflow: hidden;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.report-detail__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.report-detail__actions button {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text-2);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+
+.report-detail__actions button:hover:not(:disabled) {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.report-detail__actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.report-detail__actions .is-spinning {
+  animation: report-spin 1s linear infinite;
+}
+
+@keyframes report-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.report-detail__paper {
+  width: 100%;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 2px;
+  box-shadow: 0 10px 34px rgb(38 37 44 / 8%);
+  overflow: hidden;
+}
+
+/* getReport 返回中的占位 */
+.report-card-loading {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+  min-height: 360px;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
@@ -171,45 +377,46 @@
 }
 
 /* ---- 导出成图对话框（预览 + 保存） ----
-   overlay 是 .page-layer（含 transform，构成 containing block）的 fixed 子元素，
-   因此 inset:0 已经落在「主内容区」（顶栏下方、侧栏右侧），不盖顶栏拖拽区。
-   居中用「overlay display:flex + dialog margin:auto」，而不是 align/justify-content:center ——
-   后者在子项比容器高时会向两侧等量溢出、顶部被裁进顶栏；margin:auto 在装不下时归零、
-   配合 overlay 的 overflow:auto 让内容留在 overlay 内滚动。 */
+   portal 挂 document.body，overlay 的 fixed inset:0 相对真实视口。
+   对话框自身不滚动：标题固定、预览区独立滚动、操作按钮固定。
+   否则长海报会把「保存 PNG」顶到对话框外（max-height 裁掉，按钮只露出半个）。 */
 .export-dialog-overlay {
-  /* 与设置页开发模式确认弹窗（modal.css 的 .dev-confirm-overlay）同一套定位：
-     经 portal 挂到 document.body，fixed 相对真实视口，flex 居中即视口居中。 */
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: var(--space-6);
+  background: rgba(0, 0, 0, 0.45);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
+  animation: overlay-in var(--dur-base) var(--ease-smooth) both;
 }
 
 .export-dialog {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  background: var(--color-surface);
+  width: 520px;
+  max-width: 100%;
+  /* 100% = overlay 的内容盒（已扣掉 24px 上下留白），不会溢出视口 */
+  max-height: 100%;
+  padding: var(--space-6);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
+  background: var(--color-surface);
   box-shadow: var(--shadow-md);
-  padding: var(--space-6);
-  /* 视口内留白 + 内部滚动：对话框再高也不超出视口，flex 居中不会被撑破 */
-  max-height: calc(100vh - var(--space-8));
-  max-width: 100%;
-  overflow: auto;
+  overflow: hidden;
+  animation: dialog-in var(--dur-base) var(--ease-bounce) both;
 }
 
 .export-dialog__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-4);
+  flex: none;
 }
 
 .export-dialog__head h3 {
@@ -221,33 +428,52 @@
 
 .export-dialog__close {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: none;
+  border-radius: var(--radius-sm);
   background: none;
   font: inherit;
+  font-size: 20px;
+  line-height: 1;
   color: var(--color-text-2);
   cursor: pointer;
-  font-size: var(--text-xl);
-  line-height: 1;
 }
 
 .export-dialog__close:hover {
+  background: var(--color-surface-2);
   color: var(--color-text);
 }
 
-.export-dialog__preview {
-  position: relative;
-  /* 固定 300px 宽 + overflow:hidden：transform:scale 不改变布局尺寸，
-     内层卡片仍是 1000px 的布局宽，靠这里裁掉，避免把对话框横向撑爆。 */
-  width: 300px;
-  flex: none;
-  overflow: hidden;
+/* 预览区：只让这里滚动。flex:1 + min-height:0 才能在 flex 列里收缩出滚动条。 */
+.export-dialog__preview-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: var(--space-3);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   background: var(--color-bg);
 }
 
-/* 内层缩放容器：绝对定位脱离文档流，1000px 布局尺寸不再参与预览容器排版，
-   只靠 transform:scale 缩小呈现；预览容器固定 300px + overflow:hidden 裁剪。 */
+.export-dialog__preview {
+  position: relative;
+  /* 固定 420px 宽（= PREVIEW_W）+ overflow:hidden：transform:scale 不改变布局尺寸，
+     内层仍是 1080px 布局宽，靠这里裁掉，避免把对话框横向撑爆。 */
+  width: 420px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--color-surface);
+  box-shadow: 0 6px 20px rgb(38 37 44 / 10%);
+}
+
+/* 内层缩放容器绝对定位，1080px 布局尺寸不再参与预览容器排版 */
 .export-dialog__scaled {
   position: absolute;
   top: 0;
@@ -278,11 +504,11 @@
 
 .export-dialog__cancel {
   appearance: none;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   background: var(--color-surface);
   color: var(--color-text-2);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
   font: inherit;
   cursor: pointer;
 }
@@ -294,11 +520,11 @@
 
 .export-dialog__save {
   appearance: none;
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
   background: var(--color-accent);
   color: var(--color-on-accent);
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
   font: inherit;
   cursor: pointer;
 }

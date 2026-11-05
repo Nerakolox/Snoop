@@ -90,9 +90,9 @@ pub static FEATURE_REGISTRY: &[FeatureDecl] = &[
     },
     FeatureDecl {
         id: "ai.cat-quip",
-        required_tier: Tier::T1,
+        required_tier: Tier::T2,
         label: "猫的吐槽",
-        description: "基于当日数字生成一句吐槽",
+        description: "基于当日数字与最近 5 分钟的应用分布生成一句吐槽，含应用名",
         default_enabled: true,
     },
     FeatureDecl {
@@ -292,12 +292,49 @@ fn collect_code_name_pairs(payload: &Value, map: &AiCodeMap) -> Vec<(String, Str
     pairs
 }
 
+/// 把响应里的应用代号换回真名。
+///
+/// 优先按 JSON 解析、只替换字符串值再序列化：应用名里可能含 `"`、`\`、换行，对原始
+/// 文本做全局替换会把合法 JSON 弄坏（编辑层是多字段，坏一个就整份丢失）。内容不是
+/// JSON 时才退回旧的整串替换。
 fn resolve_codes(content: &str, pairs: &[(String, String)]) -> String {
+    if pairs.is_empty() {
+        return content.to_string();
+    }
+    if let Ok(mut value) = serde_json::from_str::<Value>(content) {
+        resolve_codes_in_value(&mut value, pairs);
+        if let Ok(s) = serde_json::to_string(&value) {
+            return s;
+        }
+    }
     let mut out = content.to_string();
     for (code, name) in pairs {
         out = out.replace(code, name);
     }
     out
+}
+
+fn resolve_codes_in_value(value: &mut Value, pairs: &[(String, String)]) {
+    match value {
+        Value::String(s) => {
+            for (code, name) in pairs {
+                if s.contains(code.as_str()) {
+                    *s = s.replace(code.as_str(), name);
+                }
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                resolve_codes_in_value(item, pairs);
+            }
+        }
+        Value::Object(map) => {
+            for (_, item) in map.iter_mut() {
+                resolve_codes_in_value(item, pairs);
+            }
+        }
+        _ => {}
+    }
 }
 
 // ─── 调用结果与单一出口 ───────────────────────────────────────────────────────

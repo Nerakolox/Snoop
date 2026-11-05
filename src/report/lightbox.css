@@ -1,8 +1,9 @@
 /* 报告海报灯箱 —— 全屏遮罩 + 可缩放拖拽海报 + 顶栏。
    经 portal 挂 document.body，position:fixed 相对真实视口（不受 .page-layer 的
    transform containing block 影响）。深浅无关：遮罩与海报都是固定色。
-   缩放/平移只改 .lightbox__scaled 的 transform（translate+scale，origin 0 0），
-   不改 left/top/zoom，也不重渲染海报 DOM（ReportCard 由 memo 挡住）。 */
+   平移只改 .lightbox__scaled 的 translate；缩放改内层 .lightbox__paper 的 CSS zoom，
+   让浏览器按目标尺寸重新排版，文字不因 transform 缩放而发虚。
+   两者都不重渲染海报 DOM（纸张由 ReportSheet 自管）。 */
 
 .lightbox {
   position: fixed;
@@ -13,6 +14,9 @@
   -webkit-backdrop-filter: blur(8px);
   opacity: 0;
   transition: opacity 150ms ease;
+  /* 拖拽平移时不要选中海报文字 / 图片原生拖拽 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .lightbox.is-visible {
@@ -48,15 +52,33 @@
   transform: scale(1);
 }
 
-/* 缩放层：定宽 1000px（与 EXPORT_WIDTH 一致），transform-origin 0 0，translate+scale 一次变换。
-   海报本体带明显投影，与深色背景拉开层次。 */
+/* 平移层：只放 translate，不参与缩放。 */
 .lightbox__scaled {
   position: absolute;
   top: 0;
   left: 0;
   transform-origin: 0 0;
   will-change: transform;
+}
+
+/* 缩放层：CSS zoom 按目标尺寸重新排版，文字保持清晰；投影跟着纸张一起缩放。 */
+.lightbox__paper {
+  background: #fff;
   box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55), 0 4px 16px rgba(0, 0, 0, 0.35);
+}
+
+.lightbox img {
+  -webkit-user-drag: none;
+}
+
+/* 灯箱打开时，侧栏 / 顶栏的窗口拖拽区全部失效：
+   Tauri 的 data-tauri-drag-region 由 Lightbox 临时改成 "false"，
+   这里兜住 WebKit 的 app-region，全屏看海报时左侧不会再拖走整个窗口。 */
+body.is-lightbox-open .sidebar,
+body.is-lightbox-open .sidebar *,
+body.is-lightbox-open .topbar,
+body.is-lightbox-open .topbar * {
+  -webkit-app-region: no-drag;
 }
 
 /* 顶栏：半透明深色渐变（非实心条），左侧标题，右侧缩放 + 导出 + 关闭。

@@ -59,10 +59,38 @@ export interface ReportMeta {
   generated_at_ms: number;
   active_ms: number;
   foreground_ms: number;
+  /** AI 给的一句话标题；历史报告 / 模板兜底为 null。 */
+  headline: string | null;
   narrative_source: string | null;
 }
 
 export type ReportKind = "day" | "week" | "month";
+
+// ── AI 编辑层文案（v2）────────────────────────────────────────────────────────
+//
+// 后端只写「逐字段校验通过」的子集，数字已用占位符注入成纯文本。
+// 字段缺失时前端回落 `copy.ts` 里的模板；**旧报告没有这份 JSON**，继续走旧路径。
+
+export interface AiCopySection {
+  title?: string;
+  heading?: string;
+  aside_heading?: string;
+  aside?: string;
+}
+
+export interface AiCopy {
+  version: number;
+  report_type: ReportKind;
+  headline?: string;
+  deck?: string;
+  issue_right?: string;
+  sections?: Partial<Record<"01" | "02" | "03", AiCopySection>>;
+  chart_heads?: Partial<Record<"hourly" | "week" | "calendar" | "trend", string>>;
+  pull_quote?: string;
+  closing?: string;
+  /** 后端派生，仅供旧列表/旧前端读取，前端版式不直接用。 */
+  quips?: string[];
+}
 
 // ── 生成时快照 ────────────────────────────────────────────────────────────────
 //
@@ -98,9 +126,9 @@ export interface ReportSnapshot {
 }
 
 export type ReportView =
-  | { report_type: "day"; status: "ok" | "too_little"; data: DailyReport; narrative: string | null; narrative_source: string | null; snapshot: ReportSnapshot }
-  | { report_type: "week"; status: "ok" | "too_little"; data: WeeklyReport; narrative: string | null; narrative_source: string | null; snapshot: ReportSnapshot }
-  | { report_type: "month"; status: "ok" | "too_little"; data: MonthlyReport; narrative: string | null; narrative_source: string | null; snapshot: ReportSnapshot };
+  | { report_type: "day"; status: "ok" | "too_little"; data: DailyReport; narrative: string | null; headline: string | null; narrative_source: string | null; snapshot: ReportSnapshot; ai_copy: AiCopy | null }
+  | { report_type: "week"; status: "ok" | "too_little"; data: WeeklyReport; narrative: string | null; headline: string | null; narrative_source: string | null; snapshot: ReportSnapshot; ai_copy: AiCopy | null }
+  | { report_type: "month"; status: "ok" | "too_little"; data: MonthlyReport; narrative: string | null; headline: string | null; narrative_source: string | null; snapshot: ReportSnapshot; ai_copy: AiCopy | null };
 
 // ── 周报 ──────────────────────────────────────────────────────────────────
 
