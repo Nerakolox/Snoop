@@ -12,7 +12,7 @@
 | ![今日概览](docs/images/overview.png) | ![时间线](docs/images/timeline.png) | ![键盘热力图](docs/images/heatmap.png) |
 
 **支持平台**：Windows 10/11 · macOS 10.15+
-**品牌**：Feedra · 吉祥物是一只嘴不太好的猫
+**品牌**：[Duskbit](https://duskbit.dev) · 吉祥物是一只嘴不太好的猫
 
 ---
 
@@ -138,5 +138,5 @@ npm run tauri build     # 出安装包
 
 ## 品牌与许可
 
-- 代码许可：[MIT](LICENSE)，版权 Feedra © 2026。
+- 代码许可：[MIT](LICENSE)，版权 Duskbit © 2026。
 - Snoop 这只猫的形象、名字、文案人格由本项目所有。技术代码开源，但请不要拿"Snoop"这个品牌和吉祥物做同类产品。

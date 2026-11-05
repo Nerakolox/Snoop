@@ -12,7 +12,7 @@
 | ![Overview](docs/images/overview.png) | ![Timeline](docs/images/timeline.png) | ![Keyboard heatmap](docs/images/heatmap.png) |
 
 **Platforms**: Windows 10/11 · macOS 10.15+
-**Brand**: Feedra · mascot is a cat with an attitude
+**Brand**: [Duskbit](https://duskbit.dev) · mascot is a cat with an attitude
 
 ---
 
@@ -132,5 +132,5 @@ For the release process and auto-update protocol, see [docs/打包与发布.md](
 
 ## Brand & license
 
-- Code license: [MIT](LICENSE), Copyright Feedra © 2026.
+- Code license: [MIT](LICENSE), Copyright Duskbit © 2026.
 - The Snoop cat's look, name, and voice belong to this project. The code is open source, but please don't use the "Snoop" brand or mascot for a similar product.
