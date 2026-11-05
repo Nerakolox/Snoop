@@ -105,6 +105,8 @@ Windows 版特意不用 low-level hook，改用 Raw Input（游戏本身收键�
 
 [点击链接加入群聊【Snoop的猫(Bug)窝】](https://qm.qq.com/q/PmKmgf3aQC)
 
+开发计划见 [ROADMAP.md](ROADMAP.md)。
+
 ---
 
 ## 想自己编译？

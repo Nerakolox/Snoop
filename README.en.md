@@ -120,6 +120,8 @@ npm run tauri build     # build installers
 
 For the release process and auto-update protocol, see [docs/打包与发布.md](docs/打包与发布.md) (Chinese).
 
+For what's planned next, see [ROADMAP.md](ROADMAP.md) (Chinese).
+
 ---
 
 ## Tech stack
