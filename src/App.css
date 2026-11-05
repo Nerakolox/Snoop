@@ -18,3 +18,4 @@
 @import "./styles/modal.css";
 @import "./styles/keyboard.css";
 @import "./components/changelog/changelog.css";
+@import "./components/updater/update-prompt.css";

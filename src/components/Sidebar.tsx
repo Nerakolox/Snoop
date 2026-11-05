@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { BarChart3, Clock, Keyboard, Lightbulb, Settings, Database, TestTube, Sparkles, FileText } from "lucide-react";
+import { BarChart3, Clock, Keyboard, Lightbulb, Settings, Database, TestTube, Sparkles, FileText, Layers } from "lucide-react";
 import SidebarLive from "./sidebar/SidebarLive";
 import { useAiEnabled } from "../ai/master";
 
-export type NavKey = "overview" | "timeline" | "input" | "patterns" | "report" | "ai" | "settings" | "dev" | "keymap-test";
+export type NavKey = "overview" | "timeline" | "input" | "patterns" | "report" | "ai" | "settings" | "dev" | "popup-preview" | "keymap-test";
 
 type NavItem = { key: NavKey; label: string; icon: React.ReactNode };
 
@@ -17,6 +17,7 @@ const MAIN_ITEMS: NavItem[] = [
 
 const DEV_ITEMS: NavItem[] = [
   { key: "dev", label: "原始数据", icon: <Database size={18} /> },
+  { key: "popup-preview", label: "弹窗预览", icon: <Layers size={18} /> },
   { key: "keymap-test", label: "键盘映射测试", icon: <TestTube size={18} /> },
 ];
 const SETTINGS_ITEM: NavItem = { key: "settings", label: "设置", icon: <Settings size={18} /> };

@@ -36,6 +36,7 @@ export const PAGE_KIND_CAP: Record<NavKey, RangeKind[]> = {
   ai:            ["day", "week", "month"],
   settings:      ["day", "week", "month"],
   dev:           ["day", "week", "month"],
+  "popup-preview": ["day", "week", "month"],
   "keymap-test": ["day", "week", "month"],
 };
 
@@ -56,6 +57,7 @@ export const PAGE_TOPBAR_CAP: Record<NavKey, TopbarCap> = {
   ai:            { timeRange: false, appFilter: false },
   settings:      { timeRange: false, appFilter: false },
   dev:           { timeRange: true,  appFilter: true },
+  "popup-preview": { timeRange: false, appFilter: false },
   "keymap-test": { timeRange: true,  appFilter: true },
 };
 

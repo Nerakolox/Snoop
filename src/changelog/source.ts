@@ -146,6 +146,29 @@ function writeCache(data: ChangelogFile): void {
 const BUNDLED: ChangelogFile =
   normalizeChangelog(seed) ?? { schema: 1, releases: [] };
 
+/**
+ * 首屏该拿哪份数据。
+ *
+ * 正常情况下缓存比包体新（缓存可能来自之后发版的云端文件），缓存优先。
+ * 但**升级后的第一屏**恰好相反：缓存还是上一版的，包体里却已经带上了
+ * 这一版的内容。若一味缓存优先，升级弹窗会拿不到当前版本条目，离线时
+ * 甚至整次更新都无声无息。所以按「谁记录的版本更新就用谁」来选。
+ */
+function pickInitial(): ChangelogSnapshot {
+  const cached = readCache();
+  if (!cached) return { data: BUNDLED, source: "bundled" };
+
+  const bundledNewest = BUNDLED.releases[0]?.version;
+  const cachedNewest = cached.releases[0]?.version;
+  if (
+    bundledNewest &&
+    (!cachedNewest || compareVersions(bundledNewest, cachedNewest) > 0)
+  ) {
+    return { data: BUNDLED, source: "bundled" };
+  }
+  return { data: cached, source: "cache" };
+}
+
 // ─── 运行时状态 ──────────────────────────────────────────────────────────────
 
 let snapshot: ChangelogSnapshot | null = null;
@@ -190,18 +213,20 @@ export function loadChangelog(force = false): Promise<ChangelogSnapshot> {
   if (inflight) return inflight;
 
   // 先用本地的顶着，不等网络。已有 snapshot 时不降级覆盖，避免闪烁。
-  if (!snapshot) {
-    const cached = readCache();
-    setSnapshot({
-      data: cached ?? BUNDLED,
-      source: cached ? "cache" : "bundled",
-    });
-  }
+  if (!snapshot) setSnapshot(pickInitial());
 
   inflight = fetchRemote()
     .then((data) => {
-      writeCache(data);
-      setSnapshot({ data, source: "remote" });
+      // 云端偶尔会比包体还旧（发版后 OSS 尚未刷新）。这时不能拿旧文件
+      // 覆盖手里的新内容，否则升级弹窗会突然找不到「当前版本」这一条。
+      const remoteNewest = data.releases[0]?.version;
+      const localNewest = snapshot?.data.releases[0]?.version;
+      const isStale =
+        remoteNewest && localNewest && compareVersions(localNewest, remoteNewest) > 0;
+      if (!isStale) {
+        writeCache(data);
+        setSnapshot({ data, source: "remote" });
+      }
       return snapshot!;
     })
     .catch((e) => {
@@ -249,16 +274,41 @@ export function useChangelog(): ChangelogSnapshot | null {
 export function hasUnseenRelease(data: ChangelogFile): boolean {
   const newest = data.releases[0];
   if (!newest) return false;
+  return hasUnseenVersion(newest.version);
+}
+
+/**
+ * 指定版本是否比「上次看过」更新（没看过任何版本时也算未读）。
+ *
+ * 升级弹窗不能直接用 `hasUnseenRelease`：云端日志常常比安装包先上线，
+ * 用户在旧版本里点开日志时可能已经看过「将来要装的那一版」，这时比较的
+ * 对象应该是**当前运行的版本**，而不是日志里的最新版本。
+ */
+export function hasUnseenVersion(version: string): boolean {
   const seen = localStorage.getItem(SEEN_KEY);
   if (!seen) return true; // 从没打开过：装好就有一条红点，引导用户点开
-  return compareVersions(newest.version, seen) > 0;
+  return compareVersions(version, seen) > 0;
 }
 
 export function markChangelogSeen(data: ChangelogFile): void {
   const newest = data.releases[0];
   if (!newest) return;
+  markVersionSeen(newest.version);
+}
+
+/**
+ * 把指定版本记为已读。
+ *
+ * 升级弹窗只展示刚安装的那一版，因此不能沿用「把最新条目标为已读」的写法：
+ * 云端日志可能已经提前写了下一版，那样会把用户还没看到的内容一并吞掉。
+ * 同时不回退已读水位——用户看过更新的版本后，再标记旧版本不该让红点复活。
+ */
+export function markVersionSeen(version: string): void {
+  if (!version) return;
   try {
-    localStorage.setItem(SEEN_KEY, newest.version);
+    const seen = localStorage.getItem(SEEN_KEY);
+    if (seen && compareVersions(seen, version) > 0) return;
+    localStorage.setItem(SEEN_KEY, version);
   } catch {
     // 同上，写不进去只是红点消不掉，不影响功能
   }

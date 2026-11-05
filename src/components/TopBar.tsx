@@ -33,6 +33,7 @@ const PAGE_LABEL: Record<NavKey, string> = {
   ai: "AI",
   settings: "设置",
   dev: "原始数据",
+  "popup-preview": "弹窗预览",
   "keymap-test": "键盘映射测试",
 };
 

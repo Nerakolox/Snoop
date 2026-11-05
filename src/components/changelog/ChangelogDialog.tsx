@@ -51,9 +51,15 @@ function groupNotes(notes: ChangeNote[]): { kind: ChangeKind; notes: ChangeNote[
 
 export default function ChangelogDialog({
   appVersion,
+  onlyVersion = null,
   onClose,
 }: {
   appVersion: string;
+  /**
+   * 只展示这一个版本的条目。升级后的自动弹窗用它，避免把整条时间线
+   * 一股脑倒给用户；设置页手动打开时不传，仍看完整历史。
+   */
+  onlyVersion?: string | null;
   onClose: () => void;
 }) {
   const snapshot = useChangelog();
@@ -78,14 +84,23 @@ export default function ChangelogDialog({
 
   const entries = useMemo(() => {
     if (!data) return [];
-    return data.releases.map((r) => ({
+    const releases = onlyVersion
+      ? data.releases.filter(
+          (r) => compareVersions(r.version, onlyVersion) === 0,
+        )
+      : data.releases;
+    return releases.map((r) => ({
       release: r,
       isCurrent: appVersion !== "" && compareVersions(r.version, appVersion) === 0,
       groups: groupNotes(r.notes),
     }));
-  }, [data, appVersion]);
+  }, [data, appVersion, onlyVersion]);
 
   const count = data?.releases.length ?? 0;
+
+  // 升级弹窗只关心「这一版改了什么」，标题和副标题都收窄到单版语义
+  const onlyEntry = onlyVersion ? entries[0] : null;
+  const noteCount = onlyEntry?.release.notes.length ?? 0;
 
   return createPortal(
     <div className="changelog-overlay" onClick={onClose}>
@@ -101,11 +116,20 @@ export default function ChangelogDialog({
         <header className="changelog-head">
           <div className="changelog-head-text">
             <h2 id="changelog-title" className="changelog-title">
-              更新日志
+              {onlyVersion ? "本次更新" : "更新日志"}
             </h2>
             <p className="changelog-sub">
-              {appVersion ? `当前 v${appVersion}` : "Snoop"}
-              {count > 0 && ` · 共 ${count} 个版本`}
+              {onlyVersion ? (
+                <>
+                  v{onlyVersion}
+                  {noteCount > 0 && ` · ${noteCount} 项改动`}
+                </>
+              ) : (
+                <>
+                  {appVersion ? `当前 v${appVersion}` : "Snoop"}
+                  {count > 0 && ` · 共 ${count} 个版本`}
+                </>
+              )}
             </p>
           </div>
           <button

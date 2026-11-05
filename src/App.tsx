@@ -11,10 +11,12 @@ import Report from "./pages/Report";
 import Settings from "./pages/Settings";
 import Ai from "./pages/Ai";
 import Dev from "./pages/Dev";
+import PopupPreview from "./pages/PopupPreview";
 import KeymapTest from "./pages/KeymapTest";
 import { useContextState, useContextActions } from "./store/context";
 import { TopBarToolsProvider } from "./components/topbar/TopBarToolsContext";
 import { ChangelogProvider } from "./components/changelog/ChangelogProvider";
+import UpdatePrompt from "./components/updater/UpdatePrompt";
 import { useAiEnabled } from "./ai/master";
 import { loadCategories } from "./categories/store";
 
@@ -41,6 +43,8 @@ function renderPage(key: NavKey) {
       return <Settings />;
     case "dev":
       return <Dev />;
+    case "popup-preview":
+      return <PopupPreview />;
     case "keymap-test":
       return <KeymapTest />;
   }
@@ -166,6 +170,7 @@ export default function App() {
           </div>
         </TopBarToolsProvider>
       </div>
+      <UpdatePrompt />
     </ChangelogProvider>
   );
 }

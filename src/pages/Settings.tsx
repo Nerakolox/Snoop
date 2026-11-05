@@ -21,15 +21,7 @@ import { loadAppVersion } from "../changelog/appVersion";
 import { useContextActions, useContextState } from "../store/context";
 import { fetchUnmappedKeys, clearUnmappedKeys } from "../data/client";
 import type { UnmappedKey } from "../data/types";
-
-type UpdateState =
-  | { status: "idle" }
-  | { status: "checking" }
-  | { status: "up_to_date"; current: string }
-  | { status: "downloading"; version: string; done: number; total: number }
-  | { status: "ready"; version: string }
-  | { status: "manual_download"; version: string; url: string }
-  | { status: "error"; message: string };
+import type { UpdateState } from "../updater/types";
 
 type ThemeMode = "system" | "light" | "dark";
 type CloseMode = "tray" | "quit";
@@ -738,7 +730,7 @@ export default function Settings() {
       <div className="settings-group">
         <div className="settings-group-title">开发者</div>
 
-        <SettingRow label="开发模式" desc="显示原始数据、键盘映射测试等调试功能">
+        <SettingRow label="开发模式" desc="显示原始数据、弹窗预览、键盘映射测试等调试功能">
           <Toggle checked={devMode} onChange={toggleDevMode} />
         </SettingRow>
 
