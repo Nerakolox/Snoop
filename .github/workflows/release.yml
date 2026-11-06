@@ -262,11 +262,17 @@ jobs:
       - name: 生成 latest.json
         run: |
           MAC=$(ls release-assets/*.dmg | head -1)
+          # 官网下载链路按旧命名 Snoop_<版本>_aarch64.dmg 取包。产物是
+          # universal，改名后由 --mac-universal 让两个 darwin key 都指向它。
+          MAC_LEGACY="release-assets/Snoop_${VERSION}_aarch64.dmg"
+          mv "$MAC" "$MAC_LEGACY"
+          MAC="$MAC_LEGACY"
           WIN=$(ls release-assets/*.exe | head -1)
           node scripts/make-release-manifest.mjs \
             --version "$VERSION" \
             --notes "$NOTES" \
             --mac "$MAC" \
+            --mac-universal \
             --win "$WIN" \
             --out latest.json
 

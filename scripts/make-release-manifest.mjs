@@ -8,8 +8,11 @@
 //     --win release-assets/Snoop_0.2.4_x64-setup.exe \
 //     --out latest.json
 //
+//   --mac-universal  文件名被改成 aarch64/x64 的通用包时，强制两个 darwin key 都写
+//
 // 平台映射规则:
-//   - universal dmg（文件名含 universal）→ darwin-aarch64 + darwin-x86_64 指向同一个 URL
+//   - universal dmg（文件名含 universal 或传了 --mac-universal）
+//                                        → darwin-aarch64 + darwin-x86_64 指向同一个 URL
 //   - aarch64 / arm64 dmg               → 只写 darwin-aarch64
 //   - x64 / x86_64 dmg                  → 只写 darwin-x86_64
 //   - exe                               → windows-x86_64
@@ -28,6 +31,7 @@ function getArg(name, fallback = null) {
 const version = getArg('version');
 const notes = getArg('notes', '');
 const mac = getArg('mac');
+const macUniversal = process.argv.includes('--mac-universal');
 const win = getArg('win');
 const out = getArg('out', 'latest.json');
 
@@ -73,7 +77,7 @@ function add(key, url, sha) {
 if (mac) {
   const url = ensureVersionInName(mac);
   const sha = await sha256(mac);
-  const universal = /universal/i.test(url);
+  const universal = macUniversal || /universal/i.test(url);
   const arm = /aarch64|arm64/i.test(url);
   const intel = /x86_64|x64|intel/i.test(url);
 
