@@ -22,6 +22,11 @@ on:
         description: "版本号（x.y.z，不带 v）"
         required: true
         type: string
+      republish:
+        description: "修复重发：允许重建已存在的版本号 / Tag（仅用于修复已发布版本）"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -49,6 +54,7 @@ jobs:
         id: check
         env:
           VERSION: ${{ inputs.version }}
+          REPUBLISH: ${{ inputs.republish }}
         run: |
           set -euo pipefail
 
@@ -66,9 +72,13 @@ jobs:
           # 更新日志是应用内「这一版改了什么」的数据源；缺条目直接拦在构建前。
           node -e "const c=require('./src/changelog/changelog.json'); if(!c.releases.some(r=>r.version===process.env.VERSION)) { console.error('::error::src/changelog/changelog.json 里没有 '+process.env.VERSION+' 的条目'); process.exit(1) }"
 
+          TAG_EXISTS_REMOTE=false
           if git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
-            echo "::error::v$VERSION 已经打过 tag，不能再用这个版本号构建。补发请直接用对应的 Build Run ID 重跑 Publish"
-            exit 1
+            TAG_EXISTS_REMOTE=true
+            if [ "$REPUBLISH" != "true" ]; then
+              echo "::error::v$VERSION 已经打过 tag，不能再用这个版本号构建。补发请直接用对应的 Build Run ID 重跑 Publish；若确需重建，请勾选 republish"
+              exit 1
+            fi
           fi
 
           CUR=$(node -p "require('./package.json').version")
@@ -78,8 +88,10 @@ jobs:
             | sort -V | tail -1 || true)
 
           if [ "$CUR" = "$VERSION" ]; then
-            echo "::error::main 上的版本号已经是 $VERSION，不需要再构建；若是补 tag，请直接重跑 Publish"
-            exit 1
+            if [ "$REPUBLISH" != "true" ]; then
+              echo "::error::main 上的版本号已经是 $VERSION，不需要再构建；若是补 tag，请直接重跑 Publish"
+              exit 1
+            fi
           fi
           if [ "$(printf '%s\n%s\n' "$CUR" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]; then
             echo "::error::版本号必须大于 main 上的当前版本 $CUR（收到 $VERSION）"
@@ -88,6 +100,22 @@ jobs:
           if [ -n "$HIGHEST" ] && [ "$(printf '%s\n%s\n' "$HIGHEST" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]; then
             echo "::error::版本号必须大于已发布的最新版本 v$HIGHEST（收到 $VERSION）"
             exit 1
+          fi
+
+          # 修复重发只允许作用于当前已发布的最新版本，不能借这个开关重建历史版本。
+          if [ "$REPUBLISH" = "true" ]; then
+            if [ "$TAG_EXISTS_REMOTE" != "true" ]; then
+              echo "::error::republish 只用于已存在的版本；v$VERSION 还没有 tag，请按正常发版流程构建"
+              exit 1
+            fi
+            if [ "$CUR" != "$VERSION" ]; then
+              echo "::error::republish 要求 main 的版本号就是 $VERSION（实际 $CUR）"
+              exit 1
+            fi
+            if [ "$HIGHEST" != "$VERSION" ]; then
+              echo "::error::只能重发当前已发布的最新版本 v$HIGHEST（收到 $VERSION）"
+              exit 1
+            fi
           fi
 
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"

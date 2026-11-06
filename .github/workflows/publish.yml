@@ -42,6 +42,11 @@ on:
         required: false
         default: false
         type: boolean
+      republish:
+        description: "修复重发：允许使用比 v<版本> Tag 更新的 Build，并把 Tag 移到本次构建提交"
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   # 同一时间只允许一个发布在跑，避免两个版本互相覆盖 tag / Release。
@@ -68,6 +73,7 @@ jobs:
       NOTES: ${{ inputs.notes }}
       DRY_RUN: ${{ inputs.dry_run }}
       BUILD_RUN_ID: ${{ inputs.build_run_id }}
+      REPUBLISH: ${{ inputs.republish }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -178,6 +184,7 @@ jobs:
           TAG_EXISTS=false
           if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
             TAG_EXISTS=true
+            TAG_COMMIT=$(git rev-parse "refs/tags/v$VERSION^{commit}")
             TAGVER=$(git show "v$VERSION:package.json" \
               | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
             if [ "$TAGVER" != "$VERSION" ]; then
@@ -192,12 +199,27 @@ jobs:
               echo "::error::v$VERSION 已存在且不是最新版本（最新 v$HIGHEST），不能重发"
               exit 1
             fi
-            if ! git merge-base --is-ancestor "$BUILD_SHA" "refs/tags/v$VERSION^{commit}"; then
-              echo "::error::Build 的 commit $BUILD_SHA 不在 v$VERSION 的历史里，不能用它重发这个版本"
-              exit 1
+
+            if [ "$REPUBLISH" = "true" ]; then
+              # 修复重发：允许 Build 领先旧 tag，但必须包含旧 tag 的历史，
+              # 且必须是当前 main 的最新提交，避免用旧代码重建后覆盖。
+              if ! git merge-base --is-ancestor "$TAG_COMMIT" "$BUILD_SHA"; then
+                echo "::error::Build 的 commit $BUILD_SHA 不包含旧 v$VERSION tag（${TAG_COMMIT:0:7}）的历史，不能用它重发"
+                exit 1
+              fi
+              if [ "$BUILD_SHA" != "$MAIN_SHA" ]; then
+                echo "::error::重发必须用当前 main 的最新提交构建（build ${BUILD_SHA:0:7} / main ${MAIN_SHA:0:7}）"
+                exit 1
+              fi
+              echo "::notice::republish：Publish 成功后把 v$VERSION 移到 ${BUILD_SHA:0:7}"
+            else
+              if ! git merge-base --is-ancestor "$BUILD_SHA" "$TAG_COMMIT"; then
+                echo "::error::Build 的 commit $BUILD_SHA 不在 v$VERSION 的历史里，不能用它重发这个版本"
+                exit 1
+              fi
+              check_only_version_files "$BUILD_SHA" "$TAG_COMMIT"
+              echo "::notice::v$VERSION 已发过，按重跑处理：跳过提交，只更新 Release"
             fi
-            check_only_version_files "$BUILD_SHA" "refs/tags/v$VERSION^{commit}"
-            echo "::notice::v$VERSION 已发过，按重跑处理：跳过提交，只更新 Release"
           else
             if [ -n "$HIGHEST" ] && [ "$(printf '%s\n%s\n' "$HIGHEST" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]; then
               echo "::error::$VERSION 小于已发布的最新版本 v$HIGHEST，拒绝回滚"
@@ -356,6 +378,30 @@ jobs:
               [ "$TAGVER" = "$VERSION" ] || { echo "::error::远程 v$VERSION tag 里的版本是 $TAGVER，和本次不一致"; exit 1; }
               echo "tag 已被其他运行创建且版本一致，视为成功"
             fi
+          fi
+
+      # 修复重发：把已有 tag 移到本次实际构建的源码提交，保证 tag / 源码 / 产物一致。
+      # 只移动当前版本这一个 tag，不删除、不影响其他版本的 tag 和 Release。
+      - name: 更新重发 Tag
+        if: ${{ !inputs.dry_run && inputs.republish && steps.check.outputs.tag_exists == 'true' }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch --force origin main --tags
+          if ! git merge-base --is-ancestor "$BUILD_SHA" origin/main; then
+            echo "::error::Build 的 commit $BUILD_SHA 已经不在 main 历史里，拒绝移动 tag"
+            exit 1
+          fi
+
+          CURRENT_TAG_SHA=$(git rev-parse "refs/tags/v$VERSION^{commit}")
+          if [ "$CURRENT_TAG_SHA" = "$BUILD_SHA" ]; then
+            echo "tag v$VERSION 已经指向 $BUILD_SHA，无需移动"
+          else
+            git tag -f -a "v$VERSION" -m "v$VERSION" "$BUILD_SHA"
+            git push --force origin "refs/tags/v$VERSION"
+            echo "::notice::已把 v$VERSION 从 ${CURRENT_TAG_SHA:0:7} 移到 ${BUILD_SHA:0:7}"
           fi
 
       # 清单里的平台地址保持「安装包文件名」不变（客户端会用 UPDATE_BASE_URL 拼地址），
