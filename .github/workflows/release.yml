@@ -293,6 +293,13 @@ jobs:
         run: |
           aws --version
           aws configure set default.s3.addressing_style "${{ vars.S3_ADDRESSING_STYLE || 'virtual' }}"
+          # 这两项是 aws-cli 的配置文件项，不是 `aws s3 cp` 的命令行参数；
+          # 写成 --s3.multipart-threshold 会直接报 Unknown options 并退出 252。
+          # dmg 约 8.7MB，刚好超过默认 8MB 分片阈值，会被拆成多段并发上传，
+          # 雨云对海外并发请求回 503 SlowDown。阈值调到 128MB 后整包一次 PUT，
+          # 慢但不会被限流掐断；并发数压到 1 作为兜底（阈值以内本就不走分片）。
+          aws configure set default.s3.multipart_threshold 128MB
+          aws configure set default.s3.max_concurrent_requests 1
 
       # 先把安装包传到桶里；latest.json 是客户端的更新开关，必须最后传。
       - name: 上传 installer 到雨云
@@ -306,14 +313,11 @@ jobs:
           for f in release-assets/*; do
             name=$(basename "$f")
             echo "上传 $name ($(stat -c%s "$f") bytes)"
-            # dmg 约 8.7MB，刚好超过 aws-cli 默认 8MB 分片阈值，会被拆成
-            # 10 个并发分片；雨云对海外并发请求回 503 SlowDown。把阈值调高，
-            # 整个包一次 PUT，慢但不会被限流掐断。
+            # 分片阈值 / 并发数在「配置 aws-cli」步骤里设置（128MB / 1），
+            # 这里不要写成 --s3.* 命令行参数（aws-cli 不支持，会退出 252）。
             aws s3 cp "$f" "s3://$S3_BUCKET/$name" \
               --endpoint-url "$S3_ENDPOINT" \
               --cache-control "public, max-age=31536000, immutable" \
-              --s3.multipart-threshold 128MB \
-              --s3.max-concurrent-requests 1 \
               --cli-connect-timeout 60 \
               --cli-read-timeout 900
           done
