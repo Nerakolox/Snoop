@@ -8,7 +8,7 @@ name: Publish
 #   3. 用 scripts/make-release-manifest.mjs 对实际产物生成 latest.json；
 #   4. 提交版本号并打 tag（重试时幂等）；
 #   5. 创建 / 更新 GitHub Release，附件：exe、dmg、latest.json、
-#      changelog.json、checksums.txt；
+#      changelog.json、checksums.txt；说明由 changelog.json 生成；
 #   6. 把附件从 Release 下载回来，核对 SHA256 与 latest.json 完全一致。
 #
 # 雨云 OSS 不再由 CI 上传：Release 里的附件需要人工同步到雨云。
@@ -379,8 +379,59 @@ jobs:
             --win "$WIN" \
             --out latest.json
 
-      # 发布说明固定带一条提示：GitHub Release 成功 ≠ 客户端更新已上线。
-      # 雨云 OSS 仍需人工同步，客户端只读雨云上的 latest.json。
+      # Release 正文用应用内更新日志生成，和客户端看到的这一版内容一致。
+      # NOTES 仍会写进 latest.json；只有它和 tagline 不同时才额外显示在正文开头。
+      - name: 生成 Release 说明
+        if: ${{ !inputs.dry_run }}
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const fail = (msg) => { console.error(`::error::${msg}`); process.exit(1); };
+
+          const data = JSON.parse(fs.readFileSync('src/changelog/changelog.json', 'utf8'));
+          const release = data.releases.find((r) => r.version === process.env.VERSION);
+          if (!release) fail(`changelog.json 里没有 ${process.env.VERSION} 的条目`);
+
+          const labels = { feat: '新增', improve: '改进', breaking: '不兼容', fix: '修复', other: '其他' };
+          const order = ['feat', 'improve', 'breaking', 'fix', 'other'];
+          const grouped = new Map(order.map((k) => [k, []]));
+          for (const note of release.notes || []) {
+            const kind = order.includes(note.kind) ? note.kind : 'other';
+            grouped.get(kind).push(note);
+          }
+
+          const lines = [];
+          const summary = (process.env.NOTES || '').trim();
+          if (summary && !(release.tagline || '').includes(summary)) lines.push(summary, '');
+          if (release.tagline) lines.push(`> ${release.tagline}`, '');
+
+          for (const kind of order) {
+            const notes = grouped.get(kind);
+            if (notes.length === 0) continue;
+            lines.push(`### ${labels[kind]}`, '');
+            for (const note of notes) {
+              lines.push(`- ${note.text}`);
+              if (note.detail) lines.push(`  ${note.detail}`);
+            }
+            lines.push('');
+          }
+
+          lines.push(
+            '---',
+            '',
+            '**安装说明**',
+            '',
+            '- macOS：产物未签名，首次打开需在「系统设置 → 隐私与安全性」里放行。',
+            '- Windows：未签名，首次运行会弹 SmartScreen 提示。',
+            '',
+            '> **注意**：雨云 OSS 上的安装包、`latest.json` 和 `changelog.json` 需要人工同步。',
+            '> 创建本 Release 不代表客户端自动更新已上线，客户端只读取雨云上的 `latest.json`。',
+            '',
+          );
+
+          fs.writeFileSync('release-notes.md', lines.join('\n'));
+          NODE
+
       - name: 创建或更新 GitHub Release
         if: ${{ !inputs.dry_run }}
         env:
@@ -395,14 +446,6 @@ jobs:
           sha256sum --text release-assets/* latest.json src/changelog/changelog.json \
             | awk '{n=$2; sub(/^.*\//, "", n); print $1"  "n}' \
             | sort -k2 > checksums.txt
-
-          {
-            if [ -n "$NOTES" ]; then
-              printf '%s\n\n---\n\n' "$NOTES"
-            fi
-            printf '%s\n' '> **注意**：雨云 OSS 上的安装包、`latest.json` 和 `changelog.json` 需要人工同步。'
-            printf '%s\n' '> 创建本 Release 不代表客户端自动更新已上线，客户端只读取雨云上的 `latest.json`。'
-          } > release-notes.md
 
           ASSETS=(release-assets/* latest.json src/changelog/changelog.json checksums.txt)
 
