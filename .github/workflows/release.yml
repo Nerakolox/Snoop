@@ -107,6 +107,15 @@ jobs:
             echo "tag_exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # 更新日志是应用内「这一版改了什么」的数据源；缺条目时直接拦在发版前，
+      # 免得升完级弹窗里找不到当前版本。
+      - name: 检查更新日志包含本次版本
+        if: ${{ !inputs.dry_run }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          node -e "const c=require('./src/changelog/changelog.json'); if(!c.releases.some(r=>r.version===process.env.VERSION)) { console.error('::error::src/changelog/changelog.json 里没有 '+process.env.VERSION+' 的条目'); process.exit(1) }"
+
   build-macos:
     name: 构建 macOS（universal）
     needs: prepare
@@ -305,6 +314,16 @@ jobs:
           git tag -a "v$VERSION" -m "v$VERSION" 2>/dev/null || true
           git push origin "refs/tags/v$VERSION"
 
+      # 更新日志要在清单之前上线：客户端升级后第一屏就能读到这一版。
+      - name: 上传更新日志到雨云
+        if: ${{ !inputs.dry_run }}
+        run: |
+          aws s3 cp src/changelog/changelog.json "s3://$S3_BUCKET/changelog.json" \
+            --endpoint-url "$S3_ENDPOINT" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=60" \
+            --only-show-errors
+
       # 最后传清单：这是原子的“上线开关”。
       - name: 最后上传 latest.json
         if: ${{ !inputs.dry_run }}
@@ -324,6 +343,10 @@ jobs:
             --endpoint-url "$S3_ENDPOINT" \
             --only-show-errors
           diff -u latest.json uploaded-latest.json
+          aws s3 cp "s3://$S3_BUCKET/changelog.json" uploaded-changelog.json \
+            --endpoint-url "$S3_ENDPOINT" \
+            --only-show-errors
+          diff -u src/changelog/changelog.json uploaded-changelog.json
           for f in release-assets/*; do
             name=$(basename "$f")
             local_size=$(stat -c%s "$f")
