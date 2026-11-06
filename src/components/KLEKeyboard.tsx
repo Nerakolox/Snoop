@@ -5,7 +5,8 @@
  *
  * 尺寸模型：1U = KEY_UNIT 固定像素，整体缩放交给外层 transform: scale。
  * - .kle-viewport：横向滚动容器（宽配列缩到下限后可滚动）
- * - .kle-scaler：承担缩放后的实际占位（显式写缩放后宽高，margin:0 auto 居中）
+ * - .kle-scaler：承担缩放后的实际占位（显式写缩放后宽高，margin:0 auto 居中；
+ *   子元素 .kle-keyboard 不参与居中，从内容盒左上角起算缩放）
  * - .kle-keyboard：原始尺寸绘制，transform: scale 缩放
  */
 
@@ -69,11 +70,13 @@ export default function KLEKeyboard({
       <div
         className="kle-scaler"
         style={{
-          // 用 Math.round 写入整数尺寸，避免非整数宽高引入亚像素抖动。
+          // 用浮点写入尺寸，不做 Math.round：升/降舍入（最多 ±0.5px）会让内容盒
+          // 与 transform 后的视觉宽不等，制造亚像素溢出或偏移。浮点保证盒子内容区
+          // 严格等于 layout 尺寸 * scale，与 .kle-keyboard 变换后的视觉宽一致。
           // box-sizing 全局为 border-box：显式 width/height 含 padding，故各 +2*SCALER_PAD，
-          // 使内容区（承载缩放后键盘）仍恰为 Math.round(layout 尺寸 * scale)。
-          width: Math.round(layoutWidth * scale) + SCALER_PAD_X * 2,
-          height: Math.round(layoutHeight * scale) + SCALER_PAD_Y * 2,
+          // 使内容区（承载缩放后键盘）恰为 layout 尺寸 * scale。
+          width: layoutWidth * scale + SCALER_PAD_X * 2,
+          height: layoutHeight * scale + SCALER_PAD_Y * 2,
           // 四周留白容纳键 hover 时向外扩散的 box-shadow，避免被 .kle-viewport 裁切
           paddingLeft: SCALER_PAD_X,
           paddingRight: SCALER_PAD_X,

@@ -24,13 +24,13 @@ type KeyboardPanelProps = {
   maxY: number;
 };
 
-/** 抵消 Math.round(layoutWidth * scale) 的上舍入，防止 1px 溢出触发滚动条。
- *  基准已改为 viewport.clientWidth（17px 滚动条占位已扣除），故只需 1px。 */
+/** 额外 1px 安全余量：quantized 已向下取整保证不溢出，此处只是吸收浮点/浏览器
+ *  布局舍入的最后一道保险。基准为 viewport.clientWidth（滚动条占位已扣除）。 */
 const SCROLLBAR_RESERVE = 1;
-/** scale 量化步长：只保留百分位，消除亚像素连续变化 */
-const SCALE_STEP = 0.01;
+/** scale 量化步长：千分位。0.01 在 704px 配列上一次跳 7px，拖窗口会"跳档" */
+const SCALE_STEP = 0.001;
 /** 死区阈值：新旧 scale 差小于此值不 setState，防震荡最后一道保险 */
-const SCALE_EPSILON = 0.005;
+const SCALE_EPSILON = 0.0005;
 
 export default function KeyboardPanel({
   keys,
@@ -40,8 +40,8 @@ export default function KeyboardPanel({
   maxY,
 }: KeyboardPanelProps) {
   // 观测对象是 .kle-viewport 本身，读 clientWidth —— 它已扣除 padding、border
-  // 与 scrollbar-gutter: stable 恒定预留的滚动条占位，正是内容真正可用的宽度。
-  // gutter 恒定预留，滚动条出现/消失不改变 clientWidth，故不会重新引入震荡。
+  // 和真实滚动条占位，正是内容真正可用的宽度。视口不预留 scrollbar-gutter
+  // （原因见 keyboard.css 的 .kle-viewport 注释），故键盘在内容盒内真正居中。
   const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
@@ -55,9 +55,9 @@ export default function KeyboardPanel({
       rafRef.current = null;
       const vp = viewportRef.current;
       if (!vp || maxX <= 0) return;
-      // clientWidth 已扣除滚动条占位（scrollbar-gutter: stable 恒定预留）。
-      // 再扣 SCROLLBAR_RESERVE(1) 吸收 round 上舍入，扣 2*SCALER_PAD_X 让出
-      // scaler 的水平内边距（这 16px 只在此处扣一次）。
+      // clientWidth 已扣除真实滚动条占位；正常区间根本不会出现滚动条，故它就是
+      // 内容可用宽。再扣 SCROLLBAR_RESERVE(1) 作浮点/布局舍入的最后保险，扣
+      // 2*SCALER_PAD_X 让出 scaler 的水平内边距（这 16px 只在此处扣一次）。
       const usable = vp.clientWidth - SCROLLBAR_RESERVE - SCALER_PAD_X * 2;
       const byWidth = usable / (maxX * KEY_UNIT);
       // 高度预算取 window.innerHeight 而非 getBoundingClientRect().top：后者随页面

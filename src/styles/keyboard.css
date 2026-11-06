@@ -540,15 +540,19 @@
 /* 缩放视口：overflow-x 恒为 auto，绝不用 hidden/clip —— 即使 needsScroll 判据
    因任何原因失效，宁可出现滚动条也不裁切内容。正常缩放区间内容不溢出，auto 下
    本就不显示滚动条。
-   scrollbar-gutter: stable 恒定预留滚动条空间：clientWidth 不随滚动条出现/消失
-   变化，断开 ResizeObserver↔滚动条 的反馈震荡。此处不用 scrollbar-width: none
-   隐藏 thumb —— 那会使 gutter 失效（规范：scrollbar-width:none 时 gutter 无效），
-   令 clientWidth 在 --scrollable 切换时跳变 17px，重新引入震荡。 */
+
+   不设 scrollbar-gutter。三条理由，缺一都会出问题：
+   1. both-edges 在 WKWebView（macOS Tauri）里布局与 clientWidth 口径不一致：
+      17px 槽按左右各 8.5px 布局，clientWidth 却只扣一次 17px，凭空多出约 2px
+      溢出 → 常驻横向滚动条（Chromium 扣 30px，所以浏览器里复现不出来）。
+   2. 只写 stable 仅在右侧预留约 15px，键盘在内容盒内居中会恒定左偏半个槽宽。
+   3. 反馈环不需要靠 gutter 断开：usable 已留 1px 余量且 scale 向下取整，内容恒
+      ≤ clientWidth，滚动条不会出现；缩到 MIN_SCALE 真溢出时 scale 已被夹住，
+      滚动条出现与否都不再改变结果，不会震荡。 */
 .kle-viewport {
   width: 100%;
   overflow-x: auto;
   overflow-y: visible;
-  scrollbar-gutter: stable;
 }
 
 /* needsScroll 为真时的语义标记（内容确已溢出、滚动条自然出现）。
@@ -595,10 +599,14 @@
   padding: var(--space-3) 0;
 }
 
-/* KLE 键盘容器 —— 提升为独立合成层，缩放时避免每帧重新栅格化 */
+/* KLE 键盘容器 —— 提升为独立合成层，缩放时避免每帧重新栅格化。
+   margin 必须为 0：缩放以 top-left 为原点，auto 居中所产生的位移位于 transform
+   之外、不参与缩放，scale>1 时会把键盘整体右推 (layoutWidth*scale-layoutWidth)/2，
+   并让视觉右边缘溢出 .kle-scaler 内容盒、产生伪横向滚动条。居中职责唯一属于
+   .kle-scaler 的 margin: 0 auto。 */
 .kle-keyboard {
   position: relative;
-  margin: 0 auto;
+  margin: 0;
   will-change: transform;
   backface-visibility: hidden;
 }
