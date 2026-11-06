@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 一键 bump 项目所有 4 个版本号 + 可选 latest.json 内容
+// 一键 bump 项目所有版本号 + 可选 latest.json 内容
 //
 // 用法:
 //   node scripts/bump-version.mjs 0.1.2                    只改版本号
@@ -9,6 +9,7 @@
 // 会同步修改:
 //   - package.json                      "version"
 //   - src-tauri/Cargo.toml              version = "..."
+//   - src-tauri/Cargo.lock              本工作区包 snoop 的 version（--locked 构建要求同步）
 //   - src-tauri/tauri.conf.json         "version"
 //   - latest.json                       "version" / "notes" / 每个 platforms.*.url 里的文件名
 //                                       (sha256 需要 build 完再回填，脚本会清空提醒)
@@ -22,6 +23,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const files = {
   pkg:  join(ROOT, 'package.json'),
   cargo: join(ROOT, 'src-tauri', 'Cargo.toml'),
+  lock: join(ROOT, 'src-tauri', 'Cargo.lock'),
   tauri: join(ROOT, 'src-tauri', 'tauri.conf.json'),
   latest: join(ROOT, 'latest.json'),
 };
@@ -74,14 +76,23 @@ console.log(`版本 ${oldVersion} → ${nextVersion}`);
 // ---- src-tauri/Cargo.toml ----
 {
   const src = readFileSync(files.cargo, 'utf8');
-  // 只替换文件顶部 [package] 段里的 version 行,避免误伤依赖版本
-  const updated = src.replace(
-    /^(version\s*=\s*)"[^"]+"/m,
-    `$1"${nextVersion}"`,
-  );
-  if (updated === src) throw new Error('Cargo.toml 里没找到顶层 version 行');
-  writeFileSync(files.cargo, updated);
+  // 只替换文件顶部 [package] 段里的 version 行,避免误伤依赖版本。
+  // 用 test 判断是否匹配（而不是比较替换结果），bump 到相同版本时也能正常通过。
+  const re = /^(version\s*=\s*)"[^"]+"/m;
+  if (!re.test(src)) throw new Error('Cargo.toml 里没找到顶层 version 行');
+  writeFileSync(files.cargo, src.replace(re, `$1"${nextVersion}"`));
   console.log('  ✔ src-tauri/Cargo.toml');
+}
+
+// ---- src-tauri/Cargo.lock ----
+{
+  const src = readFileSync(files.lock, 'utf8');
+  // 只改本工作区包 snoop 的 [[package]] 条目。
+  // CI 的 cargo test --locked 要求 lockfile 里的版本和 Cargo.toml 一致。
+  const re = /(\[\[package\]\]\nname = "snoop"\nversion = ")[^"]+(")/;
+  if (!re.test(src)) throw new Error('Cargo.lock 里没找到 snoop 包条目');
+  writeFileSync(files.lock, src.replace(re, `$1${nextVersion}$2`));
+  console.log('  ✔ src-tauri/Cargo.lock');
 }
 
 // ---- src-tauri/tauri.conf.json ----
@@ -136,6 +147,6 @@ if (existsSync(files.latest)) {
 console.log('\n下一步:');
 console.log('  1. npm run tauri build');
 console.log('  2. 用产物 sha256 回填 latest.json 各平台的 sha256 字段');
-console.log(`  3. git commit -am "chore(release): v${nextVersion}"`);
+console.log(`  3. git commit -am "chore(release): 发布 v${nextVersion}"`);
 console.log(`  4. git tag v${nextVersion}`);
 console.log('  5. installer 和 latest.json 上传雨云');
