@@ -2,8 +2,9 @@
  * Dev · 弹窗预览
  *
  * 只在开发模式（侧栏「开发」分组）出现。两个弹层平时都要等真实事件才会露面：
- * 更新日志要等「版本变了」，更新提示要等后端静默下载完。做版式时不想为了看
- * 一眼去改 latest.json 或重装，所以在这里放几个按钮直接触发。
+ * 更新日志要等「版本变了」，更新提示要等后端静默下载完，辅助功能横幅要等真实
+ * 权限状态变化。做版式时不想为了看一眼去改 latest.json / 重装 / 拔权限，所以
+ * 在这里放几个按钮直接触发。
  *
  * 这里只做「展示」，不改任何业务状态；「清除升级 / 已读记录」是例外，
  * 它明确会动 localStorage，方便重启后验证真实的自动弹窗路径。
@@ -13,6 +14,10 @@ import { useState } from "react";
 import PageShell from "../components/PageShell";
 import { useChangelogDialog } from "../components/changelog/ChangelogProvider";
 import { UPDATE_PREVIEW_EVENT, type UpdateState } from "../updater/types";
+import {
+  ACCESSIBILITY_PREVIEW_EVENT,
+  type AccessibilityPreviewDetail,
+} from "../accessibility/types";
 
 /** 用一个一眼假的版本号，免得截图时被误认成真实版本。 */
 const PREVIEW_VERSION = "9.9.9";
@@ -33,6 +38,11 @@ export default function PopupPreview() {
         ? "1.2 秒后出现「新版本已就绪」提示。"
         : "1.2 秒后出现「发现新版本」提示（macOS 分支）。",
     );
+  }
+
+  function previewAccessibility(detail: AccessibilityPreviewDetail, label: string) {
+    window.dispatchEvent(new CustomEvent(ACCESSIBILITY_PREVIEW_EVENT, { detail }));
+    setHint(label);
   }
 
   function resetUpgradeRecord() {
@@ -91,6 +101,60 @@ export default function PopupPreview() {
           </button>
           <button className="dev-action-btn" onClick={() => showUpdate("manual_download")}>
             macOS · 发现新版本
+          </button>
+        </div>
+      </section>
+
+      <section className="dev-section">
+        <h3>辅助功能权限横幅</h3>
+        <p className="dev-note">
+          横幅固定在顶栏下方，是全局组件。这里只改前端显示状态；「前往授权」会真实调用后端
+          跳转命令，可用来验证不同 macOS 版本的落地页。非 macOS 上点它会走错误提示。
+        </p>
+        <div className="dev-actions">
+          <button
+            className="dev-action-btn"
+            onClick={() =>
+              previewAccessibility(
+                { granted: false, reason: "untrusted" },
+                "横幅显示「未获得辅助功能权限」，「前往授权」按钮会真实跳转。",
+              )
+            }
+          >
+            模拟未授权
+          </button>
+          <button
+            className="dev-action-btn"
+            onClick={() =>
+              previewAccessibility(
+                { granted: false, reason: "listener_stopped" },
+                "横幅显示「键鼠监听已停止」，不出现授权按钮。",
+              )
+            }
+          >
+            模拟监听已停止
+          </button>
+          <button
+            className="dev-action-btn"
+            onClick={() =>
+              previewAccessibility(
+                { granted: true, reason: "granted" },
+                "横幅已隐藏 —— 预览「已授权」时横幅消失是预期。",
+              )
+            }
+          >
+            模拟已授权（隐藏横幅）
+          </button>
+          <button
+            className="dev-action-btn"
+            onClick={() =>
+              previewAccessibility(
+                null,
+                "已退出预览，横幅按真实权限状态显示（会重新向后端查询一次）。",
+              )
+            }
+          >
+            恢复真实状态
           </button>
         </div>
       </section>

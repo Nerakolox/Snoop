@@ -332,3 +332,36 @@ unsafe fn register_nsworkspace_observer() {
 
     let _: () = msg_send![pool, drain];
 }
+
+/// 「辅助功能」设置页 URL。
+/// macOS 13 起系统设置换成 SwiftUI 架构，旧的 com.apple.preference.security
+/// 只会落到「隐私与安全性」根页；用 PrivacySecurity.extension 才能直达。
+/// macOS 27 起该权限并入「设备控制与数据访问」，pane 标识待实机确认。
+const ACCESSIBILITY_URL_LEGACY: &str =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+const ACCESSIBILITY_URL_MODERN: &str =
+    "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility";
+// TODO(macOS 27): 实机确认「设备控制与数据访问」的 pane 标识后只改这一行。
+const ACCESSIBILITY_URL_MACOS27: &str = ACCESSIBILITY_URL_MODERN;
+
+pub fn accessibility_settings_url() -> &'static str {
+    let major = macos_major_version();
+    if major >= 27 {
+        ACCESSIBILITY_URL_MACOS27
+    } else if major >= 13 {
+        ACCESSIBILITY_URL_MODERN
+    } else {
+        ACCESSIBILITY_URL_LEGACY
+    }
+}
+
+/// 只取大版本号；解析失败按现代系统处理（13），保证按钮不会因解析问题失效。
+fn macos_major_version() -> u32 {
+    std::process::Command::new("/usr/bin/sw_vers")
+        .arg("-productVersion")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .and_then(|s| s.trim().split('.').next()?.parse().ok())
+        .unwrap_or(13)
+}

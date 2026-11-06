@@ -75,6 +75,7 @@ pub fn run() {
             commands::save_settings,
             commands::get_db_info,
             commands::get_accessibility_status,
+            commands::open_accessibility_settings,
             commands::clear_data,
             commands::get_unmapped_keys,
             commands::clear_unmapped_keys,

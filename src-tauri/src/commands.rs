@@ -716,3 +716,21 @@ pub fn clear_unmapped_keys(state: State<'_, DbPath>) -> Result<usize, String> {
     crate::activity_tracker::clear_unmapped_memory();
     Ok(deleted)
 }
+
+/// 打开 macOS「辅助功能」设置页。前端权限横幅的「前往授权」按钮调用。
+/// 走 Rust 侧 opener，绕开前端 capabilities 的 URL 白名单。
+#[tauri::command]
+pub fn open_accessibility_settings(app: tauri::AppHandle) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use tauri_plugin_opener::OpenerExt;
+        app.opener()
+            .open_url(crate::platform::accessibility_settings_url(), None::<&str>)
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = app;
+        Err("仅 macOS 支持打开辅助功能设置".to_string())
+    }
+}
