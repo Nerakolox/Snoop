@@ -360,6 +360,11 @@
   color: var(--rs-accent);
 }
 
+/* 日版 01 的旁批放在两栏之后跨整行：.rs-rhythm 自带 31px 下边距，不再叠加 margin-top。 */
+.rs-annotation--wide {
+  margin-top: 0;
+}
+
 .rs-signature {
   display: block;
   margin-top: 7px;

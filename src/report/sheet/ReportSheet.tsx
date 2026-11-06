@@ -120,9 +120,17 @@ function SectionLabel({ num, title, en }: { num: string; title: string; en: stri
   );
 }
 
-function Annotation({ children, signature }: { children: ReactNode; signature: string }) {
+function Annotation({
+  children,
+  signature,
+  className = "",
+}: {
+  children: ReactNode;
+  signature: string;
+  className?: string;
+}) {
   return (
-    <div className="rs-annotation">
+    <div className={`rs-annotation ${className}`.trim()}>
       {children}
       <span className="rs-signature">{signature}</span>
     </div>
@@ -343,11 +351,13 @@ function DaySheet({ detail, icons }: { detail: Extract<ReportView, { report_type
           <p>{`首条记录 ${clockFromMs(d.span_start_ms)}，末条 ${clockFromMs(d.span_end_ms)}，跨度 ${spanText(
             d.span_end_ms - d.span_start_ms,
           )}。`}</p>
-          <Annotation signature="— SNOOP 旁批">
-            <Quip text={ann01} />
-          </Annotation>
         </aside>
       </div>
+
+      {/* 旁批跨整行：右栏只有 225px，长句会被挤成窄条；放在两栏之后正好填满图表下方的留白。 */}
+      <Annotation signature="— SNOOP 旁批" className="rs-annotation--wide">
+        <Quip text={ann01} />
+      </Annotation>
 
       <div className="rs-timebook">
         {dailyTimebook(d).map((t) => (
