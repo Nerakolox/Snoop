@@ -347,8 +347,14 @@ export function buildKeycapGeometry(profile: RowProfile, widthU = 1, depthU = 1)
       const ny = cny * s;
       const nz = ez * c * 1 + cnz * s;
       const nl = Math.hypot(nx, ny, nz) || 1;
-      const u = isLast ? (x + innerHalfW) / innerExtentW : 0;
-      const v = isLast ? (z + innerHalfZ) / innerExtentZ : 0;
+      // 倒角每一环都写与顶面同一套平面 UV，且夹到 [0,1]：
+      // 旧写法把非末环的 uv 固定成 (0,0)，而 aIsTop 在末环才升到 1 —— 末环前的
+      // 那一圈倒角里 uv 从图集单元的左上角一路插值到单元边缘，同时 vIsTop 由 0
+      // 插值到 1，乘积就把图集里（本键或相邻单元的）印字 alpha 渗到倒角上，
+      // 读起来是键帽顶面边缘一圈断续的白色碎缝。末环是侧壁沿径向内缩出来的，
+      // 不是严格的圆角矩形，UV 会溢出单元边界采到隔壁单元的印字，故夹到 [0,1]。
+      const u = Math.min(1, Math.max(0, (x + innerHalfW) / innerExtentW));
+      const v = Math.min(1, Math.max(0, (z + innerHalfZ) / innerExtentZ));
       push(x, yBase, z, nx / nl, ny / nl, nz / nl, u, v, isLast ? 1 : 0);
     }
     band(prevBase, curBase, M);
