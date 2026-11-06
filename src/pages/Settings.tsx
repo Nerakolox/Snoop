@@ -9,6 +9,7 @@ import { enable as enableAutostart, disable as disableAutostart, isEnabled as is
 import {
   Sun, Moon, Monitor, Power, Minimize2,
   Download, Trash2, RefreshCw, Plus, X, ExternalLink, Code, Tags, ChevronRight,
+  Users,
 } from "lucide-react";
 import Categories from "./settings/Categories";
 import { resetAppIconCache } from "../components/AppIcon";
@@ -786,6 +787,17 @@ export default function Settings() {
           >
             <ExternalLink size={13} />
             GitHub
+          </button>
+        </SettingRow>
+
+        <SettingRow label="社群" desc="Snoop的猫(Bug)窝 · 反馈与交流">
+          <button
+            className="setting-btn"
+            onClick={() => openUrl("https://qm.qq.com/q/PmKmgf3aQC")}
+            aria-label="加入 QQ 群"
+          >
+            <Users size={13} />
+            QQ 群
           </button>
         </SettingRow>
 
