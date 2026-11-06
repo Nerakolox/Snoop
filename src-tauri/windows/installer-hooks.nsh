@@ -1,43 +1,76 @@
-; 0.3.0 把 bundle.publisher 从 Feedra 改成了 Duskbit。
-;
-; Tauri 的 NSIS 模板用 publisher 作为厂商名，把上一次的安装目录记在
-;   HKLM\Software\<publisher>\<productName>
-; 升级时只有读到这个键才会装回原目录，否则回落到 C:\Program Files\<productName>。
-; 0.3.0 因此把应用另装了一份到 C 盘，旧版本留在原目录，桌面也可能多出快捷方式。
-;
-; 这里在首次从旧品牌版本升级时补读旧键，把安装目录接回原位置。
-; 只在新厂商键还不存在时生效：已经装过 0.3.0 及以上的用户不受影响，
-; 避免把已经迁移到新目录的安装又搬回去。
-;
-; 注意：当前 installMode 固定为 perMachine，旧安装目录记录在 HKLM。
+; Snoop 0.3.1 Windows NSIS compatibility hotfix.
+; Keep bundle.publisher = Duskbit, but recover the old Feedra install path.
+; Only inspect paths containing a real snoop.exe. Never delete install folders.
+; perMachine => HKLM and the common desktop by default.
 
 !macro NSIS_HOOK_PREINSTALL
   Push $0
   Push $1
   Push $2
 
-  ; 新厂商键已经写过，说明不是第一次从旧品牌版本升级
-  ReadRegStr $0 SHCTX "${MANUPRODUCTKEY}" ""
-  ${If} $0 == ""
-    ; 旧版（publisher = Feedra）留下的安装目录
-    ReadRegStr $1 HKLM "Software\Feedra\${PRODUCTNAME}" ""
-    ${If} $1 != ""
-    ${AndIf} ${FileExists} "$1\${MAINBINARYNAME}.exe"
-      ; Section Install 已经按默认目录 SetOutPath 过一次。
-      ; 同时改 $INSTDIR 和输出目录，后续 File、注册表和快捷方式才会落到旧目录。
-      StrCpy $2 $INSTDIR
-      StrCpy $INSTDIR $1
+  ReadRegStr $0 HKLM "Software\Feedra\${PRODUCTNAME}" ""
+  ReadRegStr $1 HKLM "Software\Duskbit\${PRODUCTNAME}" ""
+  StrCpy $2 ""
 
-      ; 默认目录是刚才 SetOutPath 建出来的空目录，能删就删；有内容时 RMDir 会安全失败。
-      ; 先删再 SetOutPath，避免极端情况下把马上要用的目标目录删掉。
-      ${If} $2 != $INSTDIR
-        RMDir "$2"
-      ${EndIf}
-      SetOutPath $INSTDIR
+  ; Prefer an existing Duskbit install if the executable really exists.
+  ${If} $1 != ""
+  ${AndIf} ${FileExists} "$1\${MAINBINARYNAME}.exe"
+    StrCpy $2 $1
+  ${EndIf}
+
+  ; Migrate old Feedra installations even if Duskbit already has a stale
+  ; C:\Program Files\Snoop record from the broken 0.3.0 installer.
+  ; Never override an intentionally chosen non-default Duskbit path.
+  ${If} $0 != ""
+  ${AndIf} ${FileExists} "$0\${MAINBINARYNAME}.exe"
+    ${If} $2 == ""
+      StrCpy $2 $0
+    ${ElseIf} $1 == "$PROGRAMFILES\${PRODUCTNAME}"
+      StrCpy $2 $0
+    ${ElseIf} $1 == "$PROGRAMFILES64\${PRODUCTNAME}"
+      StrCpy $2 $0
     ${EndIf}
+  ${EndIf}
+
+  ${If} $2 != ""
+    StrCpy $INSTDIR $2
+    SetOutPath $INSTDIR
+    DetailPrint "Snoop existing install directory: $INSTDIR"
   ${EndIf}
 
   Pop $2
   Pop $1
+  Pop $0
+!macroend
+
+; A perMachine NSIS install creates the public desktop shortcut. On upgrade,
+; the current user may already have a private/OneDrive desktop shortcut.
+; If that private shortcut points at the installed snoop.exe, keep it and
+; remove the public one; never delete the user's private shortcut.
+;
+; The public shortcut is only created on the finish page in GUI mode, which
+; runs AFTER this hook, so do not require it to exist or to already point at
+; the new $INSTDIR (after a broken 0.3.0 upgrade it still points at
+; C:\Program Files\Snoop). Delete it if present and suppress recreation.
+!macro NSIS_HOOK_POSTINSTALL
+  Push $0
+
+  SetShellVarContext current
+  !insertmacro IsShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+  Pop $0
+
+  ${If} $0 == 1
+    SetShellVarContext all
+    ${If} ${FileExists} "$DESKTOP\${PRODUCTNAME}.lnk"
+      Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+      DetailPrint "Snoop: removed duplicate common desktop shortcut"
+    ${EndIf}
+    ; In the Tauri NSIS finish page, skip recreating the public shortcut.
+    StrCpy $NoShortcutMode 1
+  ${EndIf}
+
+  ; Restore the shell/registry context expected by the rest of the template.
+  !insertmacro SetContext
+
   Pop $0
 !macroend
