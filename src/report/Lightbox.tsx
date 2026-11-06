@@ -6,17 +6,22 @@
  * 自己写也就几十行，不值得引依赖。
  *
  * 交互模型：纸张定宽 1080px、高度按内容自适应。平移只改 `transform: translate(tx,ty)`
- * （tx/ty 即纸张左上角在视口的坐标）；缩放最终用内层的 CSS `zoom`，让浏览器按目标尺寸重新排版，
- * 文字在任何倍率下都保持清晰。
+ * （tx/ty 即纸张左上角在视口的坐标）；缩放提交时写内层 `transform: scale()`（<100%）或
+ * CSS `zoom`（≥100%），原因见 writeDom。
  *
  * 缩放分两段渲染，避免逐帧重排：
  *   - 手势进行中（滚轮 / 拖拽）：只在纸张上叠一个合成层 `transform: scale()`（相对上一次
- *     zoom 的倍率差），平移也直接写 DOM。这一路不碰 React state，整张海报不重渲染、不重排版。
- *   - 手势停下（滚轮停止 180ms、拖拽松手）：一次性提交，把 transform 换成 CSS `zoom`，
- *     浏览器只重排一次，文字恢复清晰。提交后才同步 React state（百分比 / 按钮禁用态）。
- * 代价是手势期间放大倍率较大时文字会暂时发虚，停下即恢复。
+ *     提交的倍率差），平移也直接写 DOM。这一路不碰 React state，整张海报不重渲染、不重排版。
+ *   - 手势停下（滚轮停止 180ms、拖拽松手）：一次性提交。≥100% 时把 transform 换成 CSS
+ *     `zoom`，浏览器只重排一次，文字恢复清晰；<100% 时保持 transform（WKWebView 的最小
+ *     字号钳制会让 CSS zoom 缩小时重排错乱）。提交后才同步 React state（百分比 / 按钮禁用态）。
+ * 代价是 ≥100% 时手势期间文字会暂时发虚，停下即恢复；<100% 则一直由合成层降采样
+ * （排版保持 1080px，缩略查看本来也不需要逐字清晰）。
  *
- * 缩放：滚轮以鼠标为锚点、×1.2 乘法步进；工具栏 −/%/+ 按钮，点 % 回「适应窗口」；
+ * 缩放：滚轮以鼠标为锚点。macOS 上按滚动距离指数缩放（触控板 / MX Master 这类高频小
+ * delta 设备不会一滚就飞），并限制单次手势总量；触控板捏合手势（gesture*）直接缩放；
+ * 海报超出视口时，两指上下滚 / 滚轮改为平移（macOS 原生滚动习惯），⌘/Ctrl+滚轮始终缩放。
+ * 其它平台仍是一格 ×1.2。工具栏 −/%/+ 按钮，点 % 回「适应窗口」；
  * 双击在「适应窗口 ↔ 100%」间切换；范围 0.25–3.0。
  * 平移：按住拖动（grab/grabbing），只在海报超出视口时可拖，拖到边界夹住不丢。
  * 其余：Esc / +-0 / 左右方向键切换相邻报告；打开/关闭 150ms 淡入淡出 + 轻微缩放；
@@ -41,14 +46,36 @@ const FIT_PAD = 48; // 「适应窗口」时海报四周留白
 const ANIM_MS = 150; // 打开/关闭过渡
 const TOOLBAR_IDLE_MS = 2000; // 工具栏静止淡出
 const DRAG_THRESHOLD = 3; // 位移超过算拖拽，抑制随后的 click
-const ZOOM_SETTLE_MS = 180; // 滚轮停止多久后提交 CSS zoom（一次性重排）
+const ZOOM_SETTLE_MS = 180; // 滚轮停止多久后提交（≥100% 时这一次才重排）
+
+// macOS 的触控板 / 高分辨率滚轮（如 MX Master 的平滑滚动）一次手势会连发几十个 delta
+// 很小的 wheel 事件；按事件固定 ×1.2 会让倍率随事件数指数爆炸。改为按滚动距离缩放：
+// 经验值 40px ≈ 老式滚轮一格（WKWebView 把 1 line 翻译成 40px），取 e^(0.0033×px)，
+// 一格约 1.14 倍（比上一版快 50%）；再给单事件 / 单次手势封顶，惯性滚动也不会滚过头。
+const WHEEL_RATE_MAC = 0.0033; // 每 px 滚动量的指数系数
+const WHEEL_EVENT_MAX = 1.25; // 单个 wheel 事件的倍率上限
+const WHEEL_GESTURE_MAX = 2.5; // 一次连续滚动（含惯性）的累计倍率上限
+const WHEEL_GESTURE_GAP_MS = 140; // 事件间隔超过它算新手势
+const PINCH_SPEED = 1.5; // 触控板捏合：手指张合比例取 1.5 次方（比 1:1 快 50%）
 
 const POSTER_W = EXPORT_WIDTH; // 1080
+
+// macOS 上跑的是 WKWebView；平台标记由 main.tsx 在挂载 React 前写入 body。
+function isMacWebKit(): boolean {
+  return document.body.dataset.platform === "macos";
+}
 
 interface Transform {
   scale: number;
   tx: number;
   ty: number;
+}
+
+// Safari / WKWebView 的非标准触控板捏合事件；lib.dom 里没有类型。
+interface GestureLikeEvent extends UIEvent {
+  scale?: number;
+  clientX?: number;
+  clientY?: number;
 }
 
 function lightboxTitle(detail: ReportView): string {
@@ -97,8 +124,18 @@ export default function Lightbox({
   const stageRef = useRef<HTMLDivElement>(null);
   // —— 缩放的「预览层」状态：手势期间只写 DOM，停下再提交 ——
   const liveRef = useRef(false); // true = 纸张当前用 transform 预览，zoom 尚未提交
-  const baseZoomRef = useRef(1); // 纸张上已提交的 CSS zoom（预览时保持不变，避免重排）
+  const baseZoomRef = useRef(1); // 纸张当前的排版基准：走 zoom 时等于提交倍率，走 transform 时恒为 1
   const commitTimerRef = useRef<number | undefined>(undefined);
+  // macOS 滚轮手势状态：factor 是本手势已施加的缩放倍率；at 是上一个 wheel 事件时间，
+  // 间隔超过阈值算新手势（惯性滚动会连续几秒，不能一直累加）；mode 在每次手势开始时
+  // 定一次「缩放还是平移」，避免一次连续滚动中途从缩放突然变成平移。
+  const wheelGestureRef = useRef<{ factor: number; at: number; mode: "zoom" | "pan" | null }>({
+    factor: 1,
+    at: 0,
+    mode: null,
+  });
+  // 触控板捏合手势：active 期间忽略浏览器合成的 ctrl+wheel，last 记录已施加的累计比例。
+  const pinchRef = useRef({ active: false, last: 1, at: 0 });
   const dragRef = useRef<{ startX: number; startY: number; startTx: number; startTy: number } | null>(
     null,
   );
@@ -117,7 +154,7 @@ export default function Lightbox({
 
   // —— 变换写 DOM（规格化后直接写 style，绕开 React 重渲染）——
   // preview=true：手势进行中。保持上次提交的 zoom 不变，只叠一层相对倍率的 transform；
-  // preview=false：提交。清掉 transform，写入真正的 CSS zoom（这一次才会重排）。
+  // preview=false：提交。≥100% 写 CSS zoom（这一次才会重排），<100% 保持 transform。
   const writeDom = useCallback((t: Transform, preview: boolean) => {
     const scaled = scaledRef.current;
     if (scaled) {
@@ -132,10 +169,22 @@ export default function Lightbox({
       if (paper.style.transformOrigin !== "0 0") paper.style.transformOrigin = "0 0";
       if (paper.style.transform !== transform) paper.style.transform = transform;
     } else {
-      if (paper.style.transform) paper.style.transform = "";
-      const zoom = String(t.scale);
-      if (paper.style.zoom !== zoom) paper.style.zoom = zoom;
-      baseZoomRef.current = t.scale;
+      // WKWebView 对 CSS zoom 有一条约 9px 的最小字号钳制：14px 正文在 27% 下会被按
+      // 33px 排版，整张海报重排成每行一两个字（Chromium/WebView2 没有这个行为）。
+      // 所以 <100% 时不提交 zoom，改用 transform 等比缩小：排版保持 1080px 不重排，
+      // 缩放交给合成层降采样；≥100% 仍提交 CSS zoom，让文字按目标尺寸重新栅格化。
+      if (t.scale < 1 && isMacWebKit()) {
+        if (paper.style.transformOrigin !== "0 0") paper.style.transformOrigin = "0 0";
+        const transform = `scale(${t.scale})`;
+        if (paper.style.transform !== transform) paper.style.transform = transform;
+        if (paper.style.zoom !== "1") paper.style.zoom = "1";
+        baseZoomRef.current = 1;
+      } else {
+        if (paper.style.transform) paper.style.transform = "";
+        const zoom = String(t.scale);
+        if (paper.style.zoom !== zoom) paper.style.zoom = zoom;
+        baseZoomRef.current = t.scale;
+      }
     }
   }, []);
 
@@ -335,19 +384,126 @@ export default function Lightbox({
     return () => ro.disconnect();
   }, [detail, applyTransform]);
 
-  // —— 滚轮缩放（原生监听，passive:false 才能 preventDefault）——
+  // —— 触控板捏合缩放（macOS 原生手势）——
+  // WKWebView / Safari 的 pinch 走 gesturestart/gesturechange/gestureend，scale 是相对
+  // 手势起点的累计值。两指上下滚 → 平移（见 wheel），捏合 → 缩放，和 macOS 原生预览一致。
+  useEffect(() => {
+    if (!isMacWebKit()) return;
+    // 挂 document：有的 WebKit 版本把 gesture* 直接派发到文档，不一定从舞台元素冒泡上来。
+    const el = document;
+    const stop = (ev: Event) => {
+      if (ev.cancelable) ev.preventDefault();
+    };
+    const onStart = (ev: Event) => {
+      stop(ev);
+      pinchRef.current.active = true;
+      pinchRef.current.last = 1;
+      pinchRef.current.at = performance.now();
+    };
+    const onChange = (ev: Event) => {
+      stop(ev);
+      const e = ev as GestureLikeEvent;
+      const raw = typeof e.scale === "number" && e.scale > 0 ? e.scale : 1;
+      // 指尖张合比例 → 缩放比例；用 1.5 次方让放大/缩小在比例上对称（线性映射缩小时会归零）。
+      const effective = Math.pow(raw, PINCH_SPEED);
+      const factor = effective / pinchRef.current.last;
+      pinchRef.current.last = effective;
+      pinchRef.current.at = performance.now();
+      if (Math.abs(factor - 1) < 1e-4) return;
+      const ax = typeof e.clientX === "number" ? e.clientX : window.innerWidth / 2;
+      const ay = typeof e.clientY === "number" ? e.clientY : window.innerHeight / 2;
+      zoomAt(ax, ay, factor, true);
+    };
+    const onEnd = (ev: Event) => {
+      stop(ev);
+      pinchRef.current.active = false;
+      commitZoom();
+    };
+    el.addEventListener("gesturestart", onStart);
+    el.addEventListener("gesturechange", onChange);
+    el.addEventListener("gestureend", onEnd);
+    return () => {
+      el.removeEventListener("gesturestart", onStart);
+      el.removeEventListener("gesturechange", onChange);
+      el.removeEventListener("gestureend", onEnd);
+    };
+  }, [zoomAt, commitZoom]);
+
+  // —— 滚轮缩放 / 平移（原生监听，passive:false 才能 preventDefault）——
   useEffect(() => {
     const el = stageRef.current;
     if (!el) return;
+    const mac = isMacWebKit();
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
-      const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
-      // 滚轮是高频输入：只走预览层，停手后再提交 CSS zoom。
-      zoomAt(e.clientX, e.clientY, factor, true);
+      // 非 macOS 保持原手感：一格滚轮一步 ×1.2（Windows 每格一个离散事件，本来就正常）。
+      if (!mac) {
+        const factor = e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+        // 滚轮是高频输入：只走预览层，停手后再提交 CSS zoom。
+        zoomAt(e.clientX, e.clientY, factor, true);
+        return;
+      }
+      const now = performance.now();
+      // 部分 WebKit 版本会把 pinch 同时合成为 ctrl+wheel；进行中的捏合手势优先。
+      // 用 500ms 兜底：万一 gestureend 没到，滚动不会被永久吞掉。
+      if (pinchRef.current.active && now - pinchRef.current.at < 500) return;
+      // deltaMode：0=像素、1=行、2=页，先统一成像素，不同鼠标/驱动才有一致手感。
+      const unit = (page: number) => (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? page : 1);
+      const dx = e.deltaX * unit(window.innerWidth);
+      const dy = e.deltaY * unit(window.innerHeight);
+      if (!dx && !dy) return;
+
+      const g = wheelGestureRef.current;
+      const fresh = now - g.at > WHEEL_GESTURE_GAP_MS;
+      g.at = now;
+      if (fresh) {
+        g.factor = 1;
+        g.mode = null;
+      }
+
+      // 按滚动距离算倍率：同一段手势，事件拆得再碎，缩放总量也只跟滚了多少有关。
+      const zoomByWheel = () => {
+        const step = Math.min(
+          WHEEL_EVENT_MAX,
+          Math.max(1 / WHEEL_EVENT_MAX, Math.exp(-dy * WHEEL_RATE_MAC)),
+        );
+        // 惯性滚动会持续几秒：给一次手势的累计倍率封顶，避免从 27% 一路冲到 300%。
+        const total = Math.min(
+          WHEEL_GESTURE_MAX,
+          Math.max(1 / WHEEL_GESTURE_MAX, g.factor * step),
+        );
+        const factor = total / g.factor;
+        g.factor = total;
+        if (Math.abs(factor - 1) < 1e-4) return;
+        zoomAt(e.clientX, e.clientY, factor, true);
+      };
+
+      // ⌘/Ctrl + 滚轮：无论海报多大都缩放（鼠标用户放大细节的通道）。
+      if (e.metaKey || e.ctrlKey) {
+        g.mode = "zoom";
+        zoomByWheel();
+        return;
+      }
+
+      const t = transformRef.current;
+      if (!g.mode) {
+        // 手势开始时一次定调：海报在主滚动方向上超出视口 → 原生平移；否则滚轮缩放。
+        // 中途不再切换，否则「从适应窗口滚到放大」会滚到一半突然变成平移。
+        const vertical = Math.abs(dy) >= Math.abs(dx);
+        const canPan = vertical
+          ? t.scale * cardHRef.current > window.innerHeight
+          : t.scale * POSTER_W > window.innerWidth;
+        g.mode = canPan ? "pan" : "zoom";
+      }
+      if (g.mode === "pan") {
+        clampAndSet(t.scale, t.tx - dx, t.ty - dy, true);
+        return;
+      }
+      if (dy) zoomByWheel();
     };
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [zoomAt]);
+  }, [zoomAt, clampAndSet]);
 
   // —— 键盘 ——
   useEffect(() => {

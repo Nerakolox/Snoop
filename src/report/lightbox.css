@@ -1,8 +1,9 @@
 /* 报告海报灯箱 —— 全屏遮罩 + 可缩放拖拽海报 + 顶栏。
    经 portal 挂 document.body，position:fixed 相对真实视口（不受 .page-layer 的
    transform containing block 影响）。深浅无关：遮罩与海报都是固定色。
-   平移只改 .lightbox__scaled 的 translate；缩放改内层 .lightbox__paper 的 CSS zoom，
-   让浏览器按目标尺寸重新排版，文字不因 transform 缩放而发虚。
+   平移只改 .lightbox__scaled 的 translate；缩放提交到内层 .lightbox__paper：
+   ≥100% 用 CSS zoom 让浏览器按目标尺寸重新排版（文字清晰）；macOS 上 <100% 必须用
+   transform 等比缩小 —— WKWebView 的 CSS zoom 有最小字号钳制，缩小时会把海报排错乱。
    两者都不重渲染海报 DOM（纸张由 ReportSheet 自管）。 */
 
 .lightbox {
