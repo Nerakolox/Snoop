@@ -1,0 +1,262 @@
+name: S3 Upload Test
+
+# 临时诊断工作流（用完即删）：只验证「GitHub Runner → 雨云」这条路径能否稳定写入。
+#
+# 不触发 Build、不打 tag、不提交、不创建 Release，只在 _diagnostics/ 前缀下
+# 传 9 MiB 对象并回读校验，成功即删除。
+#
+# 目的：和本地（直连 / 7890 代理）的测试结果做同条件对照——
+# 同样的凭证、Endpoint、AWS CLI 参数，只换来源网络。
+#
+# 注意：本地 7890 代理跑在个人电脑上，Runner 访问不到，本工作流刻意不使用任何代理。
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "上传次数"
+        required: false
+        default: "3"
+        type: string
+      size_mb:
+        description: "测试文件大小（MiB）"
+        required: false
+        default: "9"
+        type: string
+      max_attempts:
+        description: "AWS_MAX_ATTEMPTS（越小越快暴露限流，正式 Publish 用 10）"
+        required: false
+        default: "3"
+        type: string
+      keep_object:
+        description: "成功后保留测试对象（默认删除）"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  upload-test:
+    name: Runner → 雨云上传
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      # 和 Publish 工作流取同一组 Secret / 变量，保证凭证与端点一致。
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: ${{ vars.S3_REGION || 'us-east-1' }}
+      S3_ENDPOINT: ${{ secrets.S3_ENDPOINT }}
+      S3_BUCKET: ${{ secrets.S3_BUCKET }}
+      ITERATIONS: ${{ inputs.iterations }}
+      SIZE_MB: ${{ inputs.size_mb }}
+      MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+      KEEP_OBJECT: ${{ inputs.keep_object }}
+      AWS_PAGER: ""
+
+    steps:
+      - name: 检查配置
+        run: |
+          set -euo pipefail
+          : "${S3_ENDPOINT:?缺少仓库 Secret S3_ENDPOINT}"
+          : "${S3_BUCKET:?缺少仓库 Secret S3_BUCKET}"
+          : "${AWS_ACCESS_KEY_ID:?缺少仓库 Secret AWS_ACCESS_KEY_ID}"
+          : "${AWS_SECRET_ACCESS_KEY:?缺少仓库 Secret AWS_SECRET_ACCESS_KEY}"
+          echo "endpoint=$S3_ENDPOINT bucket=$S3_BUCKET"
+
+      - name: 记录环境（aws-cli 版本 / 出口 IP / DNS）
+        run: |
+          set -uo pipefail
+          echo "== aws-cli =="
+          aws --version
+          AWS_VER=$(aws --version 2>&1 | awk '{print $1}' | cut -d/ -f2)
+          echo
+          echo "== runner =="
+          uname -a
+          echo "runner_os=${RUNNER_OS:-?} image=${ImageOS:-?}"
+          echo
+          echo "== 出口公网 IP =="
+          IP=$(curl -sS --max-time 15 https://api.ipify.org || echo "查询失败")
+          ORG=$(curl -sS --max-time 15 https://ipinfo.io/org || echo "查询失败")
+          echo "ip=$IP"
+          echo "org=$ORG"
+          echo
+          echo "== 端点 DNS =="
+          ENDPOINT_HOST=$(printf '%s' "$S3_ENDPOINT" | sed -E 's#^https?://##; s#/.*$##')
+          getent hosts "$ENDPOINT_HOST" || echo "解析失败"
+          echo
+          echo "== 端点 TLS 握手 =="
+          curl -sS -o /dev/null --max-time 20 \
+            -w "http=%{http_code} connect=%{time_connect}s tls=%{time_appconnect}s total=%{time_total}s\n" \
+            "$S3_ENDPOINT" || true
+          {
+            echo "| 项目 | 值 |"
+            echo "|---|---|"
+            echo "| aws-cli | $AWS_VER |"
+            echo "| Runner 出口 IP | $IP |"
+            echo "| 出口 ASN/org | $ORG |"
+            echo "| Endpoint | $S3_ENDPOINT |"
+            echo "| Bucket | $S3_BUCKET |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 配置 aws-cli（与 Publish 一致）
+        run: |
+          set -euo pipefail
+          aws configure set default.s3.addressing_style "${{ vars.S3_ADDRESSING_STYLE || 'virtual' }}"
+          aws configure set default.s3.multipart_threshold 128MB
+          aws configure set default.s3.max_concurrent_requests 1
+
+      - name: 生成测试文件
+        run: |
+          set -euo pipefail
+          BYTES=$(( SIZE_MB * 1024 * 1024 ))
+          head -c "$BYTES" /dev/urandom > test.bin
+          echo "大小: $(stat -c%s test.bin) 字节"
+          echo "md5: $(md5sum test.bin | cut -d' ' -f1)"
+
+      - name: 上传测试（s3api put-object，单次 PUT）
+        run: |
+          set -uo pipefail
+
+          BYTES=$(( SIZE_MB * 1024 * 1024 ))
+          LOCAL_MD5=$(md5sum test.bin | cut -d' ' -f1)
+          RUN_STAMP=$(date -u +%Y%m%dT%H%M%SZ)
+          FAILED=0
+
+          mkdir -p logs
+          {
+            echo "| # | 结果 | HTTP | 耗时(s) | 重试 | 错误码 | 请求 ID | 远端大小 |"
+            echo "|---|---|---|---|---|---|---|---|"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          for i in $(seq 1 "$ITERATIONS"); do
+            KEY="_diagnostics/ci-upload-${RUN_STAMP}-${i}.bin"
+            echo "──────────────────────────────────────────"
+            echo "[$i/$ITERATIONS] $KEY（$BYTES 字节）"
+
+            START=$(date +%s%N)
+            # 与 Publish 相同的调用方式；adaptive 重试模式和正式发布保持一致。
+            AWS_RETRY_MODE=adaptive AWS_MAX_ATTEMPTS="$MAX_ATTEMPTS" \
+              aws s3api put-object \
+                --bucket "$S3_BUCKET" \
+                --key "$KEY" \
+                --body test.bin \
+                --endpoint-url "$S3_ENDPOINT" \
+                --cli-connect-timeout 60 \
+                --cli-read-timeout 900 \
+                --no-cli-pager \
+                --debug > "logs/out-$i.json" 2> "logs/debug-$i.log"
+            CODE=$?
+            END=$(date +%s%N)
+            SECS=$(awk "BEGIN{printf \"%.2f\", ($END-$START)/1000000000}")
+            MIBPS=$(awk "BEGIN{printf \"%.2f\", $SIZE_MB/(($END-$START)/1000000000)}")
+
+            # 只从 debug 日志里取需要的字段，不打印任何请求头。
+            RETRIES=$(grep -Eic "retry needed|response received to retry|retrying in" "logs/debug-$i.log" || true)
+            ERRCODE=$(grep -oE "An error occurred \([A-Za-z0-9]+\)" "logs/debug-$i.log" | tail -1 | sed -E 's/.*\((.*)\)/\1/' || true)
+            REQID=$(grep -oE "X-Amz-Request-Id': '[A-Za-z0-9]+'" "logs/debug-$i.log" | tail -1 | sed -E "s/.*'([A-Za-z0-9]+)'/\1/" || true)
+
+            # HTTP 状态码：aws-cli v2 不回显 ResponseMetadata，成功只能标成 2xx；
+            # 失败时雨云网关部分错误直接把状态码当错误码返回（如 "(404)"），可回收。
+            if [ "$CODE" -eq 0 ]; then
+              STATUS="2xx"
+            else
+              STATUS=$(grep -oE "status_code'?:? ?[0-9]{3}|HTTP Status Code: ?[0-9]{3}" "logs/debug-$i.log" 2>/dev/null | grep -oE "[0-9]{3}" | tail -1 || true)
+              if [ -z "${STATUS:-}" ] && printf '%s' "${ERRCODE:-}" | grep -qE '^[0-9]{3}$'; then
+                STATUS="$ERRCODE"
+              fi
+              [ -n "${STATUS:-}" ] || STATUS="—"
+            fi
+            REMOTE_SIZE="-"
+
+            if [ "$CODE" -eq 0 ]; then
+              REMOTE_SIZE=$(aws s3api head-object \
+                --bucket "$S3_BUCKET" --key "$KEY" \
+                --endpoint-url "$S3_ENDPOINT" \
+                --query ContentLength --output text 2>>"logs/debug-$i.log" || echo "?")
+              ETAG=$(aws s3api head-object \
+                --bucket "$S3_BUCKET" --key "$KEY" \
+                --endpoint-url "$S3_ENDPOINT" \
+                --query ETag --output text 2>/dev/null | tr -d '"' || echo "?")
+              if [ "$REMOTE_SIZE" = "$BYTES" ] && [ "$ETAG" = "$LOCAL_MD5" ]; then
+                RESULT="✅ 成功"
+              else
+                RESULT="⚠️ 成功但校验不符"
+                echo "::warning::大小/ETag 不一致：本地 $BYTES/$LOCAL_MD5，远端 $REMOTE_SIZE/$ETAG"
+              fi
+              echo "结果: $RESULT  HTTP $STATUS  耗时 ${SECS}s  速度 ${MIBPS} MiB/s  重试 $RETRIES  远端 $REMOTE_SIZE  请求ID ${REQID:-?}"
+            else
+              FAILED=$((FAILED + 1))
+              RESULT="❌ 失败(exit $CODE)"
+              echo "结果: $RESULT  HTTP $STATUS  耗时 ${SECS}s  重试 $RETRIES  错误码 ${ERRCODE:-未知}  请求ID ${REQID:-?}"
+              # 失败时只输出错误摘要，不输出整个 debug 日志。
+              grep -E "An error occurred|error code|Error Code|SlowDown|AccessDenied|SignatureDoesNotMatch|Timeout" \
+                "logs/debug-$i.log" | cut -c1-300 | head -10 || true
+              echo "::error::第 $i 次上传失败：${ERRCODE:-未知错误}"
+            fi
+
+            if [ "$CODE" -eq 0 ] && [ "$KEEP_OBJECT" != "true" ]; then
+              aws s3api delete-object --bucket "$S3_BUCKET" --key "$KEY" \
+                --endpoint-url "$S3_ENDPOINT" >/dev/null 2>&1 \
+                && echo "已删除测试对象" || echo "::warning::删除 $KEY 失败，请手动清理"
+            elif [ "$CODE" -eq 0 ]; then
+              echo "按要求保留对象: $KEY"
+            fi
+
+            {
+              echo "| $i | $RESULT | $STATUS | $SECS | $RETRIES | ${ERRCODE:-—} | ${REQID:-—} | $REMOTE_SIZE |"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "key=$KEY" >> logs/keys.txt
+            sleep 2
+          done
+
+          echo
+          echo "================ 汇总 ================"
+          echo "总数 $ITERATIONS，失败 $FAILED"
+          {
+            echo ""
+            echo "**总数 $ITERATIONS，失败 $FAILED**"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$FAILED" -gt 0 ]; then
+            exit 1
+          fi
+
+      # --debug 日志里有 Authorization 请求头，先脱敏再归档，避免把签名日志留在 Artifact 里。
+      - name: 脱敏日志
+        if: always()
+        run: |
+          set -uo pipefail
+          mkdir -p logs-sanitized
+          for f in logs/*; do
+            [ -f "$f" ] || continue
+            sed -E \
+              -e 's/Authorization[^,}]*/<redacted-authorization>/Ig' \
+              -e 's/Credential=[^ ,}\/]*/<redacted-credential>/Ig' \
+              -e 's/Signature=[0-9a-f]+/<redacted-signature>/Ig' \
+              -e 's/[Xx]-[Aa]mz-[Ss]ecurity-[Tt]oken[^,}]*/x-amz-security-token=<redacted>/g' \
+              "$f" | cut -c1-500 > "logs-sanitized/$(basename "$f")"
+          done
+          ls -l logs-sanitized
+
+      - name: 归档脱敏日志
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s3-upload-test-logs
+          path: logs-sanitized/
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: 清理残留测试对象
+        if: always() && inputs.keep_object != true
+        run: |
+          set -uo pipefail
+          [ -f logs/keys.txt ] || exit 0
+          while IFS= read -r line; do
+            key=${line#key=}
+            [ -n "$key" ] || continue
+            aws s3api delete-object --bucket "$S3_BUCKET" --key "$key" \
+              --endpoint-url "$S3_ENDPOINT" >/dev/null 2>&1 || true
+          done < logs/keys.txt
