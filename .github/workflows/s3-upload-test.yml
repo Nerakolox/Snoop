@@ -28,6 +28,14 @@ on:
         required: false
         default: "3"
         type: string
+      method:
+        description: "上传方式：put-object = s3api（urllib3）；s3-cp = aws s3 cp（CRT）"
+        required: false
+        default: "put-object"
+        type: choice
+        options:
+          - put-object
+          - s3-cp
       keep_object:
         description: "成功后保留测试对象（默认删除）"
         required: false
@@ -52,6 +60,7 @@ jobs:
       ITERATIONS: ${{ inputs.iterations }}
       SIZE_MB: ${{ inputs.size_mb }}
       MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+      METHOD: ${{ inputs.method }}
       KEEP_OBJECT: ${{ inputs.keep_object }}
       AWS_PAGER: ""
 
@@ -94,6 +103,7 @@ jobs:
             echo "| 项目 | 值 |"
             echo "|---|---|"
             echo "| aws-cli | $AWS_VER |"
+            echo "| 上传方式 | ${METHOD:-?} |"
             echo "| Runner 出口 IP | $IP |"
             echo "| 出口 ASN/org | $ORG |"
             echo "| Endpoint | $S3_ENDPOINT |"
@@ -137,16 +147,27 @@ jobs:
 
             START=$(date +%s%N)
             # 与 Publish 相同的调用方式；adaptive 重试模式和正式发布保持一致。
-            AWS_RETRY_MODE=adaptive AWS_MAX_ATTEMPTS="$MAX_ATTEMPTS" \
-              aws s3api put-object \
-                --bucket "$S3_BUCKET" \
-                --key "$KEY" \
-                --body test.bin \
-                --endpoint-url "$S3_ENDPOINT" \
-                --cli-connect-timeout 60 \
-                --cli-read-timeout 900 \
-                --no-cli-pager \
-                --debug > "logs/out-$i.json" 2> "logs/debug-$i.log"
+            # s3api 走 urllib3 直接调用 API，s3 cp 走 CRT 传输管理器——两条客户端路径不同。
+            if [ "$METHOD" = "s3-cp" ]; then
+              AWS_RETRY_MODE=adaptive AWS_MAX_ATTEMPTS="$MAX_ATTEMPTS" \
+                aws s3 cp test.bin "s3://$S3_BUCKET/$KEY" \
+                  --endpoint-url "$S3_ENDPOINT" \
+                  --cli-connect-timeout 60 \
+                  --cli-read-timeout 900 \
+                  --no-cli-pager \
+                  --debug > "logs/out-$i.json" 2> "logs/debug-$i.log"
+            else
+              AWS_RETRY_MODE=adaptive AWS_MAX_ATTEMPTS="$MAX_ATTEMPTS" \
+                aws s3api put-object \
+                  --bucket "$S3_BUCKET" \
+                  --key "$KEY" \
+                  --body test.bin \
+                  --endpoint-url "$S3_ENDPOINT" \
+                  --cli-connect-timeout 60 \
+                  --cli-read-timeout 900 \
+                  --no-cli-pager \
+                  --debug > "logs/out-$i.json" 2> "logs/debug-$i.log"
+            fi
             CODE=$?
             END=$(date +%s%N)
             SECS=$(awk "BEGIN{printf \"%.2f\", ($END-$START)/1000000000}")
@@ -154,7 +175,8 @@ jobs:
 
             # 只从 debug 日志里取需要的字段，不打印任何请求头。
             RETRIES=$(grep -Eic "retry needed|response received to retry|retrying in" "logs/debug-$i.log" || true)
-            ERRCODE=$(grep -oE "An error occurred \([A-Za-z0-9]+\)" "logs/debug-$i.log" | tail -1 | sed -E 's/.*\((.*)\)/\1/' || true)
+            # s3api 报 "An error occurred (SlowDownWrite)"，s3 cp 的 CRT 层报 "AWS_ERROR_S3_SLOW_DOWN"。
+            ERRCODE=$(grep -oE "An error occurred \([A-Za-z0-9]+\)|AWS_ERROR_[A-Z_]+" "logs/debug-$i.log" | tail -1 | sed -E 's/.*\((.*)\)/\1/' || true)
             REQID=$(grep -oE "X-Amz-Request-Id': '[A-Za-z0-9]+'" "logs/debug-$i.log" | tail -1 | sed -E "s/.*'([A-Za-z0-9]+)'/\1/" || true)
 
             # HTTP 状态码：aws-cli v2 不回显 ResponseMetadata，成功只能标成 2xx；
@@ -191,7 +213,7 @@ jobs:
               RESULT="❌ 失败(exit $CODE)"
               echo "结果: $RESULT  HTTP $STATUS  耗时 ${SECS}s  重试 $RETRIES  错误码 ${ERRCODE:-未知}  请求ID ${REQID:-?}"
               # 失败时只输出错误摘要，不输出整个 debug 日志。
-              grep -E "An error occurred|error code|Error Code|SlowDown|AccessDenied|SignatureDoesNotMatch|Timeout" \
+              grep -E "An error occurred|AWS_ERROR_|error code|Error Code|SlowDown|AccessDenied|SignatureDoesNotMatch|Timeout" \
                 "logs/debug-$i.log" | cut -c1-300 | head -10 || true
               echo "::error::第 $i 次上传失败：${ERRCODE:-未知错误}"
             fi
