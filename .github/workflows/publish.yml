@@ -1,0 +1,491 @@
+name: Publish
+
+# 构建与发布拆分（第二步）：拿 Build 的产物发版，不重新编译。
+#
+# 输入 Build Run ID（Actions → Build → 某次运行 URL 里的数字）和版本号：
+#   1. 校验该 Build 成功、来自本仓库 main，且 commit 在 main 历史里；
+#   2. 下载 Artifacts，逐项核对版本号 / Commit SHA / 文件名 / 大小 / SHA256；
+#   3. 用 scripts/make-release-manifest.mjs 对实际产物生成 latest.json；
+#   4. 提交版本号并打 tag（重试时幂等）；
+#   5. 创建 / 更新 GitHub Release，附件：exe、dmg、latest.json、
+#      changelog.json、checksums.txt；
+#   6. 把附件从 Release 下载回来，核对 SHA256 与 latest.json 完全一致。
+#
+# 雨云 OSS 不再由 CI 上传：Release 里的附件需要人工同步到雨云。
+# 创建 Release 不代表客户端自动更新已上线——客户端只认雨云上的 latest.json。
+#
+# 发布失败时，用同一个 Build Run ID 再跑一次本工作流即可：
+# tag / Release / 附件都会做幂等处理，不需要重新编译。
+# 本工作流不会执行任何 Rust / Tauri 构建，也不会访问雨云。
+#
+# dry_run 只下载并校验产物、生成 latest.json，不做任何远程写操作
+# （不提交、不打 tag、不发 Release、不传 Actions Artifact）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_run_id:
+        description: "Build 工作流的 Run ID（Actions → Build → 运行页 URL 里的数字）"
+        required: true
+        type: string
+      version:
+        description: "版本号（x.y.z，必须和 Build 输入一致）"
+        required: true
+        type: string
+      notes:
+        description: "更新说明（写进 latest.json 和 GitHub Release，可留空）"
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: "试跑：只校验产物并生成清单，不提交、不打 tag、不发 Release"
+        required: false
+        default: false
+        type: boolean
+
+concurrency:
+  # 同一时间只允许一个发布在跑，避免两个版本互相覆盖 tag / Release。
+  group: publish
+  cancel-in-progress: false
+
+permissions:
+  # 跨工作流下载 Artifacts / 查询 Build Run 需要 actions: read；
+  # 提交版本号、推 tag、建 Release 需要 contents: write。
+  actions: read
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: 生成清单并发布
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ inputs.version }}
+      NOTES: ${{ inputs.notes }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      BUILD_RUN_ID: ${{ inputs.build_run_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 校验 Build Run 与版本
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::版本号必须是 x.y.z（不带 v）: $VERSION"
+            exit 1
+          fi
+          if ! printf '%s' "$BUILD_RUN_ID" | grep -Eq '^[0-9]+$'; then
+            echo "::error::Build Run ID 必须是数字（Actions 运行页 URL 里的那串数字）: $BUILD_RUN_ID"
+            exit 1
+          fi
+          if [ "$GITHUB_REF_NAME" != "main" ]; then
+            echo "::error::Publish 只能在 main 上运行（当前 $GITHUB_REF_NAME）"
+            exit 1
+          fi
+
+          RUN_JSON=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$BUILD_RUN_ID")
+          get() { printf '%s' "$RUN_JSON" | jq -r "$1"; }
+
+          RUN_PATH=$(get '.path')
+          RUN_STATUS=$(get '.status')
+          RUN_CONCLUSION=$(get '.conclusion // ""')
+          RUN_EVENT=$(get '.event')
+          RUN_BRANCH=$(get '.head_branch // ""')
+          RUN_REPO=$(get '.head_repository.full_name // ""')
+          BUILD_SHA=$(get '.head_sha')
+
+          echo "Build Run $BUILD_RUN_ID: path=$RUN_PATH status=$RUN_STATUS conclusion=$RUN_CONCLUSION event=$RUN_EVENT branch=$RUN_BRANCH commit=$BUILD_SHA"
+
+          [ "$RUN_PATH" = ".github/workflows/build.yml" ] || {
+            echo "::error::Run $BUILD_RUN_ID 不是 Build 工作流（实际 $RUN_PATH），不能用它发版"
+            exit 1
+          }
+          [ "$RUN_STATUS" = "completed" ] || {
+            echo "::error::Build Run 还没结束（status=$RUN_STATUS），等它成功后再执行 Publish"
+            exit 1
+          }
+          [ "$RUN_CONCLUSION" = "success" ] || {
+            echo "::error::Build Run 的结论是 $RUN_CONCLUSION，只有构建成功才能发布"
+            exit 1
+          }
+          [ "$RUN_EVENT" = "workflow_dispatch" ] || {
+            echo "::error::Build Run 不是手动触发（event=$RUN_EVENT）"
+            exit 1
+          }
+          [ "$RUN_BRANCH" = "main" ] || {
+            echo "::error::Build 必须从 main 触发（实际 $RUN_BRANCH）"
+            exit 1
+          }
+          [ "$RUN_REPO" = "$GITHUB_REPOSITORY" ] || {
+            echo "::error::Build 来自其他仓库（$RUN_REPO），拒绝发布"
+            exit 1
+          }
+          if ! printf '%s' "$BUILD_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::拿不到 Build 的 commit SHA"
+            exit 1
+          fi
+
+          git fetch --force origin main --tags
+
+          # 构建来源必须已经在 main 的历史里；否则是别的分支 / 旧提交。
+          if ! git merge-base --is-ancestor "$BUILD_SHA" origin/main; then
+            echo "::error::Build 的 commit $BUILD_SHA 不在 main 历史里，拒绝发布"
+            exit 1
+          fi
+
+          # 更新日志要在构建源码里就有，否则升完级的应用找不到这一版。
+          CHANGELOG_AT_BUILD=$(mktemp)
+          git show "$BUILD_SHA:src/changelog/changelog.json" > "$CHANGELOG_AT_BUILD"
+          if ! P="$CHANGELOG_AT_BUILD" node -e "const fs=require('fs'); const c=JSON.parse(fs.readFileSync(process.env.P,'utf8')); if(!c.releases.some(r=>r.version===process.env.VERSION)) { console.error('::error::Build 的源码里没有 '+process.env.VERSION+' 的更新日志条目'); process.exit(1) }"; then
+            exit 1
+          fi
+          rm -f "$CHANGELOG_AT_BUILD"
+
+          CUR=$(node -p "require('./package.json').version")
+          MAIN_SHA=$(git rev-parse origin/main)
+          HIGHEST=$(git tag -l 'v*' \
+            | sed -n 's#^v##p' \
+            | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sort -V | tail -1 || true)
+
+          # 构建源码到目标提交之间只允许差版本号文件（bump 只改这四个）。
+          # 有别的代码差异说明这份 Artifact 和要发布/重发的源码不是同一份。
+          check_only_version_files() {
+            local base="$1" target="$2" extra
+            extra=$(git diff --name-only "$base" "$target" \
+              | grep -vE '^(package\.json|src-tauri/(Cargo\.toml|Cargo\.lock|tauri\.conf\.json))$' || true)
+            if [ -n "$extra" ]; then
+              echo "::error::构建源码与 $target 之间除了版本号文件还有改动，拒绝发布："
+              printf '%s\n' "$extra"
+              return 1
+            fi
+          }
+
+          TAG_EXISTS=false
+          if git rev-parse -q --verify "refs/tags/v$VERSION" >/dev/null; then
+            TAG_EXISTS=true
+            TAGVER=$(git show "v$VERSION:package.json" \
+              | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+            if [ "$TAGVER" != "$VERSION" ]; then
+              echo "::error::tag v$VERSION 里的 package.json 是 $TAGVER，和版本号不一致"
+              exit 1
+            fi
+            if [ "$CUR" != "$VERSION" ]; then
+              echo "::error::tag v$VERSION 已存在，但 main 上的版本号是 $CUR。请确认是要重发这一版，还是发新版本"
+              exit 1
+            fi
+            if [ "$VERSION" != "$HIGHEST" ]; then
+              echo "::error::v$VERSION 已存在且不是最新版本（最新 v$HIGHEST），不能重发"
+              exit 1
+            fi
+            if ! git merge-base --is-ancestor "$BUILD_SHA" "refs/tags/v$VERSION^{commit}"; then
+              echo "::error::Build 的 commit $BUILD_SHA 不在 v$VERSION 的历史里，不能用它重发这个版本"
+              exit 1
+            fi
+            check_only_version_files "$BUILD_SHA" "refs/tags/v$VERSION^{commit}"
+            echo "::notice::v$VERSION 已发过，按重跑处理：跳过提交，只更新 Release"
+          else
+            if [ -n "$HIGHEST" ] && [ "$(printf '%s\n%s\n' "$HIGHEST" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]; then
+              echo "::error::$VERSION 小于已发布的最新版本 v$HIGHEST，拒绝回滚"
+              exit 1
+            fi
+            if [ "$CUR" = "$VERSION" ]; then
+              # 版本号已提交但 tag 推送失败过：只补 tag，不再提交。
+              # tag 打在「把版本号提到 VERSION 的那个提交」上；它之后 main 再进别的提交也不影响。
+              RELEASE_COMMIT=$(git rev-list --reverse "$BUILD_SHA..$MAIN_SHA" | while IFS= read -r c; do
+                if [ "$(git show "$c:package.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")" = "$VERSION" ]; then
+                  echo "$c"
+                  break
+                fi
+              done)
+              if [ -z "$RELEASE_COMMIT" ]; then
+                echo "::error::main 上的版本号是 $VERSION，但找不到把版本号提到该值的提交（可能是手工改的），请检查后再发布"
+                exit 1
+              fi
+              check_only_version_files "$BUILD_SHA" "$RELEASE_COMMIT"
+              echo "TAG_TARGET=$RELEASE_COMMIT" >> "$GITHUB_ENV"
+              echo "::notice::main 上的版本号已经是 $VERSION 但 tag 缺失，按补 tag 处理（不再提交，tag 打在 ${RELEASE_COMMIT:0:7}）"
+            else
+              if [ "$(printf '%s\n%s\n' "$CUR" "$VERSION" | sort -V | tail -1)" != "$VERSION" ]; then
+                echo "::error::版本号必须大于 main 上的当前版本 $CUR（收到 $VERSION）"
+                exit 1
+              fi
+              # 首次发布必须用当前 main 的构建，避免旧构建被当成新版本发出去。
+              if [ "$BUILD_SHA" != "$MAIN_SHA" ]; then
+                echo "::error::Build 不是基于当前 main（build ${BUILD_SHA:0:7} / main ${MAIN_SHA:0:7}）。请用最新 main 重新执行 Build，避免旧构建覆盖新版本。"
+                exit 1
+              fi
+            fi
+          fi
+
+          {
+            echo "BUILD_SHA=$BUILD_SHA"
+            echo "TAG_EXISTS=$TAG_EXISTS"
+            echo "MAIN_SHA=$MAIN_SHA"
+            echo "CUR_VERSION=$CUR"
+          } >> "$GITHUB_ENV"
+          echo "tag_exists=$TAG_EXISTS" >> "$GITHUB_OUTPUT"
+
+      - name: 下载 Build Artifacts
+        run: |
+          set -euo pipefail
+          rm -rf release-assets build-meta
+          mkdir -p release-assets build-meta
+
+          for name in macos-assets windows-assets; do
+            if ! gh run download "$BUILD_RUN_ID" -n "$name" -D release-assets; then
+              echo "::error::下载 $name 失败：Artifact 不存在或已过期（Build 产物保留 30 天）。请重新运行 Build 后再 Publish。"
+              exit 1
+            fi
+          done
+          if ! gh run download "$BUILD_RUN_ID" -n build-meta -D build-meta; then
+            echo "::error::下载 build-meta 失败：Artifact 不存在或已过期（保留 30 天）。请重新运行 Build 后再 Publish。"
+            exit 1
+          fi
+
+          ls -l release-assets build-meta
+
+      # 产物、版本号、Commit SHA、SHA256 全部和 Build 记录对齐才继续。
+      - name: 校验产物与构建元数据
+        run: |
+          set -euo pipefail
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const crypto = require('crypto');
+          const fail = (msg) => { console.error(`::error::${msg}`); process.exit(1); };
+
+          const meta = JSON.parse(fs.readFileSync('build-meta/build-meta.json', 'utf8'));
+          if (meta.version !== process.env.VERSION) fail(`build-meta 的版本是 ${meta.version}，本次输入的是 ${process.env.VERSION}`);
+          if (meta.commit !== process.env.BUILD_SHA) fail(`build-meta 的 commit 是 ${meta.commit}，Build Run 的 commit 是 ${process.env.BUILD_SHA}`);
+          if (String(meta.runId) !== String(process.env.BUILD_RUN_ID)) fail(`build-meta 来自 Run ${meta.runId}，不是 ${process.env.BUILD_RUN_ID}`);
+          if (meta.ref !== 'main') fail(`Build 不是从 main 构建的（ref=${meta.ref}）`);
+
+          const actual = fs.readdirSync('release-assets').sort();
+          const listed = meta.assets.map((a) => a.name).sort();
+          if (JSON.stringify(actual) !== JSON.stringify(listed)) {
+            fail(`Artifact 文件列表和 build-meta 不一致：磁盘 [${actual.join(', ')}] / 记录 [${listed.join(', ')}]`);
+          }
+          if (actual.length !== 2) fail(`期望 2 个安装包，实际 ${actual.length} 个`);
+          if (actual.filter((n) => n.endsWith('.exe')).length !== 1) fail('缺少 Windows exe 安装包');
+          if (actual.filter((n) => n.endsWith('.dmg')).length !== 1) fail('缺少 macOS dmg 安装包');
+          for (const name of actual) {
+            if (!name.includes(process.env.VERSION)) fail(`产物文件名里没有版本号 ${process.env.VERSION}: ${name}`);
+          }
+
+          const checksums = new Map();
+          for (const line of fs.readFileSync('build-meta/checksums.txt', 'utf8').trim().split('\n')) {
+            const [sha, ...rest] = line.trim().split(/\s+/);
+            checksums.set(rest.join(' '), sha);
+          }
+
+          for (const asset of meta.assets) {
+            const file = path.join('release-assets', asset.name);
+            const size = fs.statSync(file).size;
+            const sha = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
+            if (size !== asset.size) fail(`${asset.name} 大小不一致：Artifact ${size} / build-meta ${asset.size}`);
+            if (sha !== asset.sha256) fail(`${asset.name} SHA256 不一致：Artifact ${sha} / build-meta ${asset.sha256}`);
+            if (checksums.get(asset.name) !== asset.sha256) fail(`checksums.txt 与 build-meta.json 不一致：${asset.name}`);
+            console.log(`✔ ${asset.name}  ${asset.size} bytes  sha256 ${sha.slice(0, 12)}…`);
+          }
+          console.log('✔ 版本号 / Commit SHA / 文件名 / 大小 / SHA256 全部匹配');
+          NODE
+
+      # 版本号同步、提交、打 tag。重跑时 tag 已存在会跳过（见上面 check 的 tag_exists）。
+      # 这一步只写 git，不碰雨云。
+      - name: 提交版本号并打 tag
+        if: ${{ !inputs.dry_run && steps.check.outputs.tag_exists != 'true' }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch --force origin main
+          MAIN_NOW=$(git rev-parse origin/main)
+          # 首次发布：构建 commit 必须仍是 main 的最新提交。
+          # 中途有人推了 main 就停下来，避免发出与构建不一致的源码。
+          if [ "${CUR_VERSION}" != "$VERSION" ] && [ "$MAIN_NOW" != "$BUILD_SHA" ]; then
+            echo "::error::main 在发布期间前进了（现在 ${MAIN_NOW:0:7}，Build 基于 ${BUILD_SHA:0:7}）。请用最新 main 重新 Build 后再 Publish。"
+            exit 1
+          fi
+
+          git checkout -B publish-main origin/main
+          node scripts/bump-version.mjs "$VERSION"
+
+          git add package.json src-tauri/Cargo.toml src-tauri/Cargo.lock src-tauri/tauri.conf.json
+          if git diff --cached --quiet; then
+            echo "版本号已经是 $VERSION，跳过提交"
+          else
+            git commit -m "chore(release): 发布 v$VERSION"
+            if ! git push origin HEAD:main; then
+              git fetch --force origin main
+              if [ "$(git rev-parse origin/main)" != "$BUILD_SHA" ]; then
+                echo "::error::push 被拒，且 main 已经前进（现在 $(git rev-parse --short origin/main)）。请用最新 main 重新 Build 后再 Publish。"
+              else
+                echo "::error::push 被拒（可能是权限或分支保护），请检查仓库设置。"
+              fi
+              exit 1
+            fi
+          fi
+
+          # tag 幂等：远程已有同版本 tag 就不再创建；内容不一致则报错。
+          if git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
+            echo "tag v$VERSION 已存在，跳过创建"
+          else
+            TAG_TARGET=${TAG_TARGET:-$(git rev-parse HEAD)}
+            TAGVER=$(git show "$TAG_TARGET:package.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+            [ "$TAGVER" = "$VERSION" ] || { echo "::error::tag 目标 ${TAG_TARGET:0:7} 的版本号是 $TAGVER，不是 $VERSION"; exit 1; }
+            git tag -a "v$VERSION" -m "v$VERSION" "$TAG_TARGET"
+            if ! git push origin "refs/tags/v$VERSION"; then
+              git fetch --force origin "refs/tags/v$VERSION:refs/tags/v$VERSION"
+              TAGVER=$(git show "v$VERSION:package.json" | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+              [ "$TAGVER" = "$VERSION" ] || { echo "::error::远程 v$VERSION tag 里的版本是 $TAGVER，和本次不一致"; exit 1; }
+              echo "tag 已被其他运行创建且版本一致，视为成功"
+            fi
+          fi
+
+      # 清单里的平台地址保持「安装包文件名」不变（客户端会用 UPDATE_BASE_URL 拼地址），
+      # SHA256 直接对 release-assets 里的实际产物计算，和 GitHub Release 附件同一份字节。
+      - name: 生成 latest.json
+        run: |
+          set -euo pipefail
+          MAC=$(ls release-assets/*.dmg | head -1)
+          # 官网下载链路按 Snoop_<版本>_aarch64.dmg 取包。aarch64 构建本来
+          # 就是这个命名，这里只在 Tauri 换了后缀时兜底改名。
+          MAC_LEGACY="release-assets/Snoop_${VERSION}_aarch64.dmg"
+          if [ "$MAC" != "$MAC_LEGACY" ]; then
+            mv "$MAC" "$MAC_LEGACY"
+          fi
+          MAC="$MAC_LEGACY"
+          WIN=$(ls release-assets/*.exe | head -1)
+          node scripts/make-release-manifest.mjs \
+            --version "$VERSION" \
+            --notes "$NOTES" \
+            --mac "$MAC" \
+            --win "$WIN" \
+            --out latest.json
+
+      # 发布说明固定带一条提示：GitHub Release 成功 ≠ 客户端更新已上线。
+      # 雨云 OSS 仍需人工同步，客户端只读雨云上的 latest.json。
+      - name: 创建或更新 GitHub Release
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+
+          # 附件校验和：对即将上传的同一批文件计算，文件名不带目录。
+          # --text：强制普通输出（不带二进制的 * 前缀），保证 checksums.txt
+          # 能被 sha256sum -c 直接解析；Linux 上默认就是 text，这里显式写死。
+          sha256sum --text release-assets/* latest.json src/changelog/changelog.json \
+            | awk '{n=$2; sub(/^.*\//, "", n); print $1"  "n}' \
+            | sort -k2 > checksums.txt
+
+          {
+            if [ -n "$NOTES" ]; then
+              printf '%s\n\n---\n\n' "$NOTES"
+            fi
+            printf '%s\n' '> **注意**：雨云 OSS 上的安装包、`latest.json` 和 `changelog.json` 需要人工同步。'
+            printf '%s\n' '> 创建本 Release 不代表客户端自动更新已上线，客户端只读取雨云上的 `latest.json`。'
+          } > release-notes.md
+
+          ASSETS=(release-assets/* latest.json src/changelog/changelog.json checksums.txt)
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${ASSETS[@]}" --clobber
+            gh release edit "$TAG" --notes-file release-notes.md
+          else
+            # --verify-tag：tag 必须已经存在，禁止 gh 自己从默认分支补建 tag。
+            gh release create "$TAG" "${ASSETS[@]}" \
+              --verify-tag --title "$TAG" --notes-file release-notes.md
+          fi
+
+      # 把附件从 Release 下载回来，证明「附件 == latest.json 里的 SHA256」。
+      # 这一步也会发现上传截断、附件缺失和 latest.json 与附件对不上的情况。
+      - name: 校验 Release 附件
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="v$VERSION"
+          MAC_NAME=$(basename "$(ls release-assets/*.dmg | head -1)")
+          WIN_NAME=$(basename "$(ls release-assets/*.exe | head -1)")
+
+          EXPECTED=$(printf '%s\n' "$MAC_NAME" "$WIN_NAME" latest.json changelog.json checksums.txt | sort)
+          ACTUAL=$(gh release view "$TAG" --json assets --jq '.assets[].name' | sort)
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::Release 附件列表不一致"
+            echo "期望："; printf '%s\n' "$EXPECTED"
+            echo "实际："; printf '%s\n' "$ACTUAL"
+            exit 1
+          fi
+
+          rm -rf release-verify
+          mkdir release-verify
+          gh release download "$TAG" -D release-verify --clobber \
+            -p "$MAC_NAME" -p "$WIN_NAME" \
+            -p latest.json -p changelog.json -p checksums.txt
+
+          ( cd release-verify && sha256sum -c ../checksums.txt )
+          diff -u latest.json release-verify/latest.json
+          diff -u src/changelog/changelog.json release-verify/changelog.json
+
+          # 再按清单里的平台地址逐个核对附件 SHA256（清单 URL 是文件名）。
+          node - <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+          const crypto = require('crypto');
+          const fail = (msg) => { console.error(`::error::${msg}`); process.exit(1); };
+
+          const manifest = JSON.parse(fs.readFileSync('latest.json', 'utf8'));
+          const sha = (p) => crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+
+          let checked = 0;
+          for (const [platform, entry] of Object.entries(manifest.platforms)) {
+            if (!entry.url) continue; // 本次没发的架构：空条目
+            const file = path.join('release-verify', entry.url);
+            if (!fs.existsSync(file)) fail(`Release 里缺少清单引用的附件：${entry.url}`);
+            const actual = sha(file);
+            if (actual !== entry.sha256) fail(`${entry.url} 的 SHA256 与 latest.json 不一致：附件 ${actual} / 清单 ${entry.sha256}`);
+            console.log(`✔ ${platform} → ${entry.url}  sha256 ${actual.slice(0, 12)}…`);
+            checked++;
+          }
+          if (checked === 0) fail('latest.json 里没有任何平台下载地址');
+          console.log(`✔ Release 附件与 latest.json 完全一致（${checked} 个平台）`);
+          NODE
+
+      - name: 输出清单（dry_run）
+        if: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo '### dry_run：未做任何远程写操作'
+            echo ''
+            echo '```json'
+            cat latest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: 保留清单便于检查
+        if: ${{ !inputs.dry_run }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest
+          path: latest.json
+          if-no-files-found: error
+          retention-days: 7
