@@ -231,7 +231,8 @@ jobs:
     name: 生成清单并发布
     needs: [prepare, build-macos, build-windows]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 跨洋上传单个包可能要十几分钟，留出重试余量
+    timeout-minutes: 60
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -296,14 +297,25 @@ jobs:
       # 先把安装包传到桶里；latest.json 是客户端的更新开关，必须最后传。
       - name: 上传 installer 到雨云
         if: ${{ !inputs.dry_run }}
+        timeout-minutes: 45
+        env:
+          AWS_RETRY_MODE: adaptive
+          AWS_MAX_ATTEMPTS: 10
         run: |
           set -euo pipefail
           for f in release-assets/*; do
-            echo "上传 $(basename "$f")"
-            aws s3 cp "$f" "s3://$S3_BUCKET/$(basename "$f")" \
+            name=$(basename "$f")
+            echo "上传 $name ($(stat -c%s "$f") bytes)"
+            # dmg 约 8.7MB，刚好超过 aws-cli 默认 8MB 分片阈值，会被拆成
+            # 10 个并发分片；雨云对海外并发请求回 503 SlowDown。把阈值调高，
+            # 整个包一次 PUT，慢但不会被限流掐断。
+            aws s3 cp "$f" "s3://$S3_BUCKET/$name" \
               --endpoint-url "$S3_ENDPOINT" \
               --cache-control "public, max-age=31536000, immutable" \
-              --only-show-errors
+              --s3.multipart-threshold 128MB \
+              --s3.max-concurrent-requests 1 \
+              --cli-connect-timeout 60 \
+              --cli-read-timeout 900
           done
 
       # 此时安装包已就位、清单还没换，再提交版本号并打 tag。
