@@ -379,8 +379,9 @@ jobs:
             --win "$WIN" \
             --out latest.json
 
-      # Release 正文用应用内更新日志生成，和客户端看到的这一版内容一致。
-      # NOTES 仍会写进 latest.json；只有它和 tagline 不同时才额外显示在正文开头。
+      # Release 正文用应用内更新日志生成：本版在最前，历史版本依次附后，
+      # 删掉的旧 Release 也能在这一页查到完整记录。
+      # NOTES 仍会写进 latest.json；它只作为正文开头的一段摘要。
       - name: 生成 Release 说明
         if: ${{ !inputs.dry_run }}
         run: |
@@ -389,31 +390,51 @@ jobs:
           const fail = (msg) => { console.error(`::error::${msg}`); process.exit(1); };
 
           const data = JSON.parse(fs.readFileSync('src/changelog/changelog.json', 'utf8'));
-          const release = data.releases.find((r) => r.version === process.env.VERSION);
-          if (!release) fail(`changelog.json 里没有 ${process.env.VERSION} 的条目`);
+          const current = data.releases.find((r) => r.version === process.env.VERSION);
+          if (!current) fail(`changelog.json 里没有 ${process.env.VERSION} 的条目`);
 
           const labels = { feat: '新增', improve: '改进', breaking: '不兼容', fix: '修复', other: '其他' };
           const order = ['feat', 'improve', 'breaking', 'fix', 'other'];
-          const grouped = new Map(order.map((k) => [k, []]));
-          for (const note of release.notes || []) {
-            const kind = order.includes(note.kind) ? note.kind : 'other';
-            grouped.get(kind).push(note);
-          }
+
+          const compareVersions = (a, b) => {
+            const pa = a.split('.').map(Number);
+            const pb = b.split('.').map(Number);
+            for (let i = 0; i < 3; i += 1) {
+              if (pa[i] !== pb[i]) return pa[i] - pb[i];
+            }
+            return 0;
+          };
 
           const lines = [];
           const summary = (process.env.NOTES || '').trim();
-          if (summary && !(release.tagline || '').includes(summary)) lines.push(summary, '');
-          if (release.tagline) lines.push(`> ${release.tagline}`, '');
+          if (summary && !(current.tagline || '').includes(summary)) lines.push(summary, '');
 
-          for (const kind of order) {
-            const notes = grouped.get(kind);
-            if (notes.length === 0) continue;
-            lines.push(`### ${labels[kind]}`, '');
-            for (const note of notes) {
-              lines.push(`- ${note.text}`);
-              if (note.detail) lines.push(`  ${note.detail}`);
+          // 完整累积更新日志：本版在最前，历史版本依次附后。
+          // 被撤回或删掉 Release 的版本仍保留在这里，方便回查。
+          // 只取 <= 本版，避免把提前写好的未来版本条目带进这次 Release。
+          const releases = data.releases
+            .filter((r) => compareVersions(r.version, current.version) <= 0)
+            .sort((a, b) => compareVersions(b.version, a.version));
+          for (const release of releases) {
+            lines.push(`## v${release.version} · ${release.date}`, '');
+            if (release.tagline) lines.push(`> ${release.tagline}`, '');
+
+            const grouped = new Map(order.map((k) => [k, []]));
+            for (const note of release.notes || []) {
+              const kind = order.includes(note.kind) ? note.kind : 'other';
+              grouped.get(kind).push(note);
             }
-            lines.push('');
+
+            for (const kind of order) {
+              const notes = grouped.get(kind);
+              if (notes.length === 0) continue;
+              lines.push(`### ${labels[kind]}`, '');
+              for (const note of notes) {
+                lines.push(`- ${note.text}`);
+                if (note.detail) lines.push(`  ${note.detail}`);
+              }
+              lines.push('');
+            }
           }
 
           lines.push(
