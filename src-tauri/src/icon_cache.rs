@@ -16,6 +16,10 @@ use windows::core::PCWSTR;
 /// 提取失败标记文件后缀，用于跳过下次重复提取（系统进程类没有图标的情况）
 const NEG_CACHE_EXT: &str = "none";
 
+/// 图标缓存的目标边长（像素）。前端最大只显示 30px（@2x = 60px），
+/// 128 有充足余量；再大只会让分类页这类图标密集页面堆几百 MB 解码位图。
+const ICON_PX: u32 = 128;
+
 pub struct IconCache {
     /// bundle_id → Some(base64 PNG) 命中；None 表示已知取不到图标，避免重试
     memory_cache: Mutex<HashMap<String, Option<String>>>,
@@ -26,6 +30,7 @@ pub struct IconCache {
 impl IconCache {
     pub fn new(cache_dir: PathBuf) -> Self {
         std::fs::create_dir_all(&cache_dir).ok();
+        remove_legacy_cache(&cache_dir);
         IconCache {
             memory_cache: Mutex::new(HashMap::new()),
             disk_cache_dir: cache_dir,
@@ -71,9 +76,11 @@ impl IconCache {
     }
 
     fn disk_cache_path(&self, bundle_id: &str) -> PathBuf {
-        // bundle_id 在 Windows 上是 exe 路径，可能包含特殊字符，用 hash 作文件名
+        // bundle_id 在 Windows 上是 exe 路径，可能包含特殊字符，用 hash 作文件名。
+        // 文件名带目标尺寸：尺寸策略一变，旧文件自然失效，不必依赖用户点「刷新图标」。
         let hash = simple_hash(bundle_id);
-        self.disk_cache_dir.join(format!("{}.png", hash))
+        self.disk_cache_dir
+            .join(format!("{}_{}px.png", hash, ICON_PX))
     }
 
     fn disk_neg_path(&self, bundle_id: &str) -> PathBuf {
@@ -100,6 +107,10 @@ impl IconCache {
     fn extract_and_cache(&self, bundle_id: &str) -> Option<String> {
         match extract_icon_png(bundle_id) {
             Some(png_data) => {
+                // macOS 的 NSImage 路径产出的是 1024×1024 原始位图（见 shrink_icon_png
+                // 注释）；落盘前统一缩到 ICON_PX 以内。缩小失败就保留原图，不让图标
+                // 因为尺寸优化而整个丢失。
+                let png_data = shrink_icon_png(&png_data).unwrap_or(png_data);
                 let b64 = base64_encode(&png_data);
 
                 // 写入磁盘缓存
@@ -124,6 +135,54 @@ impl IconCache {
                 std::fs::write(&neg_path, b"").ok();
                 None
             }
+        }
+    }
+}
+
+/// 把图标 PNG 缩到 `ICON_PX` 以内（**只缩不放**，保持宽高比）。
+///
+/// macOS 的提取路径先 `NSImage setSize:128×128` 再 `TIFFRepresentation`，但
+/// setSize 只改逻辑尺寸、不重采样位图，最终 PNG 仍是 1024×1024。前端最大只显示
+/// 30px，分类页一次铺出全部 App 图标时，这些 1024 位图（每张解码后 4 MB）会把
+/// 浏览器图像缓存挤爆，导致每次重绘都重新光栅化——实测搜索输入从 3 ms 涨到
+/// 60 ms 以上、堆内存涨到 300 MB+。
+///
+/// 返回 `None` 表示不需要缩（本来就 ≤ ICON_PX）或解码/编码失败，调用方应保留原图。
+fn shrink_icon_png(png: &[u8]) -> Option<Vec<u8>> {
+    use image::ImageFormat;
+
+    let img = image::load_from_memory_with_format(png, ImageFormat::Png).ok()?;
+    if img.width() <= ICON_PX && img.height() <= ICON_PX {
+        return None;
+    }
+
+    let small = img.thumbnail(ICON_PX, ICON_PX);
+    let mut out = Vec::new();
+    small
+        .write_to(&mut std::io::Cursor::new(&mut out), ImageFormat::Png)
+        .ok()?;
+    Some(out)
+}
+
+/// 删掉旧版文件名（`{hash}.png`，没有 `_128px` 后缀）留下的图标缓存。
+///
+/// 旧文件是 1024×1024 原图，新代码永远不会再读它们；留着只是占磁盘。
+/// 只删「文件名全是数字 + 扩展名 png」的文件，负缓存 sentinel（`.none`）与
+/// 新格式（`{hash}_128px.png`）都不匹配，不会误删。
+fn remove_legacy_cache(dir: &Path) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|s| s.to_str()) != Some("png") {
+            continue;
+        }
+        let Some(stem) = path.file_stem().and_then(|s| s.to_str()) else {
+            continue;
+        };
+        if !stem.is_empty() && stem.chars().all(|c| c.is_ascii_digit()) {
+            let _ = std::fs::remove_file(&path);
         }
     }
 }
