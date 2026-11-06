@@ -13,9 +13,11 @@
 // 平台映射规则:
 //   - universal dmg（文件名含 universal 或传了 --mac-universal）
 //                                        → darwin-aarch64 + darwin-x86_64 指向同一个 URL
-//   - aarch64 / arm64 dmg               → 只写 darwin-aarch64
-//   - x64 / x86_64 dmg                  → 只写 darwin-x86_64
+//   - aarch64 / arm64 dmg               → darwin-aarch64；darwin-x86_64 写空条目
+//   - x64 / x86_64 dmg                  → darwin-x86_64；darwin-aarch64 写空条目
 //   - exe                               → windows-x86_64
+// 空条目的 version/url/sha256 都是空串：updater.rs 对「缺 key」会报错，
+// 对「空 version」则回落到「已是最新」，所以另一架构的用户检查更新不会失败。
 // URL 写文件名（客户端会用 UPDATE_BASE_URL 拼出完整地址），和现有 updater.rs 一致。
 
 import { createHash } from 'node:crypto';
@@ -74,6 +76,13 @@ function add(key, url, sha) {
   platforms[key] = { version, url, sha256: sha };
 }
 
+// 本次没为这个架构出包：留一条空条目，客户端据此判定「已是最新」。
+function addUnavailable(key) {
+  if (!platforms[key]) {
+    platforms[key] = { version: '', url: '', sha256: '' };
+  }
+}
+
 if (mac) {
   const url = ensureVersionInName(mac);
   const sha = await sha256(mac);
@@ -86,14 +95,19 @@ if (mac) {
     add('darwin-x86_64', url, sha);
   } else if (arm) {
     add('darwin-aarch64', url, sha);
+    addUnavailable('darwin-x86_64');
   } else {
     add('darwin-x86_64', url, sha);
+    addUnavailable('darwin-aarch64');
   }
 }
 
 if (win) {
   const url = ensureVersionInName(win);
   add('windows-x86_64', url, await sha256(win));
+  // 只出 Windows 时也把 darwin 两个 key 留成空条目，Mac 客户端不会报错。
+  addUnavailable('darwin-aarch64');
+  addUnavailable('darwin-x86_64');
 }
 
 const manifest = { version, notes, platforms };
@@ -102,5 +116,9 @@ await writeFile(out, JSON.stringify(manifest, null, 2) + '\n');
 console.log(`✔ 已生成 ${out}`);
 console.log(`  version: ${version}`);
 for (const [key, value] of Object.entries(platforms)) {
+  if (!value.url) {
+    console.log(`  ${key}: 本次不发版`);
+    continue;
+  }
   console.log(`  ${key}: ${value.url} (sha256 ${value.sha256.slice(0, 12)}…)`);
 }

@@ -117,7 +117,7 @@ jobs:
           node -e "const c=require('./src/changelog/changelog.json'); if(!c.releases.some(r=>r.version===process.env.VERSION)) { console.error('::error::src/changelog/changelog.json 里没有 '+process.env.VERSION+' 的条目'); process.exit(1) }"
 
   build-macos:
-    name: 构建 macOS（universal）
+    name: 构建 macOS（aarch64）
     needs: prepare
     runs-on: macos-15
     timeout-minutes: 60
@@ -142,7 +142,8 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-apple-darwin,x86_64-apple-darwin
+          # 先只出 Apple Silicon 包：universal 体积翻倍，跨洋上传太慢。
+          targets: aarch64-apple-darwin
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -156,13 +157,13 @@ jobs:
         run: node scripts/bump-version.mjs "${{ inputs.version }}"
 
       # 不配置任何签名环境变量，产物未签名（Apple / Windows 均不签）
-      - name: 构建 universal dmg
-        run: npm run tauri build -- --target universal-apple-darwin
+      - name: 构建 aarch64 dmg
+        run: npm run tauri build -- --target aarch64-apple-darwin
 
       - name: 收集产物
         run: |
           mkdir -p release-assets
-          find src-tauri/target/universal-apple-darwin/release/bundle/dmg \
+          find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg \
             -maxdepth 1 -name '*.dmg' -exec cp {} release-assets/ \;
           ls -lh release-assets
 
@@ -262,17 +263,18 @@ jobs:
       - name: 生成 latest.json
         run: |
           MAC=$(ls release-assets/*.dmg | head -1)
-          # 官网下载链路按旧命名 Snoop_<版本>_aarch64.dmg 取包。产物是
-          # universal，改名后由 --mac-universal 让两个 darwin key 都指向它。
+          # 官网下载链路按 Snoop_<版本>_aarch64.dmg 取包。aarch64 构建本来
+          # 就是这个命名，这里只在 Tauri 换了后缀时兜底改名。
           MAC_LEGACY="release-assets/Snoop_${VERSION}_aarch64.dmg"
-          mv "$MAC" "$MAC_LEGACY"
+          if [ "$MAC" != "$MAC_LEGACY" ]; then
+            mv "$MAC" "$MAC_LEGACY"
+          fi
           MAC="$MAC_LEGACY"
           WIN=$(ls release-assets/*.exe | head -1)
           node scripts/make-release-manifest.mjs \
             --version "$VERSION" \
             --notes "$NOTES" \
             --mac "$MAC" \
-            --mac-universal \
             --win "$WIN" \
             --out latest.json
 
