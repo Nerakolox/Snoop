@@ -119,7 +119,8 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
-            // Windows：关闭原生装饰，改用前端自绘 title bar；圆角/阴影交给系统组合器
+            // Windows：关闭原生装饰，改用前端自绘 title bar；
+            // 圆角交给 DWM（Win11 原生圆角，Win10 直角），阴影保持关闭
             #[cfg(target_os = "windows")]
             {
                 use window_vibrancy::{apply_acrylic, apply_blur};
@@ -127,7 +128,7 @@ pub fn run() {
                 use windows::Win32::Graphics::Dwm::{
                     DwmSetWindowAttribute, DWMWA_BORDER_COLOR,
                     DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
-                    DWM_WINDOW_CORNER_PREFERENCE,
+                    DWMWCP_ROUND, DWM_WINDOW_CORNER_PREFERENCE,
                 };
 
                 if let Some(window) = app.get_webview_window("main") {
@@ -163,12 +164,19 @@ pub fn run() {
                                 std::mem::size_of::<u32>() as u32,
                             );
 
-                            // 关系统圆角，避免圆角走 non-client 合成把 halo 也带回来
-                            let pref: DWM_WINDOW_CORNER_PREFERENCE = DWMWCP_DONOTROUND;
+                            // 圆角跟随系统：Win11（build >= 22000）用 DWM 原生圆角；
+                            // Win10 不支持该属性（最低 build 22000），显式保持直角。
+                            // 旧代码为消 halo 一刀切 DONOTROUND，导致 Win11 也是直角（issue #3）。
+                            let corner: DWM_WINDOW_CORNER_PREFERENCE =
+                                if platform::windows_build_number() >= 22000 {
+                                    DWMWCP_ROUND
+                                } else {
+                                    DWMWCP_DONOTROUND
+                                };
                             let _ = DwmSetWindowAttribute(
                                 hwnd,
                                 DWMWA_WINDOW_CORNER_PREFERENCE,
-                                &pref as *const _ as *const _,
+                                &corner as *const _ as *const _,
                                 std::mem::size_of::<DWM_WINDOW_CORNER_PREFERENCE>() as u32,
                             );
                         }
